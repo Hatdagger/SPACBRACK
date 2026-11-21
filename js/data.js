@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.8';
+  G.SUBTITLE = 'prototype v0.9';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
@@ -236,7 +236,7 @@
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
-  // House rules and stage perks: Launch Complex ('launch'), Fold Lab ('fold'), Space Bank ('bank') and Chrono Station ('chrono') are in so far.
+  // House rules and stage perks: Launch Complex ('launch'), Fold Lab ('fold'), Space Bank ('bank'), Chrono Station ('chrono') and Space Casino ('casino') are in.
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
@@ -285,7 +285,7 @@
     },
     {
       id: 'casino', name: 'Space Casino', feature: 'bag', color: '#ff5d8f', prop: 'slots',
-      rule: 'Card bet (coming later)',
+      rule: 'Card bet - winner takes both cards', ruleId: 'casino',
       npcs: [
         { name: 'Croupier Dex', card: 'werewolf', rank: 3, line: 'Place your bets.' },
         { name: 'High Roller Sal', card: 'cyclops', rank: 4, line: 'The house always stacks.' },

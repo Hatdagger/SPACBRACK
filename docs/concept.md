@@ -60,7 +60,7 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 | 3 | **Fold Lab** | **Hard drop** | **Fold garbage** (see below) | **Early Fold (decided):** send your held fold garbage now; cannot stack with other folds |
 | 4 | **Space Bank** | **Hold** | **Interest:** held-back garbage grows over time, lost if the opponent clears enough first | **Withdraw:** release your banked garbage at the opponent |
 | 5 | **Chrono Station** | **Next-brick preview** | **Save states** (see below) | **Mark / Jump:** tap = mark, hold = jump (decided) |
-| 6 | **Space Casino** | **7-bag randomizer** | **Card bet:** both players stake an inventory card; winner takes both | **Pull the Lever** (proposal): slot spin for a random effect — jackpot (garbage to opponent), cherries (clear your bottom row), bust (garbage to you) |
+| 6 | **Space Casino** | **7-bag randomizer** | **Card bet:** both players stake an inventory card; winner takes both | **Pull the Lever** (decided): slot spin for a random effect — jackpot (garbage to opponent), cherries (clear your bottom row), bust (garbage to you) |
 
 ### Launch Complex perk: Launch Countdown (decided)
 - Pressing the perk button starts a **10-count**. **Only allowed while you are ahead**, and **one use per round**.
@@ -81,6 +81,11 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 - **Withdraw:** perk button sends the whole bank as normal garbage; free whenever something is banked.
 - Card-ability garbage is sent instantly, outside the bank.
 - CPUs withdraw around 5 rows (6-7 for strong ones), at the cap, or early when the opponent's stack is tall.
+
+### Space Casino (decided, v0.9)
+- **Card bet (Adventure only):** you stake your equipped card, the NPC stakes theirs (told before the fight). Win = their card is your prize (instead of a random card). Lose = your card is destroyed as usual. Versus has no bet (no card loss).
+- **Pull the Lever:** one spin per 10 lines, stackable. 1.2 s three-reel spin over your field. Jackpot 30% (3 garbage rows to opponent), Cherries 45% (clear your bottom row, not counted toward 40), Bust 25% (2 garbage rows to you, cancelable by your clears).
+- CPUs pull when a spin is ready, more often when their stack is tall.
 
 ### Perk charges (proposal)
 - Default: **one charge per 10 lines cleared, stackable**.
@@ -215,7 +220,7 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 ## Open questions
 - Card abilities: fixed role per direction across all cards? Full ability sets per monster.
 - Matches: single round or best-of-3?
-- Approve Hologram and Casino perks; perk charge rules.
+- Approve Hologram perk; perk charge rules (Early Fold and Lever use one per 10 lines).
 - Exact inventory size.
 - Fold Lab: input-lock duration (0.7 s in the build), cancelling held chunks, Early Fold charges, card garbage outside the fold.
 - Hologram Hall: new house rule idea (user thinking it over).

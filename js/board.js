@@ -219,6 +219,7 @@
     this.fxEvents = this.fxEvents.filter(function (f) { f.t -= dt; return f.t > 0; });
     if (this.cooldown) this.cooldown = Math.max(0, this.cooldown - dt);
     if (this.bankOn) this.updateBank(dt);
+    if (this.leverOn) this.updateLever(dt);
     if (this.foldLock > 0) { this.foldLock -= dt; this.gravTimer = 0; return; }   // fold playing: everything waits
 
     if (this.effects.shiver) {
@@ -335,6 +336,47 @@
     if (this.opponent) this.opponent.receive(n, this.card.pattern);
     this.say('WITHDRAW ' + n + '!');
     return true;
+  };
+
+  // ---------- Space Casino: Pull the Lever ----------
+  // Perk: spin a slot for one random result. One spin per 10 lines, stackable.
+  // Jackpot = 3 garbage rows to the opponent, Cherries = clear your bottom row, Bust = 2 garbage rows to you.
+  var SPIN_MS = 1200;
+  G.SPIN_MS = SPIN_MS;
+  G.LEVER = [
+    { id: 'jackpot', name: 'JACKPOT!', odds: 0.30 },
+    { id: 'cherries', name: 'CHERRIES!', odds: 0.45 },
+    { id: 'bust', name: 'BUST!', odds: 0.25 }
+  ];
+  P.spinsLeft = function () { return Math.floor(this.lines / 10) - (this.spinsUsed || 0); };
+  P.pullLever = function () {
+    if (!this.leverOn || !this.alive) return false;
+    if (this.spin) return false;
+    if (this.spinsLeft() <= 0) { this.say(this.lines < 10 ? 'LEVER AT 10 LINES' : 'NO SPINS LEFT'); return false; }
+    this.spinsUsed = (this.spinsUsed || 0) + 1;
+    var r = this.rng(), pick = G.LEVER[G.LEVER.length - 1];
+    for (var i = 0, acc = 0; i < G.LEVER.length; i++) { acc += G.LEVER[i].odds; if (r < acc) { pick = G.LEVER[i]; break; } }
+    this.spin = { t: SPIN_MS, result: pick.id };
+    return true;
+  };
+  P.updateLever = function (dt) {
+    if (!this.spin) return;
+    this.spin.t -= dt;
+    if (this.spin.t > 0) return;
+    var res = this.spin.result;
+    this.spin = null;
+    this.fxEvents.push({ kind: 'lever', result: res, t: 1100 });
+    if (res === 'jackpot') { if (this.opponent) this.opponent.receive(3, this.card.pattern); }
+    else if (res === 'bust') this.receive(2, 'standard');
+    else if (res === 'cherries') this.clearBottomRow();
+  };
+  P.clearBottomRow = function () {
+    if (!this.grid[ROWS - 1].some(function (c) { return c; })) return;
+    this.grid.splice(ROWS - 1, 1);
+    this.grid.unshift(new Array(COLS).fill(null));
+    this.fieldVersion = (this.fieldVersion || 0) + 1;
+    var p = this.piece, tries = 0;
+    while (this.collides(p.type, p.rot, p.x, p.y) && tries < 2) { p.y--; tries++; }
   };
 
   // ---------- Fold Lab: fold garbage ----------

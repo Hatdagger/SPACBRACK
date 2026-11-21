@@ -102,6 +102,7 @@
     if (p.chronoOn) this.chrono(dt);
     if (p.foldOn) this.fold(dt);
     if (p.bankOn) this.bank(dt);
+    if (p.leverOn) this.lever(dt);
     if (p.pieceId !== this.lastPiece || p.fieldVersion !== this.lastField) {
       this.lastPiece = p.pieceId; this.lastField = p.fieldVersion;
       this.target = null;
@@ -211,6 +212,18 @@
     if (p.bank >= G.BANK_CAP || p.bank >= target || (foeTall && p.bank >= 2)) {
       if (p.rng() < 0.3 + 0.08 * this.level) p.withdraw();
     }
+  };
+
+  // Space Casino: pull the lever now and then when a spin is ready; more eager when the stack is tall
+  // (cherries help), and stronger CPUs pull sooner.
+  CPU.prototype.lever = function (dt) {
+    var p = this.p;
+    this.leverT = (this.leverT || 0) + dt;
+    if (this.leverT < 1000) return;
+    this.leverT = 0;
+    if (p.spin || p.spinsLeft() <= 0) return;
+    var chance = 0.06 + 0.03 * this.level + (p.stackHeight() >= 10 ? 0.2 : 0);
+    if (p.rng() < chance) p.pullLever();
   };
 
   G.CPU = CPU;
