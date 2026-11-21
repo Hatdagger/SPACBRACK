@@ -36,6 +36,7 @@
 
     if (s.pressed('perk') && p.battle && p.battle.rule === 'launch') p.battle.tryLaunch(p);
     if (s.pressed('perk') && p.foldOn) p.earlyFold();
+    if (s.pressed('perk') && p.bankOn) p.withdraw();
     // Chrono Station: tap the perk button = mark, hold it = jump.
     if (p.chronoOn) {
       if (s.pressed('perk')) { this.perkT = 0; this.perkFired = false; }
@@ -86,6 +87,7 @@
     }
     if (this.rule === 'chrono') this.a.chronoOn = this.b.chronoOn = true;
     if (this.rule === 'fold') this.a.foldOn = this.b.foldOn = true;
+    if (this.rule === 'bank') this.a.bankOn = this.b.bankOn = true;
     this.endWhy = null;
     this.countdown = 2400;
     this.paused = false;
@@ -278,6 +280,7 @@
 
     if (p.chronoOn) this.drawChrono(p, i, fx, fy, t);
     if (p.foldOn) this.drawFold(p, i, fx, fy, t);
+    if (p.bankOn) this.drawBank(p, i, fx, fy, t);
 
     // Floating callouts
     p.flash.forEach(function (f, k3) {
@@ -379,6 +382,21 @@
     }
   };
 
+  // Space Bank: vault counter over the board with an interest bar; flashes when interest pays or the bank is hit.
+  Battle.prototype.drawBank = function (p, i, fx, fy, t) {
+    var human = this.ctrl[i] instanceof Human;
+    var pay = p.fxEvents.some(function (e) { return e.kind === 'interest'; });
+    var hit = p.fxEvents.some(function (e) { return e.kind === 'bankHit'; });
+    var full = p.bank >= G.BANK_CAP;
+    var col = hit ? PAL.red : pay ? PAL.white : p.bank ? PAL.yellow : '#6c6880';
+    T('VAULT ' + p.bank + (full ? ' MAX' : '') + (pay ? ' +1' : ''), fx + 4, fy - 7, col, { font: 'small' });
+    // interest bar: fills toward the next row
+    R(fx + 50, fy - 6, 28, 3, '#1a1726');
+    if (p.bank && !full) R(fx + 50, fy - 6, Math.round(28 * p.interestT / G.INTEREST_MS), 3, PAL.amber);
+    if (full) R(fx + 50, fy - 6, 28, 3, Math.floor(t / 200) % 2 ? PAL.yellow : PAL.amber);
+    if (human && p.bank) T('PERK: WITHDRAW', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
+  };
+
   // Launch Countdown display: big count in the centre console, frame around the initiator's board.
   Battle.prototype.drawLaunch = function (now) {
     var L = this.launch;
@@ -444,6 +462,9 @@
       T(this.sudden ? 'SUDDEN' : 'GARBAGE', 160, 118, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
       T(this.sudden ? 'DEATH' : 'OFF', 160, 125, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
       this.drawLaunch(now);
+    } else if (this.rule === 'bank') {
+      T('BANK +1', 160, 118, PAL.yellow, { align: 'center', font: 'small' });
+      T('EVERY ' + (G.INTEREST_MS / 1000) + 'S', 160, 125, PAL.yellow, { align: 'center', font: 'small' });
     } else if (this.rule === 'fold') {
       T('FOLD EVERY', 160, 118, PAL.green, { align: 'center', font: 'small' });
       T(G.FOLD_EVERY + ' LINES', 160, 125, PAL.green, { align: 'center', font: 'small' });

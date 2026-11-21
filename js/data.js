@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.7';
+  G.SUBTITLE = 'prototype v0.8';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
@@ -236,7 +236,7 @@
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
-  // House rules and stage perks: Launch Complex ('launch'), Fold Lab ('fold') and Chrono Station ('chrono') are in so far.
+  // House rules and stage perks: Launch Complex ('launch'), Fold Lab ('fold'), Space Bank ('bank') and Chrono Station ('chrono') are in so far.
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
@@ -267,7 +267,7 @@
     },
     {
       id: 'bank', name: 'Space Bank', feature: 'hold', color: '#f2c94c', prop: 'vault',
-      rule: 'Interest garbage (coming later)',
+      rule: 'Interest - bank garbage, perk to withdraw', ruleId: 'bank',
       npcs: [
         { name: 'Teller Penny', card: 'cyclops', rank: 2, line: 'Deposits only. Garbage accepted.' },
         { name: 'Guard Brick', card: 'werewolf', rank: 3, line: 'Nobody gets to the vault.' },

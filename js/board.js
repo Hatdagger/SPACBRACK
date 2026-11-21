@@ -53,6 +53,8 @@
     this.foldHeld = [];      // Fold Lab: chunks waiting to fold to the opponent {rows, pattern, h, gap}
     this.foldIn = [];        // Fold Lab: chunks folded to you, landing at your next placement
     this.foldLock = 0;       // Fold Lab: ms of input lock while a fold plays
+    this.bank = 0;           // Space Bank: banked garbage rows
+    this.interestT = 0;      // Space Bank: ms toward the next interest row
     this.opponent = null;
     this.fillQueue();
     this.spawn();
@@ -216,6 +218,7 @@
     this.flash = this.flash.filter(function (f) { f.t -= dt; return f.t > 0; });
     this.fxEvents = this.fxEvents.filter(function (f) { f.t -= dt; return f.t > 0; });
     if (this.cooldown) this.cooldown = Math.max(0, this.cooldown - dt);
+    if (this.bankOn) this.updateBank(dt);
     if (this.foldLock > 0) { this.foldLock -= dt; this.gravTimer = 0; return; }   // fold playing: everything waits
 
     if (this.effects.shiver) {
@@ -277,7 +280,16 @@
     var out = LINE_GARBAGE[Math.min(4, cleared)];
     // Outgoing garbage cancels incoming first.
     out = cancelFrom(this.pending, out);
-    if (this.foldOn) {
+    if (this.bankOn) {
+      // Space Bank: eat into the opponent's bank, then deposit the rest in yours.
+      if (this.opponent && this.opponent.bank > 0 && out > 0) {
+        var eat = Math.min(out, this.opponent.bank);
+        this.opponent.bank -= eat; out -= eat;
+        this.opponent.fxEvents.push({ kind: 'bankHit', t: 400 });
+        if (!this.opponent.bank) this.opponent.interestT = 0;
+      }
+      if (out > 0) this.deposit(out);
+    } else if (this.foldOn) {
       // Fold Lab: cancel what's folding in to you, then what the opponent is holding; keep the rest.
       out = cancelFrom(this.foldIn, out);
       if (this.opponent) out = cancelFrom(this.opponent.foldHeld, out);
@@ -296,6 +308,34 @@
     }
     return n;
   }
+
+  // ---------- Space Bank: interest ----------
+  // Garbage from your clears is banked instead of sent. The bank earns 1 row every 10 s (cap 10).
+  // The opponent's clears eat into your bank first. Withdraw (perk) sends the whole bank as garbage.
+  var BANK_CAP = 10, INTEREST_MS = 10000;
+  G.BANK_CAP = BANK_CAP; G.INTEREST_MS = INTEREST_MS;
+  P.deposit = function (n) {
+    if (!this.bank) this.interestT = 0;
+    this.bank = Math.min(BANK_CAP, (this.bank || 0) + n);
+  };
+  P.updateBank = function (dt) {
+    if (!this.bank || this.bank >= BANK_CAP) { this.interestT = 0; return; }
+    this.interestT = (this.interestT || 0) + dt;
+    if (this.interestT >= INTEREST_MS) {
+      this.interestT -= INTEREST_MS;
+      this.bank = Math.min(BANK_CAP, this.bank + 1);
+      this.fxEvents.push({ kind: 'interest', t: 700 });
+    }
+  };
+  P.withdraw = function () {
+    if (!this.bankOn || !this.alive) return false;
+    if (!this.bank) { this.say('VAULT EMPTY'); return false; }
+    var n = this.bank;
+    this.bank = 0; this.interestT = 0;
+    if (this.opponent) this.opponent.receive(n, this.card.pattern);
+    this.say('WITHDRAW ' + n + '!');
+    return true;
+  };
 
   // ---------- Fold Lab: fold garbage ----------
   // Garbage from your clears is held as chunks (one per clear, remembering the row height it was

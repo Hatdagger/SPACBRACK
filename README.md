@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.7
+# SPACBRACK — prototype v0.8
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,16 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.8 (Space Bank interest)
+
+- **Interest:** the garbage your clears make goes into your vault instead of being sent. The vault earns 1 row every 10 s, up to 10 rows.
+- The opponent's clears eat into your vault first, so a big balance can be lost.
+- **Withdraw perk** (perk button): sends your whole vault to the opponent as normal garbage. Free whenever the vault isn't empty.
+- Over each board: "VAULT n" with a bar filling toward the next interest row. It flashes white on a payout and red when the opponent eats into it.
+- CPUs withdraw around 5 rows (stronger ones wait for 6-7), at the cap, or early when your stack is tall.
+- Card-ability garbage is sent instantly, as usual.
+- Versus "House rule" option now also has Interest.
 
 ## New in v0.7 (Fold Lab fold garbage)
 
@@ -114,7 +124,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## Not in yet (next steps)
 
-- House rules and stage perks for the other three locations (Hologram Hall being rethought, Interest, Card bet). The perk button is already mapped.
+- House rules and stage perks for the other two locations (Hologram Hall being rethought, Card bet). The perk button is already mapped.
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
 - Online versus, sound, and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.

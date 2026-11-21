@@ -74,6 +74,14 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 - **Not stackable:** cannot combine with another fold (e.g., can't be fired while a fold is already queued).
 - **Early Fold does not reset the 8-line counter** (decided).
 
+### Space Bank rule: Interest (decided, v0.8)
+- Garbage from your clears is **banked** instead of sent.
+- **Interest:** +1 row every 10 s, cap 10 rows.
+- The **opponent's clears eat into your bank first** (after cancelling their own incoming garbage).
+- **Withdraw:** perk button sends the whole bank as normal garbage; free whenever something is banked.
+- Card-ability garbage is sent instantly, outside the bank.
+- CPUs withdraw around 5 rows (6-7 for strong ones), at the cap, or early when the opponent's stack is tall.
+
 ### Perk charges (proposal)
 - Default: **one charge per 10 lines cleared, stackable**.
 - Exceptions: **Space Bank Withdraw** is free whenever you have garbage banked; **Launch Countdown** is one per round, only while ahead.

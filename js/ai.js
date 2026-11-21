@@ -101,6 +101,7 @@
     if (p.foldLock > 0) { p.softDrop = false; return; }   // fold playing: input locked
     if (p.chronoOn) this.chrono(dt);
     if (p.foldOn) this.fold(dt);
+    if (p.bankOn) this.bank(dt);
     if (p.pieceId !== this.lastPiece || p.fieldVersion !== this.lastField) {
       this.lastPiece = p.pieceId; this.lastField = p.fieldVersion;
       this.target = null;
@@ -194,6 +195,21 @@
     var foeTall = p.opponent && p.opponent.stackHeight() >= 12;
     if ((p.heldRows() >= need && far) || (foeTall && p.heldRows() >= 2)) {
       if (p.rng() < 0.05 * this.level + 0.1) p.earlyFold();
+    }
+  };
+
+  // Space Bank Withdraw: cash out around 5 rows (stronger CPUs wait a little longer for interest),
+  // right away at the cap, or early when the opponent's stack is tall.
+  CPU.prototype.bank = function (dt) {
+    var p = this.p;
+    this.bankT = (this.bankT || 0) + dt;
+    if (this.bankT < 1000) return;
+    this.bankT = 0;
+    if (!p.bank) return;
+    var target = 5 + Math.max(0, Math.floor((this.level - 3) / 2));   // L1-4: 5, L5-6: 6, L7-8: 7
+    var foeTall = p.opponent && p.opponent.stackHeight() >= 12;
+    if (p.bank >= G.BANK_CAP || p.bank >= target || (foeTall && p.bank >= 2)) {
+      if (p.rng() < 0.3 + 0.08 * this.level) p.withdraw();
     }
   };
 
