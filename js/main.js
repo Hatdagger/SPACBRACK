@@ -139,7 +139,7 @@
     // footer: tape specs
     G.deck(20, 182, 290, 34);
     T('HIGH GRADE', 28, 188, PAL.white, { font: 'small' });
-    T('PROTOTYPE V0.6', 302, 188, PAL.grey, { font: 'small', align: 'right' });
+    T('PROTOTYPE V0.7', 302, 188, PAL.grey, { font: 'small', align: 'right' });
     T(G.padCount ? G.padCount + ' CONTROLLER(S) READY' : 'PRESS A BUTTON ON A CONTROLLER TO CONNECT IT', 165, 198, PAL.amber, { font: 'small', align: 'center' });
     T('KEYBOARD: ARROWS + X / Z, ENTER', 165, 206, PAL.grey, { font: 'small', align: 'center' });
     drawToasts(dt);

@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.6';
+  G.SUBTITLE = 'prototype v0.7';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
