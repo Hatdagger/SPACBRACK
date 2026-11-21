@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.2';
+  G.SUBTITLE = 'prototype v0.4';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
@@ -235,60 +235,61 @@
   G.SHORT = { starter: 'CADET', cyclops: 'CYCLOPS', skeleton: 'SKELETON', werewolf: 'WEREWOLF', bat: 'GIANT BAT' };
 
 
-  // Six locations. House rules and stage perks are listed but not yet in the prototype.
+  // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
+  // House rules and stage perks are listed but not yet in the prototype.
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
       rule: 'Countdown race (coming later)',
       npcs: [
-        { name: 'Ground Crew Gus', card: 'skeleton', rank: 1, level: 1, line: 'Fuel is loaded. Want a quick race?' },
-        { name: 'Flight Tech Ida', card: 'bat', rank: 2, level: 1, line: 'Checklist done. Care to test your stacking?' },
-        { name: 'Commander Vance', card: 'cyclops', rank: 2, level: 2, boss: true, line: 'T-minus ten. Show me you can fly.' }
+        { name: 'Ground Crew Gus', card: 'skeleton', rank: 1, line: 'Fuel is loaded. Want a quick race?' },
+        { name: 'Flight Tech Ida', card: 'bat', rank: 2, line: 'Checklist done. Care to test your stacking?' },
+        { name: 'Commander Vance', card: 'cyclops', rank: 2, boss: true, line: 'T-minus ten. Show me you can fly.' }
       ]
     },
     {
       id: 'holo', name: 'Hologram Hall', feature: 'ghost', color: '#4fd1c5', prop: 'pillar',
       rule: 'Hologram decoys (coming later)',
       npcs: [
-        { name: 'Usher Lumen', card: 'bat', rank: 2, level: 2, line: 'The show starts when the blocks drop.' },
-        { name: 'Projectionist Rae', card: 'werewolf', rank: 2, level: 2, line: 'I see every frame. Do you?' },
-        { name: 'The Phantom Host', card: 'bat', rank: 3, level: 3, boss: true, line: 'Nothing here is real... except defeat.' }
+        { name: 'Usher Lumen', card: 'bat', rank: 2, line: 'The show starts when the blocks drop.' },
+        { name: 'Projectionist Rae', card: 'werewolf', rank: 2, line: 'I see every frame. Do you?' },
+        { name: 'The Phantom Host', card: 'bat', rank: 3, boss: true, line: 'Nothing here is real... except defeat.' }
       ]
     },
     {
       id: 'fold', name: 'Fold Lab', feature: 'hardDrop', color: '#9ae66e', prop: 'vat',
       rule: 'Fold garbage (coming later)',
       npcs: [
-        { name: 'Lab Intern Pip', card: 'skeleton', rank: 2, level: 2, line: 'Space folds. So will you.' },
-        { name: 'Dr. Crease', card: 'cyclops', rank: 3, level: 3, line: 'An experiment! You are the control group.' },
-        { name: 'Professor Origami', card: 'werewolf', rank: 3, level: 3, boss: true, line: 'Every fold has a purpose.' }
+        { name: 'Lab Intern Pip', card: 'skeleton', rank: 2, line: 'Space folds. So will you.' },
+        { name: 'Dr. Crease', card: 'cyclops', rank: 3, line: 'An experiment! You are the control group.' },
+        { name: 'Professor Origami', card: 'werewolf', rank: 3, boss: true, line: 'Every fold has a purpose.' }
       ]
     },
     {
       id: 'bank', name: 'Space Bank', feature: 'hold', color: '#f2c94c', prop: 'vault',
       rule: 'Interest garbage (coming later)',
       npcs: [
-        { name: 'Teller Penny', card: 'cyclops', rank: 2, level: 3, line: 'Deposits only. Garbage accepted.' },
-        { name: 'Guard Brick', card: 'werewolf', rank: 3, level: 3, line: 'Nobody gets to the vault.' },
-        { name: 'Director Ledger', card: 'skeleton', rank: 4, level: 4, boss: true, line: 'Your account is overdrawn.' }
+        { name: 'Teller Penny', card: 'cyclops', rank: 2, line: 'Deposits only. Garbage accepted.' },
+        { name: 'Guard Brick', card: 'werewolf', rank: 3, line: 'Nobody gets to the vault.' },
+        { name: 'Director Ledger', card: 'skeleton', rank: 4, boss: true, line: 'Your account is overdrawn.' }
       ]
     },
     {
       id: 'chrono', name: 'Chrono Station', feature: 'preview', color: '#6fa8ff', prop: 'clock',
       rule: 'Save states (coming later)',
       npcs: [
-        { name: 'Timekeeper Tock', card: 'bat', rank: 3, level: 3, line: 'You are late. Or early. Battle?' },
-        { name: 'Engineer Loop', card: 'skeleton', rank: 3, level: 4, line: 'I have seen this match before.' },
-        { name: 'Past You', card: 'starter', rank: 1, level: 4, boss: true, mirror: true, line: 'Remember me?' }
+        { name: 'Timekeeper Tock', card: 'bat', rank: 3, line: 'You are late. Or early. Battle?' },
+        { name: 'Engineer Loop', card: 'skeleton', rank: 3, line: 'I have seen this match before.' },
+        { name: 'Past You', card: 'starter', rank: 1, boss: true, mirror: true, line: 'Remember me?' }
       ]
     },
     {
       id: 'casino', name: 'Space Casino', feature: 'bag', color: '#ff5d8f', prop: 'slots',
       rule: 'Card bet (coming later)',
       npcs: [
-        { name: 'Croupier Dex', card: 'werewolf', rank: 3, level: 4, line: 'Place your bets.' },
-        { name: 'High Roller Sal', card: 'cyclops', rank: 4, level: 4, line: 'The house always stacks.' },
-        { name: 'Lady Luck', card: 'bat', rank: 5, level: 5, boss: true, line: 'Luck runs out. Mine does not.' }
+        { name: 'Croupier Dex', card: 'werewolf', rank: 3, line: 'Place your bets.' },
+        { name: 'High Roller Sal', card: 'cyclops', rank: 4, line: 'The house always stacks.' },
+        { name: 'Lady Luck', card: 'bat', rank: 5, boss: true, line: 'Luck runs out. Mine does not.' }
       ]
     }
   ];

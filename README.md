@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.3
+# SPACBRACK — prototype v0.4
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,14 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.4 (CPU difficulty)
+
+- CPU opponents now have 8 levels instead of 5, and the low ones are much gentler: they think longer, move slower and pause before dropping.
+- CPU mistakes are now small slips, and CPUs stop making them once their stack gets tall, so weak opponents no longer bury themselves.
+- Adventure strength follows your progress, not the location. Crew 1 is level 1, crew 2 is level 2 and the boss is level 3, plus 1 for every token you hold (top level 8). So whichever location you visit first is the easy one.
+- Measured solo time to clear 40 lines (no features): level 1 about 6 minutes, level 4 about 4.5, level 8 about 3.
+- Versus lets you pick CPU level 1 to 8 (default 4).
 
 ## New in v0.3 (new exploration)
 
@@ -68,7 +76,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
   - Other buttons cancel.
   - Line clears fill the meter, and abilities spend it.
 - Direction roles follow the open proposal: left = attack (R2), right = defense (R3), down = timed (R4), up = super (R5).
-- CPU opponents have 5 difficulty levels and use their card abilities too.
+- CPU opponents have 8 difficulty levels and use their card abilities too.
 
 **Versus**
 - Vs CPU or local 2P. Every feature can be switched on or off, and you pick each player's card and rank.

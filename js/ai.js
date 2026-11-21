@@ -5,14 +5,21 @@
 
   var COLS = G.COLS, ROWS = G.ROWS;
 
-  // Difficulty 1..5
+  // Difficulty 1..8. think = pause before acting on a new brick, step = ms per move/rotate,
+  // settle = pause once lined up before soft-dropping, mistake = chance of a worse spot,
+  // slop = how far down the list a mistake can reach (kept small so CPUs don't bury themselves),
+  // abilityRate = chance per second to fire an affordable card ability.
   var LEVELS = {
-    1: { think: 700, step: 200, mistake: 0.35, abilityRate: 0.10 },
-    2: { think: 500, step: 150, mistake: 0.20, abilityRate: 0.20 },
-    3: { think: 350, step: 110, mistake: 0.10, abilityRate: 0.30 },
-    4: { think: 220, step: 80, mistake: 0.05, abilityRate: 0.45 },
-    5: { think: 140, step: 55, mistake: 0.02, abilityRate: 0.60 }
+    1: { think: 660, step: 160, settle: 540, mistake: 0.30, slop: 3, abilityRate: 0.05 },
+    2: { think: 560, step: 140, settle: 400, mistake: 0.25, slop: 3, abilityRate: 0.10 },
+    3: { think: 430, step: 120, settle: 250, mistake: 0.20, slop: 3, abilityRate: 0.15 },
+    4: { think: 390, step: 100, settle: 210, mistake: 0.15, slop: 3, abilityRate: 0.20 },
+    5: { think: 320, step: 90, settle: 130, mistake: 0.10, slop: 3, abilityRate: 0.30 },
+    6: { think: 260, step: 80, settle: 70, mistake: 0.07, slop: 2, abilityRate: 0.40 },
+    7: { think: 200, step: 60, settle: 20, mistake: 0.04, slop: 2, abilityRate: 0.50 },
+    8: { think: 130, step: 50, settle: 0, mistake: 0.02, slop: 2, abilityRate: 0.60 }
   };
+  G.CPU_MAX_LEVEL = 8;
 
   function evaluate(grid) {
     var heights = [], holes = 0, agg = 0, bump = 0;
@@ -27,6 +34,11 @@
     for (var i = 0; i < COLS - 1; i++) bump += Math.abs(heights[i] - heights[i + 1]);
     var maxH = Math.max.apply(null, heights);
     return { agg: agg, holes: holes, bump: bump, maxH: maxH };
+  }
+
+  function stackHeight(grid) {
+    for (var y = 0; y < ROWS; y++) if (grid[y].some(function (c) { return c; })) return ROWS - y;
+    return 0;
   }
 
   function placements(player) {
@@ -64,7 +76,7 @@
 
   function CPU(player, level) {
     this.p = player;
-    this.cfg = LEVELS[level] || LEVELS[2];
+    this.cfg = LEVELS[Math.max(1, Math.min(8, level | 0))] || LEVELS[2];
     this.lastPiece = -1;
     this.timer = 0;
     this.target = null;
@@ -80,6 +92,7 @@
       this.target = null;
       this.timer = -this.cfg.think;
       this.fails = 0;
+      this.settle = 0;
       p.softDrop = false;
       // Bosses use hard drop sparingly: only on some bricks.
       this.useHard = p.features.hardDrop && p.rng() < HARD_DROP_RATE;
@@ -102,7 +115,12 @@
       var opts = placements(p);
       if (!opts.length) { p.softDrop = true; return; }
       var pick = opts[0];
-      if (p.rng() < this.cfg.mistake) pick = opts[Math.min(opts.length - 1, 1 + Math.floor(p.rng() * 5))];
+      // Mistakes pick a nearby-but-worse spot, never one that is much worse than the best.
+      // ...and stop making them once the stack gets tall.
+      if (stackHeight(p.grid) < 9 && p.rng() < this.cfg.mistake) {
+        var alt = opts[Math.min(opts.length - 1, 1 + Math.floor(p.rng() * this.cfg.slop))];
+        if (alt.score > pick.score - 3) pick = alt;
+      }
       this.target = pick;
     }
     if (this.timer < this.cfg.step) return;
@@ -113,6 +131,8 @@
     else if (pc.x < t.x && this.fails < 6) ok = p.move(1);
     else if (pc.x > t.x && this.fails < 6) ok = p.move(-1);
     else {
+      // Lined up: slower CPUs pause a moment before dropping, like a person double-checking.
+      if (this.settle < this.cfg.settle) { this.settle += this.cfg.step; return; }
       if (this.useHard) p.hardDrop();
       else p.softDrop = true;
       return;
