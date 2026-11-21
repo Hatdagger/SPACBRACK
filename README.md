@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.5
+# SPACBRACK — prototype v0.6
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,15 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.6 (Chrono Station save states)
+
+- **Save states:** at 10 lines you can start marking your field. Tap the perk button to mark (a new mark replaces the old one), hold it to jump back to the mark.
+- Jumps are earned at 10, 20 and 30 lines (so the first 10 lines give you both marking and a jump), and unused jumps stack.
+- A jump brings back only the field. The brick in hand, the held brick and your line count stay, so farming lines from a good mark is allowed.
+- The marked field shows as a faint "photo" in the corner of your board, and the line above the board shows your jumps.
+- CPUs use it: they mark a clean, low field and jump back when their stack gets tall or messy.
+- Versus "House rule" option now also has Save States.
 
 ## New in v0.5 (Launch Complex house rule + perk)
 
@@ -93,7 +102,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## Not in yet (next steps)
 
-- House rules and stage perks for the other five locations (Hologram decoys, Fold garbage, Interest, Save states, Card bet). The perk button is already mapped.
+- House rules and stage perks for the other four locations (Hologram Hall being rethought, Fold garbage, Interest, Save states, Card bet). The perk button is already mapped.
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
 - Online versus, sound, and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.

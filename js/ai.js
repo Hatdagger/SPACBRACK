@@ -98,8 +98,9 @@
   CPU.prototype.update = function (dt) {
     var p = this.p;
     if (!p.alive || p.won) return;
-    if (p.pieceId !== this.lastPiece) {
-      this.lastPiece = p.pieceId;
+    if (p.chronoOn) this.chrono(dt);
+    if (p.pieceId !== this.lastPiece || p.fieldVersion !== this.lastField) {
+      this.lastPiece = p.pieceId; this.lastField = p.fieldVersion;
       this.target = null;
       this.timer = -this.cfg.think;
       this.fails = 0;
@@ -161,6 +162,20 @@
       return;
     }
     if (!ok) this.fails++;
+  };
+
+  // Chrono Station save states: mark a clean, low field; jump back when the stack gets bad.
+  CPU.prototype.chrono = function (dt) {
+    var p = this.p;
+    this.chronoT = (this.chronoT || 0) + dt;
+    if (this.chronoT < 600) return;
+    this.chronoT = 0;
+    if (!p.canMark() || p.rng() > 0.25 + 0.08 * this.level) return;
+    var e = evaluate(p.grid);
+    if (e.holes === 0 && e.maxH >= 2 && e.maxH <= 7 && (!this.markE || e.agg > this.markE.agg || this.markE.maxH > 7)) {
+      p.mark(); this.markE = e; return;
+    }
+    if (this.markE && p.jumpsLeft() > 0 && (e.maxH >= 13 || e.holes >= this.markE.holes + 5) && this.markE.maxH < e.maxH - 3) p.jump();
   };
 
   G.CPU = CPU;

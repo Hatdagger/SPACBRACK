@@ -56,7 +56,7 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 | # | Location | Token / feature | House rule | Stage perk (button) |
 |---|---|---|---|---|
 | 1 | **Launch Complex** | **Thrusters** — wall kicks | **Countdown race, garbage off:** clear the target lines within a target time AND before the opponent | **Launch Countdown (decided):** 10-count; when it ends, the player ahead wins (see below) |
-| 2 | **Hologram Hall** | **Ghost brick** (hologram) | **Hologram decoys:** fake blocks that bricks fall through | **Projector** (proposal): tap = scan, briefly reveal which of your blocks are fake; hold = beam a decoy onto the opponent's board |
+| 2 | **Hologram Hall** | **Ghost brick** (hologram) | **Being rethought** (was: hologram decoys, fake blocks that bricks fall through) | **Projector** (proposal): tap = scan, briefly reveal which of your blocks are fake; hold = beam a decoy onto the opponent's board |
 | 3 | **Fold Lab** | **Hard drop** | **Fold garbage** (see below) | **Early Fold (decided):** send your held fold garbage now; cannot stack with other folds |
 | 4 | **Space Bank** | **Hold** | **Interest:** held-back garbage grows over time, lost if the opponent clears enough first | **Withdraw:** release your banked garbage at the opponent |
 | 5 | **Chrono Station** | **Next-brick preview** | **Save states** (see below) | **Mark / Jump:** tap = mark, hold = jump (decided) |
@@ -72,7 +72,7 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 ### Fold Lab perk: Early Fold (decided)
 - Sends your **held fold garbage** (everything built up since your last fold) to the opponent immediately instead of waiting for the next 8-line fold.
 - **Not stackable:** cannot combine with another fold (e.g., can't be fired while a fold is already queued).
-- Open: after an Early Fold, does the 8-line counter reset? (Proposal: yes.)
+- **Early Fold does not reset the 8-line counter** (decided).
 
 ### Perk charges (proposal)
 - Default: **one charge per 10 lines cleared, stackable**.
@@ -91,17 +91,19 @@ After the token, the HUD shows a slot reel of the 7 shapes, each going dark as i
 - Indicator: "FOLD IN 3" counter for both players, plus side markers for pending chunk heights.
 - Card garbage patterns keep their shape when stamped in.
 
-#### Playtest: folds can create line clears for the receiver
+#### Folds can create line clears for the receiver (decided: they clear normally, "it is what it is")
+Options that were considered:
 - **Whole-row replace:** folds never complete lines. Safest.
 - **Solid-cells only:** folds can complete lines (backfire risk).
 - **Middle ground:** fold-completed lines clear but don't count toward the 40 or send garbage back.
 - Chain risk: if fold clears count, they can push the receiver to their own next fold.
 
 ### Chrono Station rule: save states (decided)
-- Player can **mark** the field **at any time**, then **jump back** to it later.
+- **Marking opens at 10 lines** (decided), then the player can mark any time and **jump back** to it later. Tap perk = mark (replaces the old mark), hold = jump.
 - **Only the field comes back.** The brick in hand and the held brick stay as they are at the moment of the jump.
 - **Line count is NOT rewound — farming is intended.**
-- **Jumps are earned:** a charge each time the player reaches another 10 cleared lines (10, 20, 30) — **3 per race to 40**. **Charges stack.**
+- **Jumps are earned:** a charge each time the player reaches another 10 cleared lines (10, 20, 30) — **3 per race to 40**. **Charges stack.** The first 10 lines give both marking and a jump.
+- In the build (v0.6): the mark stays after a jump (so you can farm the same mark again); garbage already in the field goes back with the field, garbage still waiting does not; marked field shown as a faint photo in the board corner; CPUs mark clean low fields and jump when their stack is tall or messy.
 - Designer's estimate: best case is around 12 farmed lines in a row from one save.
 - Playtest: farmed lines count toward the next 10 (snowball).
 - Proposals: jump erases garbage received since the mark; one mark at a time; marked field shown as a faint "photo" in the corner.
@@ -202,8 +204,8 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 ## Open questions
 - Card abilities: fixed role per direction across all cards? Full ability sets per monster.
 - Matches: single round or best-of-3?
-- Early Fold: counter reset.
 - Approve Hologram and Casino perks; perk charge rules.
 - Exact inventory size.
-- Fold Lab: input-lock duration; playtest fold-created line clears.
+- Fold Lab: input-lock duration.
+- Hologram Hall: new house rule idea (user thinking it over).
 - Neo Geo: accept single rotate direction? Stage perk on Select vs combo.

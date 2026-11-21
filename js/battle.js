@@ -3,6 +3,7 @@
   'use strict';
 
   var DAS = 160, ARR = 40;
+  var HOLD_MS = 400;         // perk button held this long = jump (Chrono Station)
   var C = 8;                 // brick size in pixels
   var FW = 80, FH = 160;     // field size
   var FX = [48, 192], FY = 30;
@@ -32,7 +33,15 @@
       if (this.cardMode) return; // d-pad picks abilities while the card button is held
     }
 
-    if (s.pressed('perk') && p.battle) p.battle.tryLaunch(p);
+    if (s.pressed('perk') && p.battle && p.battle.rule === 'launch') p.battle.tryLaunch(p);
+    // Chrono Station: tap the perk button = mark, hold it = jump.
+    if (p.chronoOn) {
+      if (s.pressed('perk')) { this.perkT = 0; this.perkFired = false; }
+      if (s.down('perk')) {
+        this.perkT += dt;
+        if (!this.perkFired && this.perkT >= HOLD_MS) { this.perkFired = true; p.jump(); }
+      } else if (s.released('perk') && !this.perkFired) p.mark();
+    }
     if (s.pressed('rotCW')) p.rotate(1);
     if (s.pressed('rotCCW')) p.rotate(-1);
     if (s.pressed('hold')) p.hold();
@@ -73,6 +82,7 @@
       this.launch = null;              // active count: {by, t, linesAt}
       this.launchUsed = [false, false];
     }
+    if (this.rule === 'chrono') this.a.chronoOn = this.b.chronoOn = true;
     this.endWhy = null;
     this.countdown = 2400;
     this.paused = false;
@@ -263,6 +273,8 @@
     });
     if (p.effects.fur) { var sc = Math.floor(t / 120) % 2 ? PAL.orange : G.shade(PAL.orange, -0.4); R(fx, fy + FH - 1, FW, 1, sc); R(fx, fy + FH - 3, FW, 1, sc); }
 
+    if (p.chronoOn) this.drawChrono(p, i, fx, fy, t);
+
     // Floating callouts
     p.flash.forEach(function (f, k3) {
       var yy = fy + 60 - k3 * 10 - Math.floor((1200 - f.t) / 60);
@@ -310,6 +322,27 @@
       T(open ? a.name : '? ? ?', x + 28, y + 2, ink, { align: 'center', font: 'small' });
       T(open ? 'COST ' + a.cost : 'RANK ' + G.DIR_RANK[d], x + 28, y + 9, sel ? '#000' : (open ? PAL.amber : '#4a4660'), { align: 'center', font: 'small' });
     });
+  };
+
+  // Chrono Station: status line over the board and the marked field as a faint "photo" in the corner.
+  Battle.prototype.drawChrono = function (p, i, fx, fy, t) {
+    var ctx = this._ctx, jumps = p.jumpsLeft(), human = this.ctrl[i] instanceof Human;
+    var txt, col;
+    if (p.lines < 10) { txt = 'MARK AT 10 LINES'; col = '#6c6880'; }
+    else if (!p.markGrid) { txt = human ? 'TAP PERK: MARK' : 'NO MARK'; col = Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber; }
+    else { txt = 'JUMPS ' + jumps + (human && jumps ? '  HOLD PERK' : ''); col = jumps ? PAL.cyan : '#6c6880'; }
+    T(txt, fx + 40, fy - 7, col, { align: 'center', font: 'small' });
+    if (p.markGrid) {
+      var px = fx + FW - 23, py = fy + 2, s = 2;
+      ctx.globalAlpha = 0.5;
+      R(px - 1, py - 1, G.COLS * s + 2, (G.ROWS - G.HIDDEN) * s + 9, '#000');
+      for (var y = G.HIDDEN; y < G.ROWS; y++) for (var x = 0; x < G.COLS; x++)
+        if (p.markGrid[y][x]) R(px + x * s, py + (y - G.HIDDEN) * s, s, s, '#9ab8d8');
+      T('MARK', px + G.COLS, py + (G.ROWS - G.HIDDEN) * s + 1, PAL.cyan, { align: 'center', font: 'small' });
+      ctx.globalAlpha = 1;
+    }
+    var j = p.fxEvents.filter(function (f) { return f.kind === 'jump'; })[0];
+    if (j) { ctx.globalAlpha = j.t / 500; R(fx, fy, FW, FH, '#bfe4ff'); ctx.globalAlpha = 1; }
   };
 
   // Launch Countdown display: big count in the centre console, frame around the initiator's board.

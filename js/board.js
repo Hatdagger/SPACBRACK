@@ -113,6 +113,33 @@
     }
   };
 
+  // ---------- Chrono Station: save states ----------
+  // Marking opens at 10 lines. A jump is earned at 10, 20 and 30 lines (so 10 lines gives both).
+  // A jump restores only the field; the brick in hand, the held brick and the line count stay.
+  P.jumpsLeft = function () { return Math.min(3, Math.floor(this.lines / 10)) - (this.jumpsUsed || 0); };
+  P.canMark = function () { return !!this.chronoOn && this.alive && this.lines >= 10; };
+  P.mark = function () {
+    if (!this.canMark()) { if (this.chronoOn) this.say('MARK AT 10 LINES'); return false; }
+    this.markGrid = this.grid.map(function (r) { return r.slice(); });
+    this.say('MARKED');
+    return true;
+  };
+  P.jump = function () {
+    if (!this.chronoOn || !this.alive) return false;
+    if (!this.markGrid) { this.say(this.lines < 10 ? 'MARK AT 10 LINES' : 'NO MARK YET'); return false; }
+    if (this.jumpsLeft() <= 0) { this.say('NO JUMPS LEFT'); return false; }
+    this.grid = this.markGrid.map(function (r) { return r.slice(); });
+    this.jumpsUsed = (this.jumpsUsed || 0) + 1;
+    this.fieldVersion = (this.fieldVersion || 0) + 1;
+    var p = this.piece;
+    while (this.collides(p.type, p.rot, p.x, p.y) && p.y > -3) p.y--;
+    if (this.collides(p.type, p.rot, p.x, p.y)) this.alive = false;
+    this.lockTimer = 0;
+    this.fxEvents.push({ kind: 'jump', t: 500 });
+    this.say('JUMP!');
+    return true;
+  };
+
   P.onGround = function () {
     var p = this.piece;
     return this.collides(p.type, p.rot, p.x, p.y + 1);

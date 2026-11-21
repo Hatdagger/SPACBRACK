@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.5';
+  G.SUBTITLE = 'prototype v0.6';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
@@ -236,7 +236,7 @@
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
-  // House rules and stage perks: only Launch Complex (ruleId 'launch') is in so far.
+  // House rules and stage perks: Launch Complex ('launch') and Chrono Station ('chrono') are in so far.
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
@@ -276,7 +276,7 @@
     },
     {
       id: 'chrono', name: 'Chrono Station', feature: 'preview', color: '#6fa8ff', prop: 'clock',
-      rule: 'Save states (coming later)',
+      rule: 'Save states - tap perk to mark, hold to jump', ruleId: 'chrono',
       npcs: [
         { name: 'Timekeeper Tock', card: 'bat', rank: 3, line: 'You are late. Or early. Battle?' },
         { name: 'Engineer Loop', card: 'skeleton', rank: 3, line: 'I have seen this match before.' },
