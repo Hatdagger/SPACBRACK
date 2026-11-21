@@ -214,7 +214,7 @@
     });
 
     if (ctrl && ctrl.cardMode) this.drawCardOverlay(ctx, p, ctrl, ox + W / 2, oy + H / 2);
-    if (!p.alive) { this.banner(ctx, ox + W / 2, oy + H / 2, 'TOPPED OUT', '#d9534f'); }
+    if (!p.alive) { this.banner(ctx, ox + W / 2, oy + H / 2, 'BRICKED UP!', '#d9534f'); }
   };
 
   Battle.prototype.drawCardOverlay = function (ctx, p, ctrl, cx, cy) {
@@ -278,11 +278,17 @@
       ctx.font = '16px monospace'; ctx.fillText('Start / Esc: resume    B / Backspace: quit match', 640, 380);
     }
     if (this.over) {
-      var winName = this.winner === 'a' ? this.a.name : this.b.name;
+      var win = this.winner === 'a' ? this.a : this.b, lose = this.winner === 'a' ? this.b : this.a;
+      var youLost = lose.name === 'YOU' || (lose === this.a && this.ctrl[1] instanceof G.CPU);
       ctx.fillStyle = 'rgba(8,12,24,0.7)'; ctx.fillRect(0, 290, 1280, 120);
-      ctx.fillStyle = '#f2d16b'; ctx.font = 'bold 44px monospace';
-      ctx.fillText(winName + ' WINS', 640, 350);
-      if (this.endT > 800) { ctx.font = '16px monospace'; ctx.fillStyle = '#f4ecd8'; ctx.fillText('Press A / Enter', 640, 385); }
+      ctx.font = 'bold 44px monospace';
+      if (youLost) { ctx.fillStyle = '#d9534f'; ctx.fillText('YOU GOT BRICKED UP!', 640, 350); }
+      else {
+        ctx.fillStyle = '#f2d16b'; ctx.fillText(win.name + ' WINS', 640, 342);
+        ctx.font = 'bold 18px monospace'; ctx.fillStyle = '#d9534f';
+        ctx.fillText(lose.name + ' got bricked up!', 640, 366);
+      }
+      if (this.endT > 800) { ctx.font = '16px monospace'; ctx.fillStyle = '#f4ecd8'; ctx.fillText('Press A / Enter', 640, 395); }
     }
   };
 

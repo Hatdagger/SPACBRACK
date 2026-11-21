@@ -44,7 +44,7 @@
   }
 
   // ---------- save data ----------
-  var SAVE_KEY = 'blockrpg_save_v1';
+  var SAVE_KEY = 'spacbrack_save_v1';
   function freshSave() {
     var s = { tokens: {}, inventory: [], equipped: -1, xp: {}, beaten: {} };
     G.MONSTERS.forEach(function (m) { s.xp[m] = 0; });
@@ -308,9 +308,9 @@
     } else if (me.id !== 'starter') {
       save.inventory.splice(save.equipped, 1);
       save.equipped = -1;
-      toast('Your ' + G.CARDS[me.id].name + ' card was destroyed!');
+      toast('Bricked up! Your ' + G.CARDS[me.id].name + ' card was destroyed!');
     } else {
-      toast('You lost. Your Cadet Badge is safe.');
+      toast('Bricked up! Your Cadet Badge is safe.');
     }
     persist();
   };

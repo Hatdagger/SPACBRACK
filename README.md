@@ -1,4 +1,4 @@
-# Block RPG — prototype v0.1 (working title)
+# SPACBRACK — prototype v0.1
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -78,7 +78,7 @@ In local 2P, controller 1 plays P1 and controller 2 plays P2.
 
 ```
 index.html      canvas + script tags
-js/data.js      pieces, kicks, cards, locations, title (rename here)
+js/data.js      pieces, kicks, cards, locations, game title
 js/board.js     one player's board rules (no browser code)
 js/ai.js        CPU opponent (no browser code)
 js/input.js     keyboard + gamepad mapping

@@ -3,8 +3,8 @@
   'use strict';
 
   // Working title lives here so a rename is a one-line change.
-  G.TITLE = 'BLOCK RPG';
-  G.SUBTITLE = 'working title - prototype v0.1';
+  G.TITLE = 'SPACBRACK';
+  G.SUBTITLE = 'prototype v0.1';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
