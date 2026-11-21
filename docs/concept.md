@@ -1,6 +1,6 @@
 # SPACBRACK — Concept Notes
 
-Demo-disc entry: top-down grid RPG where every battle is a falling-brick versus match. Carried by gameplay; scope kept to "enough to convey the idea."
+Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where every battle is a falling-brick versus match. Carried by gameplay; scope kept to "enough to convey the idea."
 
 ## Decisions so far
 - **Terminology: the falling pieces are always called "bricks"** (game text and docs).
