@@ -285,7 +285,10 @@
   Explore.prototype.startBattle = function (sp) {
     var self = this, loc = this.loc, n = this.npcFor(sp), me = equippedCard();
     var foeCard = n.mirror ? me.id : n.card, foeRank = n.mirror ? me.rank : n.rank;
-    var foeFeat = n.mirror ? playerFeatures() : G.allFeatures();
+    // Fair fights: opponents only get the features you've unlocked. A boss also uses its own
+    // location's feature, so you see the token in action before you win it.
+    var foeFeat = playerFeatures();
+    if (n.boss && !n.mirror) foeFeat[loc.feature] = true;
     I.setSinglePlayer(true);
     this.mode = 'arrive'; this.modeT = 0;
     go(new G.Battle({

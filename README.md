@@ -49,6 +49,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 | Space Casino | Lucky Seven | 7-bag randomizer, shown as a slot-reel HUD |
 
 - You start with none of the features: pure random bricks, rotation without kicks, no hard drop, no hold, no preview.
+- Opponents play by the same rules: they only get the features you've unlocked. Each boss also uses its own location's feature (e.g. the Fold Lab boss can hard drop), so you see it before you win it.
 - Cards:
   - Every win gives a random monster card, and your win score becomes XP for the equipped card.
   - XP raises the card's rank, and each rank unlocks one more ability.
