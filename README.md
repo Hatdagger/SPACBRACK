@@ -2,6 +2,8 @@
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
+Note: the falling blocks are called **bricks** everywhere in this game.
+
 ## Run it
 
 No build step and nothing to install. Open `index.html` in Chrome, Edge or Firefox. That works on Windows, Linux and Android.
@@ -21,13 +23,13 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 | Location | Token | Feature |
 |---|---|---|
 | Launch Complex | Thrusters | Wall kicks |
-| Hologram Hall | Hologram | Ghost piece |
+| Hologram Hall | Hologram | Ghost brick |
 | Fold Lab | Fold Drive | Hard drop |
 | Space Bank | Vault | Hold |
-| Chrono Station | Chrono Lens | Next-piece preview |
+| Chrono Station | Chrono Lens | Next-brick preview |
 | Space Casino | Lucky Seven | 7-bag randomizer, shown as a slot-reel HUD |
 
-- You start with none of the features: pure random pieces, rotation without kicks, no hard drop, no hold, no preview.
+- You start with none of the features: pure random bricks, rotation without kicks, no hard drop, no hold, no preview.
 - Cards:
   - Every win gives a random monster card, and your win score becomes XP for the equipped card.
   - XP raises the card's rank, and each rank unlocks one more ability.
@@ -78,7 +80,7 @@ In local 2P, controller 1 plays P1 and controller 2 plays P2.
 
 ```
 index.html      canvas + script tags
-js/data.js      pieces, kicks, cards, locations, game title
+js/data.js      bricks, kicks, cards, locations, game title
 js/board.js     one player's board rules (no browser code)
 js/ai.js        CPU opponent (no browser code)
 js/input.js     keyboard + gamepad mapping

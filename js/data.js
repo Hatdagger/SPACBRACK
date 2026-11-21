@@ -64,10 +64,10 @@
   // The six token features. Each location awards one.
   G.FEATURES = [
     { key: 'wallKick', name: 'Thrusters', desc: 'Wall kicks' },
-    { key: 'ghost', name: 'Hologram', desc: 'Ghost piece' },
+    { key: 'ghost', name: 'Hologram', desc: 'Ghost brick' },
     { key: 'hardDrop', name: 'Fold Drive', desc: 'Hard drop' },
     { key: 'hold', name: 'Vault', desc: 'Hold' },
-    { key: 'preview', name: 'Chrono Lens', desc: 'Next-piece preview' },
+    { key: 'preview', name: 'Chrono Lens', desc: 'Next-brick preview' },
     { key: 'bag', name: 'Lucky Seven', desc: '7-bag randomizer' }
   ];
   G.noFeatures = function () {
@@ -98,7 +98,7 @@
     },
     cyclops: {
       id: 'cyclops', name: 'Cyclops', color: '#d9a441', pattern: 'standard',
-      passive: { name: 'Focus', desc: 'Ghost piece always on', id: 'focus' },
+      passive: { name: 'Focus', desc: 'Ghost brick always on', id: 'focus' },
       actives: {
         left: { name: 'Boulder', cost: 3, id: 'boulder', desc: 'Drop a 2x2 rock on foe' },
         right: { name: 'Stare Down', cost: 3, id: 'staredown', desc: 'Cancel 3 incoming lines' },
@@ -110,9 +110,9 @@
       id: 'skeleton', name: 'Skeleton', color: '#e8e1cf', pattern: 'ribs',
       passive: { name: 'Ribcage', desc: 'Your garbage has rib gaps', id: 'ribs' },
       actives: {
-        left: { name: 'Rattle', cost: 2, id: 'rattle', desc: 'Shake foe piece 1 column' },
+        left: { name: 'Rattle', cost: 2, id: 'rattle', desc: 'Shake foe brick 1 column' },
         right: { name: 'Bone Patch', cost: 4, id: 'bonepatch', desc: 'Fill 4 covered holes' },
-        down: { name: 'Shiver', cost: 5, id: 'shiver', desc: 'Foe piece rattles 6s' },
+        down: { name: 'Shiver', cost: 5, id: 'shiver', desc: 'Foe brick rattles 6s' },
         up: { name: 'Bone Storm', cost: 8, id: 'bonestorm', desc: 'Send 4 lines' }
       }
     },
@@ -123,16 +123,16 @@
         left: { name: 'Claw', cost: 4, id: 'claw3', desc: 'Send 3 slashed lines' },
         right: { name: 'Thick Fur', cost: 3, id: 'fur', desc: 'Block next garbage hit' },
         down: { name: 'Howl', cost: 5, id: 'howl', desc: 'Foe falls 3x faster 6s' },
-        up: { name: 'Full Moon', cost: 7, id: 'fullmoon', desc: 'Next 3 pieces are I' }
+        up: { name: 'Full Moon', cost: 7, id: 'fullmoon', desc: 'Next 3 bricks are I' }
       }
     },
     bat: {
       id: 'bat', name: 'Giant Bat', color: '#7b5ea7', pattern: 'stairs',
-      passive: { name: 'Echolocation', desc: '+1 preview piece', id: 'echo' },
+      passive: { name: 'Echolocation', desc: '+1 preview brick', id: 'echo' },
       actives: {
         left: { name: 'Nightfall', cost: 3, id: 'nightfall', desc: '1 line + darken foe 5s' },
         right: { name: 'Roost', cost: 3, id: 'roost', desc: 'Pause your gravity 4s' },
-        down: { name: 'Sonar', cost: 2, id: 'sonar', desc: '5-piece preview 10s' },
+        down: { name: 'Sonar', cost: 2, id: 'sonar', desc: '5-brick preview 10s' },
         up: { name: 'Swarm', cost: 8, id: 'swarm', desc: '3 lines + darken foe 8s' }
       }
     }

@@ -280,7 +280,7 @@
     if (this.over) {
       var win = this.winner === 'a' ? this.a : this.b, lose = this.winner === 'a' ? this.b : this.a;
       var youLost = lose.name === 'YOU' || (lose === this.a && this.ctrl[1] instanceof G.CPU);
-      ctx.fillStyle = 'rgba(8,12,24,0.7)'; ctx.fillRect(0, 290, 1280, 120);
+      ctx.fillStyle = 'rgba(8,12,24,0.95)'; ctx.fillRect(0, 290, 1280, 120);
       ctx.font = 'bold 44px monospace';
       if (youLost) { ctx.fillStyle = '#d9534f'; ctx.fillText('YOU GOT BRICKED UP!', 640, 350); }
       else {

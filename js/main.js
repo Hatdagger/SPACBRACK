@@ -125,7 +125,7 @@
     }
     text(G.TITLE, 640, 210, 84, '#f2d16b', 'center');
     text(G.SUBTITLE, 640, 250, 16, '#9fb3d1', 'center', false);
-    text('A RETRO-FUTURE BLOCK BATTLE RPG', 640, 290, 18, '#e8763a', 'center');
+    text('A RETRO-FUTURE BRICK BATTLE RPG', 640, 290, 18, '#e8763a', 'center');
     panel(470, 340, 340, 210, '#e8763a');
     this.menu.draw(510, 392, 290);
     text(G.padCount ? G.padCount + ' controller(s) connected' : 'Press any button on a controller to connect it', 640, 600, 14, '#9fb3d1', 'center', false);
