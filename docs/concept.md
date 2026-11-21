@@ -1,9 +1,10 @@
-# Block RPG — Concept Notes (working title)
+# SPACBRACK — Concept Notes
 
-Demo-disc entry: top-down grid RPG where every battle is a falling-block versus match. Carried by gameplay; scope kept to "enough to convey the idea."
+Demo-disc entry: top-down grid RPG where every battle is a falling-brick versus match. Carried by gameplay; scope kept to "enough to convey the idea."
 
 ## Decisions so far
-- Aesthetic: retro-futurism / NASA-punk (50s–60s space-age optimism, chunky consoles, B-movie monsters).
+- **Terminology: the falling pieces are always called "bricks"** (game text and docs).
+- Aesthetic: retro-futurism / NASA-punk themes (space-age locations, B-movie monsters), **presented as blank-VHS-box art + cassette futurism in big colourful Neo Geo-style pixels** (native 320x224, pixel font, chrome logo, racing stripes, beige cassette labels, tape-deck panels, LED counters, VU meter, CRT scanlines).
 - Collectible: **Tokens**, 6 total. Each token unlocks a battle feature.
 - No overworld: a **map screen** with 6 selectable locations; each location is a small, explorable area with its own identity.
 - **Each location's theme matches the token it awards.**
@@ -13,7 +14,7 @@ Demo-disc entry: top-down grid RPG where every battle is a falling-block versus 
 - Standard win rule: first to clear **40 lines** (or opponent tops out).
 - **No money and no shop.** Cards are the inventory and the loot players chase.
 - **Single-player adventure only — split-screen co-op dropped.** Multiplayer is versus mode.
-- Base randomizer before the casino token: pure random pieces.
+- Base randomizer before the casino token: pure random bricks.
 
 ## Cards (core loot)
 - One card equipped at a time; enemies have cards too. Card determines garbage look and abilities.
@@ -43,11 +44,11 @@ Demo-disc entry: top-down grid RPG where every battle is a falling-block versus 
 
 ### Card ability ideas (to re-slot: passive + 4 actives)
 - **Mummy** — Embalm: pause your gravity briefly / Unravel: 2 lines with diagonal bandage-stripe gaps
-- **Werewolf** — Full Moon: next 3 pieces are I-pieces / Claw Marks: 3 rows with slashed diagonal gaps
-- **Skeleton** — Bone Patch: fills single holes in your stack / Rattle: shakes opponent's falling piece one column
-- **Giant Bat** — Echolocation: briefly reveals your upcoming pieces / Nightfall: 1 line + darkens opponent board briefly
+- **Werewolf** — Full Moon: next 3 bricks are I-bricks / Claw Marks: 3 rows with slashed diagonal gaps
+- **Skeleton** — Bone Patch: fills single holes in your stack / Rattle: shakes opponent's falling brick one column
+- **Giant Bat** — Echolocation: briefly reveals your upcoming bricks / Nightfall: 1 line + darkens opponent board briefly
 - **Sax Skeleton** — Smooth Jazz: slows your fall speed / Solo: staircase garbage like piano keys
-- **Cyclops** — Focus: temporary ghost piece / Boulder: drops a 2x2 rock onto opponent's stack
+- **Cyclops** — Focus: temporary ghost brick / Boulder: drops a 2x2 rock onto opponent's stack
 - **Minotaur** — Labyrinth Run: clears one column of your garbage / Charge: shoves opponent's top rows sideways
 - More: Swamp Creature, Frankenstein-style brute, Robot, Martian, Giant Ant, Blob.
 
@@ -55,10 +56,10 @@ Demo-disc entry: top-down grid RPG where every battle is a falling-block versus 
 | # | Location | Token / feature | House rule | Stage perk (button) |
 |---|---|---|---|---|
 | 1 | **Launch Complex** | **Thrusters** — wall kicks | **Countdown race, garbage off:** clear the target lines within a target time AND before the opponent | **Launch Countdown (decided):** 10-count; when it ends, the player ahead wins (see below) |
-| 2 | **Hologram Hall** | **Ghost piece** (hologram) | **Hologram decoys:** fake blocks that pieces fall through | **Projector** (proposal): tap = scan, briefly reveal which of your blocks are fake; hold = beam a decoy onto the opponent's board |
+| 2 | **Hologram Hall** | **Ghost brick** (hologram) | **Hologram decoys:** fake blocks that bricks fall through | **Projector** (proposal): tap = scan, briefly reveal which of your blocks are fake; hold = beam a decoy onto the opponent's board |
 | 3 | **Fold Lab** | **Hard drop** | **Fold garbage** (see below) | **Early Fold (decided):** send your held fold garbage now; cannot stack with other folds |
 | 4 | **Space Bank** | **Hold** | **Interest:** held-back garbage grows over time, lost if the opponent clears enough first | **Withdraw:** release your banked garbage at the opponent |
-| 5 | **Chrono Station** | **Next-piece preview** | **Save states** (see below) | **Mark / Jump:** tap = mark, hold = jump (decided) |
+| 5 | **Chrono Station** | **Next-brick preview** | **Save states** (see below) | **Mark / Jump:** tap = mark, hold = jump (decided) |
 | 6 | **Space Casino** | **7-bag randomizer** | **Card bet:** both players stake an inventory card; winner takes both | **Pull the Lever** (proposal): slot spin for a random effect — jackpot (garbage to opponent), cherries (clear your bottom row), bust (garbage to you) |
 
 ### Launch Complex perk: Launch Countdown (decided)
@@ -83,10 +84,10 @@ After the token, the HUD shows a slot reel of the 7 shapes, each going dark as i
 
 ### Fold Lab rule (decided)
 - **Trigger:** a fold happens each time a player reaches another 8 cleared lines (8, 16, 24, 32 — 40 wins). Garbage from that player's clears is held until then.
-- **Delivery:** applies at the receiver's next piece placement; receiver's input is locked during the fold animation (roughly half a second to a second).
+- **Delivery:** applies at the receiver's next brick placement; receiver's input is locked during the fold animation (roughly half a second to a second).
 - **Chunks:** each clear in that span is its own chunk, folded in at the row height where it was cleared, in order.
   - Inside the receiver's stack → overwrites those cells.
-  - Above the receiver's stack → drops as a rigid piece onto the stack.
+  - Above the receiver's stack → drops as a rigid brick onto the stack.
 - Indicator: "FOLD IN 3" counter for both players, plus side markers for pending chunk heights.
 - Card garbage patterns keep their shape when stamped in.
 
@@ -98,7 +99,7 @@ After the token, the HUD shows a slot reel of the 7 shapes, each going dark as i
 
 ### Chrono Station rule: save states (decided)
 - Player can **mark** the field **at any time**, then **jump back** to it later.
-- **Only the field comes back.** The piece in hand and the held piece stay as they are at the moment of the jump.
+- **Only the field comes back.** The brick in hand and the held brick stay as they are at the moment of the jump.
 - **Line count is NOT rewound — farming is intended.**
 - **Jumps are earned:** a charge each time the player reaches another 10 cleared lines (10, 20, 30) — **3 per race to 40**. **Charges stack.**
 - Designer's estimate: best case is around 12 farmed lines in a row from one save.
@@ -112,9 +113,26 @@ After the token, the HUD shows a slot reel of the 7 shapes, each going dark as i
 ### Note on Hologram Hall references
 Keep game references as parody / nods rather than actual copyrighted characters.
 
+## Exploration view (decided, replaces the top-down rooms)
+- **Over-the-shoulder view:** the hero is a large foreground sprite with their back to the camera (uses the Neo Geo's big-sprite strength). Foreground is detailed with little motion.
+- **Turning:** Left/Right scrolls a **wide background strip** (panorama) behind the hero. No free walking.
+- **Interactables** (people, doors) get a visible cue (bouncing "A" marker). Confirm on the person you're facing starts the conversation; confirm on a door enters/leaves.
+- **Walk-forward animation** plays before each scene transition.
+- Letterbox bars top and bottom are fine if rendering is tight, with a few pixel details layered over them (location name, tokens, button hints).
+- **Look:** no space suits. NPC outfits are **mixed by location** (ground crew, ushers, scientists, tellers, timekeepers, dealers); bosses get a fancier take on their location's outfit. Hero outfit not picked yet (samples: mission control, jet-age pilot, B-movie hero).
+- **Map:** a static image with a cursor that moves between the 6 locations (samples: star chart, station cutaway).
+- Art samples page: https://claude.ai/artifact/4ufvG1uWV37WGZA3AQ8XHu
+
+## v0.2 playtest changes
+- Soft drop fixed (no longer acts like a hard drop).
+- Abilities: 8 s shared recharge, higher costs (super = full meter).
+- "YOU GOT BRICKED UP!" only on top-out; losing the race shows "OUTRACED!".
+- Cards are prominent: portraits in battle, pop-up over the field when an ability fires, "CARD GET!" flip screen after wins, cracked card after losses.
+- Duplicate cards stack (max 9, shown as xN). The 6 slots count monster types; a loss destroys one copy. (Note: stacks make losses softer than before.)
+
 ## Battle system
 - Two boards side by side. Win: first to 40 lines OR opponent tops out (house rules and perks may change this).
-- Bare-bones start: 7 standard pieces, pure random, left/right/soft drop, 90° rotation.
+- Bare-bones start: 7 standard bricks, pure random, left/right/soft drop, 90° rotation.
 - Open: are matches a single round, or best-of-3 rounds? ("One countdown per round" assumes rounds may repeat.)
 
 ## Controls
@@ -132,7 +150,7 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - **Neutral (no direction) on release does nothing.**
 - **Cancel:** pressing any other button cancels.
 - Locked directions (rank not reached) show as "?" — abilities stay hidden until unlocked.
-- Proposals: while the card button is held, the D-pad picks abilities instead of moving the piece; the game keeps running; unaffordable abilities greyed out with meter cost shown; diagonals ignored; a cancelling button press still performs its action.
+- Proposals: while the card button is held, the D-pad picks abilities instead of moving the brick; the game keeps running; unaffordable abilities greyed out with meter cost shown; diagonals ignored; a cancelling button press still performs its action.
 - Online: only the final "ability fired" event is sent.
 
 ### Per-platform maps (proposal)
@@ -159,6 +177,13 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 | Original Xbox (nxdk homebrew) | Yes | Yes | LAN/IP only |
 | Neo Geo AES/MVS | Yes | Yes | Drop |
 | Neo Geo CD | Yes (one load per location) | Yes | Drop |
+
+## Prototype
+- **v0.1 pushed to GitHub: Hatdagger/spacbrack** (renamed from SPACtris) (browser build: open index.html; Windows/Linux/Android, keyboard + controller).
+- In: map + 6 walkable locations, NPC battles, boss gating, tokens/features, 4 placeholder cards (Cyclops, Skeleton, Werewolf, Giant Bat) with ranks/XP/meter/card loss/toss screen, CPU levels 1-5, Versus vs CPU or local 2P.
+- Not in: house rules, stage perks, online, Past You snapshot, final ability sets.
+- **Name (decided): SPACBRACK**, all caps. Dropped SPACtris because "-tris" names have drawn Tetris Holding takedowns (Setris, Playtris, Apotris).
+- Losing a battle shows "YOU GOT BRICKED UP!"
 
 ## Open questions
 - Card abilities: fixed role per direction across all cards? Full ability sets per monster.
