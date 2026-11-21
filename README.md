@@ -102,7 +102,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## Not in yet (next steps)
 
-- House rules and stage perks for the other four locations (Hologram Hall being rethought, Fold garbage, Interest, Save states, Card bet). The perk button is already mapped.
+- House rules and stage perks for the other four locations (Hologram Hall being rethought, Fold garbage, Interest, Card bet). The perk button is already mapped.
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
 - Online versus, sound, and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.
