@@ -134,7 +134,7 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - Garbage off; time limit = 1.5x the CPU's measured 40-line time, rounded to 30 s (6:00 in 2P versus). Time up: more lines wins; tie = sudden death.
 - Launch Countdown as decided: 10 s, only while ahead, once per match, breaks on own clear or opponent catching up.
 - CPU uses it: needs a 3-line lead at levels 1-3, 2 lines above; at least 8 lines cleared; while counting it builds without clearing.
-- Card abilities that send garbage are blanked by the rule (proposal; other ability effects still work).
+- Card abilities that send garbage are blanked by the rule (decided; other ability effects still work).
 
 ## CPU difficulty (v0.4, after "fights too hard" playtest)
 - 8 CPU levels. Measured solo 40-line time with no features: L1 ~6:00, L2 ~5:05, L3 ~4:55, L4 ~4:30, L5 ~4:00, L6 ~3:35, L7 ~3:20, L8 ~3:05.
