@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.1
+# SPACBRACK — prototype v0.2
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,15 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.2 (playtest fixes)
+
+- Soft drop no longer jumps the brick to the floor (it was spending stored gravity time all at once).
+- Card abilities: 8-second shared recharge after any ability, and higher meter costs (supers cost the full meter).
+- "YOU GOT BRICKED UP!" only shows when your stack tops out. Losing the race shows "OUTRACED!".
+- Cards have pixel-art portraits and rank pips. They show beside each board, pop up over the field when an ability fires, and fill the Cards screen.
+- After a win, a "CARD GET!" screen flips over the card you won. After a top-out loss, the equipped card cracks.
+- Duplicate cards stack (up to 9) and show xN. The 6 slots count monster types. Losing destroys one copy.
 
 ## What's in v0.1
 
@@ -37,7 +46,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
   - XP raises the card's rank, and each rank unlocks one more ability.
   - Losing an Adventure fight destroys the equipped card. Its XP is kept for that monster.
   - The Cadet Badge starter card can't be lost.
-  - The inventory holds 6 cards. When a win would go over that, you pick which card to toss.
+  - Duplicates stack (up to 9 copies). The inventory holds 6 different monsters; a 7th means tossing a stack.
 - "Past You" (Chrono Station boss) currently mirrors your current card and features. The "previous visit" snapshot isn't in yet.
 - Progress saves in the browser.
 

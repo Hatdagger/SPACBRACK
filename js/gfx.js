@@ -340,6 +340,71 @@
     ctx.drawImage(c, x | 0, y | 0);
   };
 
+  // ---------- monster cards ----------
+  // size 'md' (side panels, inventory) or 'lg' (win screen, ability cast).
+  // opts: {size, count, dead, glow}
+  var portraitCache = {};
+  function portrait(id, color) {
+    var key = id + color;
+    if (portraitCache[key]) return portraitCache[key];
+    var rows = G.PORTRAITS[id] || G.PORTRAITS.starter;
+    var pal = { k: '#000', a: color, d: G.shade(color, -0.45), l: G.shade(color, 0.45), w: '#efe6cc', e: '#fff8ec', r: G.PAL.red, y: G.PAL.yellow };
+    var c = document.createElement('canvas'); c.width = 16; c.height = 16;
+    var s = c.getContext('2d');
+    rows.forEach(function (row, ry) { for (var rx = 0; rx < 16; rx++) { var col = pal[row[rx]]; if (col) { s.fillStyle = col; s.fillRect(rx, ry, 1, 1); } } });
+    return (portraitCache[key] = c);
+  }
+  G.cardSize = function (size) {
+    var ps = size === 'lg' ? 4 : 2, pw = 16 * ps, band = size === 'lg' ? 11 : 8, pip = size === 'lg' ? 8 : 6;
+    return { w: pw + 6, h: 2 + band + pw + 2 + pip + 2, ps: ps, pw: pw, band: band, pip: pip };
+  };
+  G.drawCard = function (x, y, id, rank, opts) {
+    opts = opts || {};
+    var card = G.CARDS[id], m = G.cardSize(opts.size), W = m.w, H = m.h, R = G.rect;
+    var col = opts.dead ? '#6c6880' : card.color;
+    x |= 0; y |= 0;
+    R(x + 2, y + 2, W, H, '#000');                       // drop shadow
+    if (opts.glow) R(x - 2, y - 2, W + 4, H + 4, opts.glow);
+    G.bevel(x, y, W, H, col, G.shade(col, 0.5), G.shade(col, -0.5), '#000');
+    // name band
+    R(x + 2, y + 2, W - 4, m.band - 1, '#120f1c');
+    var name = G.SHORT[id] || card.name;
+    if (opts.size === 'lg') G.text(name, x + W / 2, y + 4, G.shade(col, 0.6), { align: 'center' });
+    else G.text(name, x + W / 2, y + 3, G.shade(col, 0.6), { align: 'center', font: 'small' });
+    // portrait window: dark sky + VHS stripes in the card colour
+    var px = x + 3, py = y + 1 + m.band, pw = m.pw;
+    R(px, py, pw, pw, '#0a0816');
+    var bands = [G.shade(col, 0.3), col, G.shade(col, -0.3), G.shade(col, -0.55)];
+    var bh = m.ps;
+    for (var b = 0; b < 4; b++) for (var r = 0; r < bh; r++) {
+      var row = b * bh + r, yy = py + pw - 4 * bh - 2 * m.ps + row;
+      R(px + row, yy, pw - row, 1, bands[b]);
+    }
+    for (var st = 0; st < 6; st++) G.px(px + ((st * 37 + id.length * 11) % pw), py + ((st * 23) % (pw >> 1)), '#8c8aa0');
+    ctx.drawImage(portrait(id, col), px, py, pw, pw);
+    // rank pips (5)
+    var pipY = py + pw + 2, pipW = opts.size === 'lg' ? 8 : 5, gap = opts.size === 'lg' ? 4 : 2;
+    var total = 5 * pipW + 4 * gap, ox = x + ((W - total) >> 1);
+    for (var i = 0; i < 5; i++) {
+      var on = id !== 'starter' && i < rank;
+      G.bevel(ox + i * (pipW + gap), pipY, pipW, m.pip - 1, on ? G.PAL.amber : '#1a1726', on ? '#fff3c0' : '#2a2638', on ? '#8a5a00' : '#0c0b12');
+    }
+    if (opts.count > 1) {
+      var t = 'X' + opts.count, tw = G.textWidth(t, 'small');
+      R(x + W - tw - 5, y + m.band + 2, tw + 4, 8, '#000');
+      G.text(t, x + W - 3, y + m.band + 3, G.PAL.yellow, { font: 'small', align: 'right' });
+    }
+    if (opts.dead) {
+      ctx.globalAlpha = 0.45; R(x, y, W, H, '#000'); ctx.globalAlpha = 1;
+      // crack lines
+      var cx = x + W / 2, cy = y + H / 2;
+      [[-1, -1.3], [1.2, -0.6], [-0.9, 1.1], [0.7, 1.4]].forEach(function (d) {
+        for (var k = 0; k < W * 0.45; k++) G.px(cx + d[0] * k + ((k >> 2) % 2 ? 1 : 0), cy + d[1] * k * 0.8, G.PAL.red);
+      });
+    }
+    return m;
+  };
+
   G.ASTRO = [
     '................',
     '.....kkkkkk.....',

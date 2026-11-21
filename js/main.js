@@ -26,13 +26,15 @@
   // ---------- save data ----------
   var SAVE_KEY = 'spacbrack_save_v1';
   function freshSave() {
-    var s = { tokens: {}, inventory: [], equipped: -1, xp: {}, beaten: {} };
+    var s = { tokens: {}, inventory: [], equipped: 'starter', xp: {}, beaten: {} };
     G.MONSTERS.forEach(function (m) { s.xp[m] = 0; });
     G.LOCATIONS.forEach(function (l) { s.beaten[l.id] = [false, false, false]; });
     return s;
   }
   var save = freshSave();
   try { var raw = localStorage.getItem(SAVE_KEY); if (raw) save = Object.assign(freshSave(), JSON.parse(raw)); } catch (e) { /* storage unavailable */ }
+  // v0.1 saves stored the equipped card as a list index.
+  if (typeof save.equipped === 'number') save.equipped = save.inventory[save.equipped] || 'starter';
   function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { } }
 
   function playerFeatures() {
@@ -41,9 +43,26 @@
     return f;
   }
   function equippedCard() {
-    var id = save.equipped >= 0 ? save.inventory[save.equipped] : 'starter';
-    if (!id) { save.equipped = -1; id = 'starter'; }
+    var id = save.equipped;
+    if (id !== 'starter' && save.inventory.indexOf(id) < 0) { save.equipped = id = 'starter'; }
     return { id: id, rank: id === 'starter' ? 1 : G.rankForXp(save.xp[id] || 0) };
+  }
+  function rankOf(id) { return id === 'starter' ? 1 : G.rankForXp(save.xp[id] || 0); }
+  function countOf(id) { return save.inventory.filter(function (x) { return x === id; }).length; }
+  function stackIds() { // unique monster types in the order they were first found
+    var seen = []; save.inventory.forEach(function (id) { if (seen.indexOf(id) < 0) seen.push(id); }); return seen;
+  }
+  // Adds a won card. Returns 'ok', 'full' (stack already at max) or 'toss' (no free slot).
+  function addCard(id) {
+    var n = countOf(id);
+    if (n >= G.STACK_MAX) return 'full';
+    if (n === 0 && stackIds().length >= G.INVENTORY_CAP) return 'toss';
+    save.inventory.push(id); return 'ok';
+  }
+  function removeOne(id) {
+    var k = save.inventory.indexOf(id);
+    if (k >= 0) save.inventory.splice(k, 1);
+    if (!countOf(id) && save.equipped === id) save.equipped = 'starter';
   }
 
   // ---------- toasts (cassette-label strips) ----------
@@ -120,7 +139,7 @@
     // footer: tape specs
     G.deck(20, 182, 290, 34);
     T('HIGH GRADE', 28, 188, PAL.white, { font: 'small' });
-    T('PROTOTYPE V0.1', 302, 188, PAL.grey, { font: 'small', align: 'right' });
+    T('PROTOTYPE V0.2', 302, 188, PAL.grey, { font: 'small', align: 'right' });
     T(G.padCount ? G.padCount + ' CONTROLLER(S) READY' : 'PRESS A BUTTON ON A CONTROLLER TO CONNECT IT', 165, 198, PAL.amber, { font: 'small', align: 'center' });
     T('KEYBOARD: ARROWS + X / Z, ENTER', 165, 206, PAL.grey, { font: 'small', align: 'center' });
     drawToasts(dt);
@@ -298,35 +317,87 @@
     }));
   };
   Explore.prototype.afterBattle = function (npc, won, battle) {
-    var loc = this.loc, n = npc.data, me = equippedCard();
-    go(this);
+    var loc = this.loc, n = npc.data, me = equippedCard(), self = this;
+    var info = { won: won, toppedOut: !battle.a.alive, me: me.id, lines: [] };
     if (won) {
       save.beaten[loc.id][npc.idx] = true;
       if (me.id !== 'starter') {
-        var before = G.rankForXp(save.xp[me.id]);
+        var before = rankOf(me.id);
         save.xp[me.id] += battle.a.score;
-        var after = G.rankForXp(save.xp[me.id]);
-        toast(G.CARDS[me.id].name + ' +' + battle.a.score + ' XP' + (after > before ? '  RANK UP! R' + after : ''));
+        var after = rankOf(me.id);
+        info.lines.push([G.CARDS[me.id].name + ' +' + battle.a.score + ' XP', PAL.green]);
+        if (after > before) info.lines.push(['RANK UP! ' + G.CARDS[me.id].name + ' IS NOW R' + after, PAL.yellow]);
       }
       if (n.boss && !save.tokens[loc.feature]) {
         save.tokens[loc.feature] = true;
         var f = G.FEATURES.filter(function (x) { return x.key === loc.feature; })[0];
-        toast('TOKEN: ' + f.name + ' - ' + f.desc + ' unlocked!');
+        info.lines.push(['TOKEN: ' + f.name + ' - ' + f.desc + ' unlocked!', PAL.amber]);
       }
-      var prize = G.MONSTERS[Math.floor(Math.random() * G.MONSTERS.length)];
-      toast('Won a ' + G.CARDS[prize].name + ' card');
-      persist();
-      if (save.inventory.length >= G.INVENTORY_CAP) { go(new Inventory(this, prize)); return; }
-      save.inventory.push(prize);
+      info.prize = G.MONSTERS[Math.floor(Math.random() * G.MONSTERS.length)];
+      info.isNew = countOf(info.prize) === 0;
+      info.add = addCard(info.prize);
+      info.count = countOf(info.prize);
     } else if (me.id !== 'starter') {
-      save.inventory.splice(save.equipped, 1);
-      save.equipped = -1;
-      toast('Bricked up! Your ' + G.CARDS[me.id].name + ' card was destroyed!');
-    } else {
-      toast('Bricked up! Your Cadet Badge is safe.');
+      removeOne(me.id);
+      info.destroyed = me.id;
+      info.left = countOf(me.id);
     }
     persist();
+    go(new CardResult(info, function () {
+      if (info.add === 'toss') go(new Inventory(self, info.prize)); else go(self);
+    }));
   };
+
+  // ---------- after-battle card screen ----------
+  function CardResult(info, next) { this.info = info; this.next = next; this.t = 0; }
+  CardResult.prototype.update = function (dt) {
+    this.t += dt;
+    if (this.t > 900 && (I.any('pressed', 'ok') || I.any('pressed', 'back'))) this.next();
+  };
+  function cardBack(x, y, size) {
+    var m = G.cardSize(size);
+    R(x + 2, y + 2, m.w, m.h, '#000');
+    G.bevel(x, y, m.w, m.h, '#1b1826', '#3a3650', '#0c0b12', '#000');
+    G.stripes(x + 3, y + (m.h >> 1) - 10, m.w - 6, 4, G.STRIPES, 1);
+    T('SPAC', x + m.w / 2, y + 10, PAL.white, { align: 'center' });
+    T('BRACK', x + m.w / 2, y + m.h - 18, PAL.white, { align: 'center' });
+  }
+  CardResult.prototype.draw = function (dt) {
+    var info = this.info, t = this.t, m = G.cardSize('lg');
+    var id = info.won ? info.prize : (info.destroyed || info.me);
+    vhsBackdrop(G.CARDS[id].color);
+    var red = ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a'];
+    if (info.won) G.chrome('CARD GET!', 160, 8, 3, 'center');
+    else G.chrome(info.toppedOut ? 'BRICKED UP!' : 'OUTRACED!', 160, 8, 3, 'center', red);
+
+    var cx = 160, x = cx - (m.w >> 1), y = 40;
+    if (info.won) {
+      // flip in: card back, squash to an edge, then the face
+      var ph = Math.min(1, t / 600), sx = ph < 0.5 ? 1 - ph * 2 : ph * 2 - 1;
+      ctx.save(); ctx.translate(cx, 0); ctx.scale(Math.max(0.04, sx), 1); ctx.translate(-cx, 0);
+      if (ph < 0.5) cardBack(x, y, 'lg');
+      else G.drawCard(x, y, id, rankOf(id), { size: 'lg', count: info.count, glow: t > 600 && t < 900 && Math.floor(t / 60) % 2 ? PAL.white : null });
+      ctx.restore();
+      if (t > 600) {
+        var tag = info.add === 'full' ? 'STACK FULL - CARD RETURNED' : info.add === 'toss' ? 'NO FREE SLOT - TOSS ONE NEXT' : info.isNew ? 'NEW CARD!' : 'NOW X' + info.count + ' IN YOUR STACK';
+        T(G.CARDS[id].name + ' R' + rankOf(id), cx, y + m.h + 8, PAL.white, { align: 'center', shadow: '#000' });
+        T(tag, cx, y + m.h + 19, info.isNew ? PAL.pink : PAL.amber, { align: 'center', font: 'small' });
+      }
+    } else if (info.destroyed) {
+      var shake = t < 700 ? (Math.floor(t / 40) % 2 ? 1 : -1) * (t > 300 ? 2 : 0) : 0;
+      G.drawCard(x + shake, y, id, rankOf(id), { size: 'lg', dead: t > 700 });
+      if (t > 700) {
+        T('YOUR ' + G.CARDS[id].name + ' CARD WAS DESTROYED', cx, y + m.h + 8, PAL.red, { align: 'center', font: 'small' });
+        T(info.left ? info.left + ' LEFT IN YOUR STACK' : 'XP IS KEPT FOR THIS MONSTER', cx, y + m.h + 18, PAL.grey, { align: 'center', font: 'small' });
+      }
+    } else {
+      G.drawCard(x, y, 'starter', 1, { size: 'lg' });
+      T('YOUR CADET BADGE IS SAFE', cx, y + m.h + 8, PAL.white, { align: 'center', font: 'small' });
+    }
+    if (t > 600) info.lines.forEach(function (ln, k) { T(ln[0], cx, 172 + k * 9, ln[1], { align: 'center', font: 'small', shadow: '#000' }); });
+    if (t > 900 && blink()) T('PRESS A', cx, 206, PAL.white, { align: 'center' });
+  };
+
   Explore.prototype.drawProp = function (px, py, loc) {
     var c = loc.color, d = G.shade(c, -0.55), l = G.shade(c, 0.45);
     G.bevel(px + 1, py + 2, 14, 13, '#2a2638', '#4a4660', '#100e18', '#000');
@@ -407,59 +478,53 @@
     drawToasts(dt);
   };
 
-  // ---------- inventory: tape spines + label ----------
+  // ---------- inventory: card grid, duplicates stack ----------
   function Inventory(back, incoming) { this.back = back; this.incoming = incoming || null; this.sel = 0; }
   Inventory.prototype.entries = function () {
-    var list = [{ id: 'starter', idx: -1 }];
-    save.inventory.forEach(function (id, k) { list.push({ id: id, idx: k }); });
-    if (this.incoming) list.push({ id: this.incoming, idx: 'new' });
+    var list = [{ id: 'starter' }];
+    stackIds().forEach(function (id) { list.push({ id: id, count: countOf(id) }); });
+    if (this.incoming) list.push({ id: this.incoming, isNew: true, count: 1 });
     return list;
   };
   Inventory.prototype.update = function () {
-    var list = this.entries();
-    if (I.any('repeat', 'down', 300, 120)) this.sel = (this.sel + 1) % list.length;
-    if (I.any('repeat', 'up', 300, 120)) this.sel = (this.sel + list.length - 1) % list.length;
+    var list = this.entries(), n = list.length;
+    if (I.any('repeat', 'right', 300, 150)) this.sel = Math.min(n - 1, this.sel + 1);
+    if (I.any('repeat', 'left', 300, 150)) this.sel = Math.max(0, this.sel - 1);
+    if (I.any('repeat', 'down', 300, 150) && this.sel + 3 < n) this.sel += 3;
+    if (I.any('repeat', 'up', 300, 150) && this.sel - 3 >= 0) this.sel -= 3;
     var e = list[this.sel];
     if (I.any('pressed', 'ok')) {
       if (this.incoming) {
-        if (e.idx === -1) { toast('The Cadet Badge cannot be tossed'); return; }
-        if (e.idx !== 'new') {
-          var wasEquipped = save.equipped === e.idx;
-          save.inventory.splice(e.idx, 1);
-          if (wasEquipped) save.equipped = -1;
-          else if (save.equipped > e.idx) save.equipped--;
+        if (e.id === 'starter') { toast('The Cadet Badge cannot be tossed'); return; }
+        if (!e.isNew) {
+          save.inventory = save.inventory.filter(function (x) { return x !== e.id; });
+          if (save.equipped === e.id) save.equipped = 'starter';
           save.inventory.push(this.incoming);
-          toast('Tossed ' + G.CARDS[e.id].name);
+          toast('Tossed your ' + G.CARDS[e.id].name + ' stack');
         } else toast('Tossed the new ' + G.CARDS[e.id].name);
         persist(); go(this.back); return;
       }
-      save.equipped = e.idx; persist();
+      save.equipped = e.id; persist();
       toast('Equipped ' + G.CARDS[e.id].name);
     }
     if (!this.incoming && (I.any('pressed', 'back') || I.any('pressed', 'pause'))) go(this.back);
   };
   Inventory.prototype.draw = function (dt) {
     vhsBackdrop(PAL.violet);
-    G.chrome(this.incoming ? 'TOSS ONE' : 'CARDS', 84, 6, 2, 'center');
-    T(save.inventory.length + '/' + G.INVENTORY_CAP + ' SLOTS', 84, 24, PAL.grey, { font: 'small', align: 'center' });
-    var list = this.entries(), self = this;
+    G.chrome(this.incoming ? 'TOSS ONE' : 'CARDS', 84, 4, 2, 'center');
+    T(stackIds().length + '/' + G.INVENTORY_CAP + ' SLOTS', 84, 21, PAL.grey, { font: 'small', align: 'center' });
+    var list = this.entries(), self = this, cm = G.cardSize('md');
     list.forEach(function (e, k) {
-      var c = G.CARDS[e.id], sel = k === self.sel, y = 32 + k * 18, x = sel ? 12 : 8;
-      R(x + 2, y + 2, 148, 15, '#000');
-      R(x, y, 148, 15, '#141120');
-      R(x, y, 6, 15, c.color); R(x + 6, y, 2, 15, G.shade(c.color, -0.5));
-      R(x + 12, y + 3, 100, 9, sel ? PAL.white : '#d8d2c0');
-      var rank = e.id === 'starter' ? 1 : G.rankForXp(save.xp[e.id] || 0);
-      T(c.name, x + 15, y + 4, '#000');
-      T('R' + rank, x + 144, y + 5, PAL.amber, { font: 'small', align: 'right' });
-      if (e.idx === save.equipped && !self.incoming) T('ON', x + 128, y + 5, PAL.green, { font: 'small', align: 'right' });
-      if (e.idx === 'new') T('NEW', x + 130, y + 5, PAL.pink, { font: 'small', align: 'right' });
-      if (sel) cursor(x - 7, y + 4, PAL.yellow);
+      var sel = k === self.sel, x = 14 + (k % 3) * 50, y = 34 + Math.floor(k / 3) * 60 - (sel ? 3 : 0);
+      var on = !self.incoming && save.equipped === e.id;
+      G.drawCard(x, y, e.id, rankOf(e.id), { size: 'md', count: e.count, glow: sel ? (Math.floor(now / 250) % 2 ? PAL.yellow : PAL.orange) : on ? PAL.green : null });
+      if (on) { R(x + 1, y + cm.h + 2, 13, 7, '#000'); T('ON', x + 3, y + cm.h + 3, PAL.green, { font: 'small' }); }
+      if (e.isNew) { R(x + 1, y + cm.h + 2, 17, 7, '#000'); T('NEW', x + 3, y + cm.h + 3, PAL.pink, { font: 'small' }); }
     });
-    var e = list[this.sel], c = G.CARDS[e.id];
-    var rank = e.id === 'starter' ? 1 : G.rankForXp(save.xp[e.id] || 0);
+    var e = list[this.sel], c = G.CARDS[e.id], rank = rankOf(e.id);
     G.label(166, 8, 148, 182, c.color);
     T(c.name, 174, 18, PAL.beigeInk);
+    if (e.count) T('X' + e.count, 306, 18, PAL.red, { align: 'right' });
     if (e.id !== 'starter') {
       var xp = save.xp[e.id] || 0, nxt = G.RANK_XP[Math.min(5, rank + 1)];
       G.inset(174, 29, 132, 11);
@@ -470,7 +535,7 @@
     T('PASSIVE: ' + c.passive.name, 174, 46, PAL.red, { font: 'small' });
     wrap(c.passive.desc.toUpperCase(), 33).forEach(function (ln, k) { T(ln, 174, 53 + k * 7, PAL.beigeInk, { font: 'small' }); });
     G.DIRS.forEach(function (d, k) {
-      var a = c.actives[d], y = 70 + k * 28;
+      var a = c.actives[d], y = 70 + k * 26;
       if (!a) return;
       var open = rank >= G.DIR_RANK[d];
       T(d + ' - ' + G.DIR_ROLE[d] + ' (R' + G.DIR_RANK[d] + ')', 174, y, PAL.red, { font: 'small' });
@@ -479,9 +544,9 @@
         T(a.desc, 174, y + 14, PAL.beigeLo, { font: 'small' });
       } else T('? ? ?', 174, y + 7, PAL.beigeLo, { font: 'small' });
     });
-    T('WIN SCORE = XP. LOSING IN', 174, 174, PAL.beigeLo, { font: 'small' });
-    T('ADVENTURE DESTROYS THE CARD.', 174, 181, PAL.beigeLo, { font: 'small' });
-    T(this.incoming ? 'A: TOSS SELECTED' : 'A: EQUIP   B: BACK', 84, 182, PAL.white, { font: 'small', align: 'center' });
+    T('LOSING IN ADVENTURE DESTROYS', 174, 174, PAL.beigeLo, { font: 'small' });
+    T('ONE COPY OF THE EQUIPPED CARD.', 174, 181, PAL.beigeLo, { font: 'small' });
+    T(this.incoming ? 'A: TOSS SELECTED STACK' : 'A: EQUIP   B: BACK', 84, 212, PAL.white, { font: 'small', align: 'center' });
     drawToasts(dt);
   };
 
@@ -577,7 +642,7 @@
 
   G.go = go;
   G.currentScreen = function () { return screen; };
-  G.debug = { save: function () { return save; }, screens: { Title: Title, MapScreen: MapScreen, Explore: Explore, Inventory: Inventory, VersusSetup: VersusSetup, Controls: Controls } };
+  G.debug = { save: function () { return save; }, screens: { CardResult: CardResult, Title: Title, MapScreen: MapScreen, Explore: Explore, Inventory: Inventory, VersusSetup: VersusSetup, Controls: Controls } };
   go(new Title());
   requestAnimationFrame(frame);
 })(globalThis.G = globalThis.G || {});

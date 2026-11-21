@@ -148,37 +148,66 @@
     R(fx - 5, fy, 3, FH, '#16080a');
     if (pend) { var gh = Math.min(FH, pend * C); R(fx - 5, fy + FH - gh, 3, gh, (Math.floor(t / 150) % 2) ? PAL.red : '#ff8a8a'); }
 
-    // Side panel: hold, next, lucky-7 reel
+    // Side panel: hold, lucky-7 reel, next, equipped card
     var sx = i === 0 ? 4 : 280;
     if (p.features.hold) {
-      T('HOLD', sx, fy - 4, PAL.amber, { font: 'small' });
-      G.inset(sx, fy + 3, 36, 20);
+      T('HOLD', sx, fy - 6, PAL.amber, { font: 'small' });
+      G.inset(sx, fy + 1, 36, 19);
       if (p.holdUsed) this._ctx.globalAlpha = 0.35;
-      mini(p.holdType, sx + 18, fy + 13, 4);
+      mini(p.holdType, sx + 18, fy + 10, 4);
       this._ctx.globalAlpha = 1;
+    }
+    if (p.features.bag) {
+      var ry = fy + 23;
+      G.PIECE_TYPES.forEach(function (tp, k2) {
+        var lit = p.bagPool.indexOf(tp) >= 0;
+        G.bevel(sx + 1 + k2 * 5, ry, 4, 7, lit ? G.BLOCK_COLORS[tp] : '#1c1a28', lit ? '#fff' : '#2a2838', lit ? G.shade(G.BLOCK_COLORS[tp], -0.5) : '#0c0b12');
+      });
     }
     var n = p.previewCount();
     if (n) {
-      var ny = fy + 30;
+      var ny = fy + 33;
       T('NEXT', sx, ny, PAL.amber, { font: 'small' });
-      G.inset(sx, ny + 7, 36, n * 14 + 4);
-      for (var k = 0; k < n; k++) mini(p.queue[k], sx + 18, ny + 15 + k * 14, 4);
+      G.inset(sx, ny + 7, 36, n * 13 + 4);
+      for (var k = 0; k < n; k++) mini(p.queue[k], sx + 18, ny + 14 + k * 13, 4);
     }
-    if (p.features.bag) {
-      var ry = fy + FH - 12;
-      T('LUCKY 7', sx, ry, PAL.pink, { font: 'small' });
-      G.PIECE_TYPES.forEach(function (tp, k2) {
-        var lit = p.bagPool.indexOf(tp) >= 0;
-        G.bevel(sx + k2 * 5, ry + 7, 4, 7, lit ? G.BLOCK_COLORS[tp] : '#1c1a28', lit ? '#fff' : '#2a2838', lit ? G.shade(G.BLOCK_COLORS[tp], -0.5) : '#0c0b12');
-      });
-    }
+    var castNow = p.fxEvents.some(function (f) { return f.kind === 'cast'; });
+    G.drawCard(sx - 1, fy + 110, p.cardId, p.rank, { size: 'md', glow: castNow && Math.floor(t / 80) % 2 ? PAL.white : null });
 
-    // Under the board: name, card, LED line counter, VU meter (= ability meter)
+    // Under the board: name, card status / cooldown, LED line counter, VU meter (= ability meter)
     var by = fy + FH + 8;
     T(p.name.slice(0, 15), fx - 6, by, PAL.white, { font: 'small' });
-    T(p.card.name + ' R' + p.rank, fx - 6, by + 7, accent, { font: 'small' });
+    if (p.cooldown) {
+      T('RECHARGE', fx - 6, by + 7, PAL.grey, { font: 'small' });
+      var cw = Math.ceil(30 * p.cooldown / G.ABILITY_COOLDOWN);
+      R(fx + 28, by + 8, 30, 3, '#1a1726'); R(fx + 28, by + 8, cw, 3, PAL.grey);
+    } else T(Object.keys(p.card.actives).length ? 'CARD READY' : p.card.name, fx - 6, by + 7, p.cardId === 'starter' ? PAL.grey : accent, { font: 'small' });
     G.led(('0' + Math.min(p.lines, G.WIN_LINES)).slice(-2) + '/' + G.WIN_LINES, fx + FW + 6, by, PAL.amber, 'right');
+    if (p.cooldown) this._ctx.globalAlpha = 0.4;
     G.vu(fx - 6, by + 15, 10, p.meter, 8, 4);
+    this._ctx.globalAlpha = 1;
+
+    // Ability effects on this board
+    p.fxEvents.forEach(function (f) {
+      if (f.kind === 'boulder') {
+        var bx = fx + f.x * C - 2, byy = fy + (f.y - G.HIDDEN) * C - 2, S = 2 * C + 4;
+        if (Math.floor(f.t / 60) % 2) { R(bx, byy, S, 1, PAL.yellow); R(bx, byy + S - 1, S, 1, PAL.yellow); R(bx, byy, 1, S, PAL.yellow); R(bx + S - 1, byy, 1, S, PAL.yellow); }
+        for (var d = 0; d < 6; d++) G.px(bx + 2 + ((d * 7 + Math.floor(f.t / 20)) % (2 * C)), byy - 2 - ((d * 3 + Math.floor((400 - f.t) / 20)) % 8), '#c89a5a');
+      }
+    });
+    var stat = [];
+    if (p.effects.fur) stat.push(['FUR', PAL.orange]);
+    if (p.effects.roost) stat.push(['ROOST', PAL.violet]);
+    if (p.effects.sonar) stat.push(['SONAR', PAL.cyan]);
+    if (p.effects.howl) stat.push(['HOWL', PAL.red]);
+    if (p.effects.shiver) stat.push(['SHIVER', PAL.white]);
+    if (p.effects.glare) stat.push(['GLARE', PAL.yellow]);
+    stat.forEach(function (st, k4) {
+      var w = G.textWidth(st[0], 'small') + 4;
+      R(fx + 1, fy + 1 + k4 * 8, w, 7, '#000'); R(fx + 1, fy + 1 + k4 * 8, 1, 7, st[1]);
+      T(st[0], fx + 3, fy + 2 + k4 * 8, st[1], { font: 'small' });
+    });
+    if (p.effects.fur) { var sc = Math.floor(t / 120) % 2 ? PAL.orange : G.shade(PAL.orange, -0.4); R(fx, fy + FH - 1, FW, 1, sc); R(fx, fy + FH - 3, FW, 1, sc); }
 
     // Floating callouts
     p.flash.forEach(function (f, k3) {
@@ -187,11 +216,26 @@
     });
 
     if (ctrl && ctrl.cardMode) this.drawCardOverlay(p, ctrl, fx + 40, fy + 80);
+    var cast = p.fxEvents.filter(function (f) { return f.kind === 'cast'; })[0];
+    if (cast) this.drawCast(p, cast, fx, fy);
     if (!p.alive) {
       R(fx, fy + 62, FW, 30, '#000'); R(fx, fy + 62, FW, 1, PAL.red); R(fx, fy + 91, FW, 1, PAL.red);
       T('BRICKED', fx + 40, fy + 67, PAL.red, { align: 'center' });
       T('UP!', fx + 40, fy + 78, PAL.red, { align: 'center' });
     }
+  };
+
+  // The card pops up over the caster's field when an ability fires.
+  Battle.prototype.drawCast = function (p, f, fx, fy) {
+    var ctx = this._ctx, age = G.CAST_MS - f.t, m = G.cardSize('lg');
+    var rise = age < 150 ? Math.round((150 - age) / 6) : 0;
+    ctx.globalAlpha = f.t < 250 ? f.t / 250 : 1;
+    var x = fx + ((FW - m.w) >> 1), y = fy + 22 + rise;
+    G.drawCard(x, y, p.cardId, p.rank, { size: 'lg', glow: Math.floor(age / 70) % 2 ? PAL.white : p.card.color });
+    var w = Math.max(m.w + 8, G.textWidth(f.name, 'big') + 8), bx = fx + 40 - (w >> 1), by = y + m.h + 4;
+    R(bx, by, w, 11, '#000'); R(bx, by, w, 1, p.card.color); R(bx, by + 10, w, 1, p.card.color);
+    T(f.name, fx + 40, by + 2, PAL.yellow, { align: 'center' });
+    ctx.globalAlpha = 1;
   };
 
   Battle.prototype.drawCardOverlay = function (p, ctrl, cx, cy) {
@@ -258,12 +302,17 @@
       var win = this.winner === 'a' ? this.a : this.b, lose = this.winner === 'a' ? this.b : this.a;
       var youLost = lose.name === 'YOU' || (lose === this.a && this.ctrl[1] instanceof G.CPU);
       R(0, 84, 320, 56, '#000'); G.stripes(0, 84, 320, 1); G.stripes(0, 135, 320, 1, G.STRIPES.slice().reverse());
-      if (youLost) {
-        G.chrome('YOU GOT', 160, 92, 2, 'center', ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a']);
-        G.chrome('BRICKED UP!', 160, 108, 2, 'center', ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a']);
+      var red = ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a'];
+      var toppedOut = !lose.alive;   // "bricked up" only when the stack hit the top
+      if (youLost && toppedOut) {
+        G.chrome('YOU GOT', 160, 92, 2, 'center', red);
+        G.chrome('BRICKED UP!', 160, 108, 2, 'center', red);
+      } else if (youLost) {
+        G.chrome('OUTRACED!', 160, 94, 2, 'center', red);
+        T(win.name + ' CLEARED ' + G.WIN_LINES + ' LINES FIRST', 160, 113, PAL.red, { align: 'center', font: 'small' });
       } else {
         G.chrome(win.name.length > 12 ? 'WINNER!' : win.name + ' WINS', 160, 94, 2, 'center');
-        T(lose.name + ' GOT BRICKED UP!', 160, 113, PAL.red, { align: 'center', font: 'small' });
+        T(toppedOut ? lose.name + ' GOT BRICKED UP!' : win.name + ' CLEARED ' + G.WIN_LINES + ' LINES FIRST', 160, 113, toppedOut ? PAL.red : PAL.green, { align: 'center', font: 'small' });
       }
       if (this.endT > 800 && Math.floor(now / 400) % 2) T('PRESS A', 160, 126, PAL.white, { align: 'center', font: 'small' });
     }

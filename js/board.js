@@ -7,6 +7,11 @@
   var LINE_SCORE = [0, 100, 300, 500, 800];
   var LINE_GARBAGE = [0, 0, 1, 2, 4];
   var LOCK_MS = 500, MAX_RESETS = 15;
+  var SOFT_MS = 50;           // soft drop: one row every 50 ms while held
+  // Card abilities: shared cooldown after any ability fires, so they can't be chained.
+  var ABILITY_COOLDOWN = 8000;
+  var CAST_MS = 1100;          // how long the card shows over the field when an ability fires
+  G.CAST_MS = CAST_MS; G.ABILITY_COOLDOWN = ABILITY_COOLDOWN;
 
   function makeGrid() {
     var g = [];
@@ -42,7 +47,8 @@
     this.pieceId = 0;
     this.shiverTimer = 0;
     this.flash = [];         // {text, t} floating messages for the renderer
-    this.clearAnim = 0;
+    this.fxEvents = [];      // short visual effects for the renderer: {kind, x, y, t, ...}
+    this.cooldown = 0;       // ms until card abilities can fire again    this.clearAnim = 0;
     this.opponent = null;
     this.fillQueue();
     this.spawn();
@@ -173,6 +179,8 @@
     if (this.kickFlash) this.kickFlash = Math.max(0, this.kickFlash - dt);
     if (this.clearAnim) this.clearAnim = Math.max(0, this.clearAnim - dt);
     this.flash = this.flash.filter(function (f) { f.t -= dt; return f.t > 0; });
+    this.fxEvents = this.fxEvents.filter(function (f) { f.t -= dt; return f.t > 0; });
+    if (this.cooldown) this.cooldown = Math.max(0, this.cooldown - dt);
 
     if (this.effects.shiver) {
       this.shiverTimer += dt;
@@ -181,7 +189,11 @@
 
     var frozen = this.effects.roost;
     var interval = this.gravityMs();
-    if (this.softDrop) interval = Math.min(interval, 35);
+    if (this.softDrop) interval = Math.min(interval, SOFT_MS);
+    // Starting a soft drop must not cash in the gravity time already built up
+    // (that used to teleport the brick to the floor, like a free hard drop).
+    if (this.softDrop && !this.wasSoft) this.gravTimer = Math.min(this.gravTimer, interval);
+    this.wasSoft = this.softDrop;
     if (!frozen) {
       this.gravTimer += dt;
       while (this.gravTimer >= interval) {
@@ -283,14 +295,15 @@
   // ---------- card abilities ----------
   P.canFire = function (dir) {
     var a = this.card.actives[dir];
-    return a && this.unlocked(dir) && this.meter >= a.cost;
+    return !!a && this.unlocked(dir) && this.meter >= a.cost && !this.cooldown;
   };
 
   P.fire = function (dir) {
     if (!this.canFire(dir)) return false;
     var a = this.card.actives[dir], foe = this.opponent;
     this.meter -= a.cost;
-    this.say(a.name.toUpperCase());
+    this.cooldown = ABILITY_COOLDOWN;
+    this.fxEvents.push({ kind: 'cast', name: a.name, t: CAST_MS });
     switch (a.id) {
       case 'boulder': foe && foe.dropBoulder(); break;
       case 'rockslide': if (foe) { foe.dropBoulder(); foe.dropBoulder(); foe.dropBoulder(); } break;
@@ -330,6 +343,7 @@
     var x = Math.floor(this.rng() * (COLS - 1));
     var top = Math.min(this.columnHeightRow(x), this.columnHeightRow(x + 1));
     var y0 = top - 2;
+    this.fxEvents.push({ kind: 'boulder', x: x, y: y0, t: 400 });
     for (var dy = 0; dy < 2; dy++) for (var dx = 0; dx < 2; dx++) {
       var yy = y0 + dy;
       if (yy >= 0) this.grid[yy][x + dx] = 'R';

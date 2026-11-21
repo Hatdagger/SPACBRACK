@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.1';
+  G.SUBTITLE = 'prototype v0.2';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
@@ -100,44 +100,140 @@
       id: 'cyclops', name: 'Cyclops', color: '#d9a441', pattern: 'standard',
       passive: { name: 'Focus', desc: 'Ghost brick always on', id: 'focus' },
       actives: {
-        left: { name: 'Boulder', cost: 3, id: 'boulder', desc: 'Drop a 2x2 rock on foe' },
-        right: { name: 'Stare Down', cost: 3, id: 'staredown', desc: 'Cancel 3 incoming lines' },
-        down: { name: 'Glare', cost: 4, id: 'glare', desc: 'Foe loses preview 8s' },
-        up: { name: 'Rockslide', cost: 8, id: 'rockslide', desc: 'Three boulders' }
+        left: { name: 'Boulder', cost: 5, id: 'boulder', desc: 'Drop a 2x2 rock on foe' },
+        right: { name: 'Stare Down', cost: 4, id: 'staredown', desc: 'Cancel 3 incoming lines' },
+        down: { name: 'Glare', cost: 6, id: 'glare', desc: 'Foe loses preview 8s' },
+        up: { name: 'Rockslide', cost: 10, id: 'rockslide', desc: 'Three boulders' }
       }
     },
     skeleton: {
       id: 'skeleton', name: 'Skeleton', color: '#e8e1cf', pattern: 'ribs',
       passive: { name: 'Ribcage', desc: 'Your garbage has rib gaps', id: 'ribs' },
       actives: {
-        left: { name: 'Rattle', cost: 2, id: 'rattle', desc: 'Shake foe brick 1 column' },
+        left: { name: 'Rattle', cost: 3, id: 'rattle', desc: 'Shake foe brick 1 column' },
         right: { name: 'Bone Patch', cost: 4, id: 'bonepatch', desc: 'Fill 4 covered holes' },
-        down: { name: 'Shiver', cost: 5, id: 'shiver', desc: 'Foe brick rattles 6s' },
-        up: { name: 'Bone Storm', cost: 8, id: 'bonestorm', desc: 'Send 4 lines' }
+        down: { name: 'Shiver', cost: 6, id: 'shiver', desc: 'Foe brick rattles 6s' },
+        up: { name: 'Bone Storm', cost: 10, id: 'bonestorm', desc: 'Send 4 lines' }
       }
     },
     werewolf: {
       id: 'werewolf', name: 'Werewolf', color: '#8a6a4f', pattern: 'claw',
       passive: { name: 'Claw Marks', desc: 'Your garbage has slashed gaps', id: 'claw' },
       actives: {
-        left: { name: 'Claw', cost: 4, id: 'claw3', desc: 'Send 3 slashed lines' },
-        right: { name: 'Thick Fur', cost: 3, id: 'fur', desc: 'Block next garbage hit' },
-        down: { name: 'Howl', cost: 5, id: 'howl', desc: 'Foe falls 3x faster 6s' },
-        up: { name: 'Full Moon', cost: 7, id: 'fullmoon', desc: 'Next 3 bricks are I' }
+        left: { name: 'Claw', cost: 5, id: 'claw3', desc: 'Send 3 slashed lines' },
+        right: { name: 'Thick Fur', cost: 4, id: 'fur', desc: 'Block next garbage hit' },
+        down: { name: 'Howl', cost: 6, id: 'howl', desc: 'Foe falls 3x faster 6s' },
+        up: { name: 'Full Moon', cost: 10, id: 'fullmoon', desc: 'Next 3 bricks are I' }
       }
     },
     bat: {
       id: 'bat', name: 'Giant Bat', color: '#7b5ea7', pattern: 'stairs',
       passive: { name: 'Echolocation', desc: '+1 preview brick', id: 'echo' },
       actives: {
-        left: { name: 'Nightfall', cost: 3, id: 'nightfall', desc: '1 line + darken foe 5s' },
-        right: { name: 'Roost', cost: 3, id: 'roost', desc: 'Pause your gravity 4s' },
-        down: { name: 'Sonar', cost: 2, id: 'sonar', desc: '5-brick preview 10s' },
-        up: { name: 'Swarm', cost: 8, id: 'swarm', desc: '3 lines + darken foe 8s' }
+        left: { name: 'Nightfall', cost: 4, id: 'nightfall', desc: '1 line + darken foe 5s' },
+        right: { name: 'Roost', cost: 4, id: 'roost', desc: 'Pause your gravity 4s' },
+        down: { name: 'Sonar', cost: 4, id: 'sonar', desc: '5-brick preview 10s' },
+        up: { name: 'Swarm', cost: 10, id: 'swarm', desc: '3 lines + darken foe 8s' }
       }
     }
   };
   G.MONSTERS = ['cyclops', 'skeleton', 'werewolf', 'bat'];
+  // 16x16 card portraits. Palette keys (see G.drawCard): k outline, a card colour,
+  // d dark, l light, w bone/white, e eye white, r red, y yellow.
+  G.PORTRAITS = {
+    starter: [
+      '................',
+      '.......kk.......',
+      '......kyyk......',
+      '......kyyk......',
+      '.kkkkkkyykkkkkk.',
+      '.kyyyyyyyyyyyyk.',
+      '..kyyyyrryyyyk..',
+      '...kyyyrryyyk...',
+      '....kyyyyyyk....',
+      '....kyyyyyyk....',
+      '...kyyykkyyyk...',
+      '...kyyk..kyyk...',
+      '..kyyk....kyyk..',
+      '..kkk......kkk..',
+      '................',
+      '................'
+    ],
+    cyclops: [
+      '....l......l....',
+      '...lk......kl...',
+      '...kakkkkkkak...',
+      '...aaaaaaaaaa...',
+      '..aaaaaaaaaaaa..',
+      '..aaakkkkkkaaa..',
+      '..aakeeeeeekaa..',
+      '..akeeerreeeka..',
+      '..akeerrrreeka..',
+      '..aakeeerreeka..',
+      '..aaakkkkkkaaa..',
+      '..adaaaaaaaada..',
+      '..aakwkkkkwkaa..',
+      '...aakwkkwkaa...',
+      '....aakkkkaa....',
+      '.....dddddd.....'
+    ],
+    skeleton: [
+      '................',
+      '.....wwwwww.....',
+      '...wwwwwwwwww...',
+      '..wwwwwwwwwwww..',
+      '..wwwwwwwwwwww..',
+      '..wwkkkwwkkkww..',
+      '..wkkkkwwkkkkw..',
+      '..wkkrkwwkrkkw..',
+      '..wwkkkwwkkkww..',
+      '..dwwwwkkwwwwd..',
+      '...dwwwkkwwwd...',
+      '....wwwwwwww....',
+      '....wkwkwkwk....',
+      '....wwwwwwww....',
+      '.....dwdwdw.....',
+      '................'
+    ],
+    werewolf: [
+      '..k..........k..',
+      '..ak........ka..',
+      '..alak....kala..',
+      '..aaaaaaaaaaaa..',
+      '.aaaaaaaaaaaaaa.',
+      '.aakyyaaaayykaa.',
+      '.aaakyaaaaykaaa.',
+      '.daaaallllaaaad.',
+      '..daallkkllaad..',
+      '..daalllllllad..',
+      '...alwlkklwla...',
+      '...allwllwlla...',
+      '....dllllllld...',
+      '.....dddddd.....',
+      '......dddd......',
+      '................'
+    ],
+    bat: [
+      '................',
+      '................',
+      '.....k....k.....',
+      '.....ak..ka.....',
+      'k....aaaaaa....k',
+      'ak..aaeaaeaa..ka',
+      'aak.aarkkraa.kaa',
+      'aaakaaaaaaaakaaa',
+      'aaaaaawaawaaaaaa',
+      'aaaadaaaaaadaaaa',
+      'aaad.daaaad.daaa',
+      'aad...daad...daa',
+      'ad.....dd.....da',
+      'd..............d',
+      '................',
+      '................'
+    ]
+  };
+  G.SHORT = { starter: 'CADET', cyclops: 'CYCLOPS', skeleton: 'SKELETON', werewolf: 'WEREWOLF', bat: 'GIANT BAT' };
+
 
   // Six locations. House rules and stage perks are listed but not yet in the prototype.
   G.LOCATIONS = [
@@ -197,7 +293,8 @@
     }
   ];
 
-  G.INVENTORY_CAP = 6;
+  G.INVENTORY_CAP = 6;   // different monster types you can carry (stacks)
+  G.STACK_MAX = 9;       // copies per stack
 
   // Brick colours: VHS-box palette (deliberately not the familiar guideline colours).
   G.BLOCK_COLORS = {
