@@ -175,152 +175,133 @@
     if (blink()) T('PRESS B', 160, 196, PAL.white, { align: 'center' });
   };
 
-  // ---------- map: a shelf of VHS tapes ----------
-  function MapScreen() { this.sel = MapScreen.last || 0; }
-  MapScreen.prototype.update = function () {
+  // ---------- map: station cutaway with a cursor ----------
+  function MapScreen() { this.sel = MapScreen.last || 0; this.t = 0; }
+  MapScreen.prototype.update = function (dt) {
+    this.t += dt;
     var s = this.sel;
     if (I.any('repeat', 'right', 300, 150)) s = (s % 3 === 2) ? s - 2 : s + 1;
     if (I.any('repeat', 'left', 300, 150)) s = (s % 3 === 0) ? s + 2 : s - 1;
     if (I.any('repeat', 'down', 300, 150) || I.any('repeat', 'up', 300, 150)) s = (s + 3) % 6;
+    if (s !== this.sel) this.t = 0;
     this.sel = s; MapScreen.last = s;
-    if (I.any('pressed', 'ok')) { go(new Explore(G.LOCATIONS[s])); return; }
+    if (I.any('pressed', 'ok')) { go(new Explore(G.LOCATIONS[s], 'hall', 0)); return; }
     if (I.any('pressed', 'back')) { go(new Title()); return; }
     if (I.any('pressed', 'pause')) go(new Inventory(this));
   };
-  function tapeBox(x, y, w, h, loc, sel, k) {
-    var lift = sel ? -3 : 0;
-    y += lift;
-    R(x + 3, y + 3 - lift, w, h, '#000');
-    R(x, y, w, h, '#120f1c');
-    if (sel) { R(x - 1, y - 1, w + 2, 1, PAL.white); R(x - 1, y + h, w + 2, 1, PAL.white); R(x - 1, y, 1, h, PAL.white); R(x + w, y, 1, h, PAL.white); }
-    // diagonal stripe in the location colour family
-    var cols = [G.shade(loc.color, 0.4), loc.color, G.shade(loc.color, -0.3), G.shade(loc.color, -0.55)];
-    for (var r = 0; r < 16; r++) {
-      var band = Math.floor(r / 4), off = r;
-      R(x + 4 + off, y + 16 + r, w - 8 - off, 1, cols[band]);
-    }
-    // white label + number
-    R(x + 4, y + 4, w - 8, 9, PAL.white);
-    T(loc.name, x + w / 2, y + 6, '#000', { font: 'small', align: 'center' });
-    T('T-' + (k + 1) * 20, x + w - 5, y + h - 9, PAL.grey, { font: 'small', align: 'right' });
-    var got = save.tokens[loc.feature], beaten = save.beaten[loc.id].filter(Boolean).length;
-    if (got) { G.bevel(x + 4, y + h - 13, 30, 9, PAL.yellow, '#fff', PAL.orange, '#000'); T('TOKEN', x + 19, y + h - 11, '#000', { font: 'small', align: 'center' }); }
-    else T(beaten + '/3', x + 5, y + h - 10, PAL.amber, { font: 'small' });
-  }
   MapScreen.prototype.draw = function (dt) {
-    var loc = G.LOCATIONS[this.sel];
-    vhsBackdrop(loc.color);
-    G.chrome('SECTOR MAP', 120, 6, 2, 'center');
-    var tokens = G.FEATURES.filter(function (f) { return save.tokens[f.key]; }).length;
-    G.inset(236, 6, 70, 13);
-    T('TOKENS', 241, 9, PAL.grey, { font: 'small' });
-    G.led(tokens + '/6', 301, 9, PAL.amber, 'right');
-    var self = this;
+    var loc = G.LOCATIONS[this.sel], self = this;
+    ctx.drawImage(G.stationMap(), 0, 0);
     G.LOCATIONS.forEach(function (l, k) {
-      tapeBox(14 + (k % 3) * 102, 30 + Math.floor(k / 3) * 66, 90, 56, l, k === self.sel, k);
+      var p = G.MAP_ROOMS[k], got = save.tokens[l.feature], beaten = save.beaten[l.id].filter(Boolean).length;
+      if (k === self.sel) { // lit overlay
+        ctx.globalAlpha = 0.25 + 0.15 * Math.sin(now / 200); R(p[0], p[1], 80, 48, l.color); ctx.globalAlpha = 1;
+      }
+      T(l.name.toUpperCase(), p[0] + 3, p[1] + 3, k === self.sel ? PAL.white : G.shade(l.color, 0.3), { font: 'small', shadow: '#000' });
+      if (got) { G.bevel(p[0] + 46, p[1] + 36, 32, 9, PAL.yellow, '#fff', PAL.orange, '#000'); T('CLEAR', p[0] + 62, p[1] + 38, '#000', { font: 'small', align: 'center' }); }
+      else T(beaten + '/3', p[0] + 76, p[1] + 38, PAL.amber, { font: 'small', align: 'right', shadow: '#000' });
     });
+    // cursor: 32x32 pulsing brackets around the room centre
+    var p = G.MAP_ROOMS[this.sel], cx = p[0] + 40, cy = p[1] + 22, o = 14 + Math.round(2 * Math.sin(now / 120));
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (s) {
+      var x = cx + s[0] * o, y = cy + s[1] * o;
+      R(s[0] < 0 ? x : x - 5, y, 6, 2, PAL.yellow); R(x, s[1] < 0 ? y : y - 5, 2, 6, PAL.yellow);
+    });
+    cursor(cx - 2, cy - 3, PAL.yellow);
+    // info panel
+    var tokens = G.FEATURES.filter(function (f) { return save.tokens[f.key]; }).length;
     var feat = G.FEATURES.filter(function (f) { return f.key === loc.feature; })[0];
-    G.label(8, 166, 304, 52, loc.color);
-    T(loc.name, 16, 174, PAL.beigeInk);
-    T('TOKEN: ' + feat.name + ' (' + feat.desc + ')', 16, 185, PAL.beigeInk, { font: 'small' });
-    T('HOUSE RULE: ' + loc.rule, 16, 193, PAL.beigeInk, { font: 'small' });
-    T('A: ENTER   START: CARDS   B: TITLE', 16, 205, PAL.beigeLo, { font: 'small' });
+    G.label(6, 178, 308, 42, loc.color);
+    T(loc.name, 14, 184, PAL.beigeInk);
+    G.led('TOKENS ' + tokens + '/6', 306, 184, PAL.amber, 'right');
+    T('TOKEN: ' + feat.name + ' (' + feat.desc + ')   HOUSE RULE: ' + loc.rule, 14, 196, PAL.beigeInk, { font: 'small' });
+    T('A: GO THERE   START: CARDS   B: TITLE', 14, 207, PAL.beigeLo, { font: 'small' });
+    G.chrome('STATION MAP', 160, 166, 1, 'center');
     drawToasts(dt);
   };
 
-  // ---------- explorable location ----------
-  var ROOM = [
-    '####################',
-    '#..................#',
-    '#..oo..........oo..#',
-    '#........3.........#',
-    '#..................#',
-    '#...1..........2...#',
-    '#..................#',
-    '#..oo..........oo..#',
-    '#..................#',
-    '#........P.........#',
-    '#########EE#########'
-  ];
-  var TILE = 16, RX = 0, RY = 18;
-
-  function Explore(loc) {
-    this.loc = loc;
-    this.npcs = [];
-    for (var y = 0; y < ROOM.length; y++) for (var x = 0; x < ROOM[y].length; x++) {
-      var ch = ROOM[y][x];
-      if (ch === 'P') { this.px = x; this.py = y; }
-      if (ch >= '1' && ch <= '3') this.npcs[+ch - 1] = { x: x, y: y, idx: +ch - 1, data: loc.npcs[+ch - 1] };
-    }
-    if (Explore.returnPos && Explore.returnPos.loc === loc.id) { this.px = Explore.returnPos.x; this.py = Explore.returnPos.y; }
-    this.face = 'up'; this.moveT = 0; this.fromX = this.px; this.fromY = this.py;
-    this.dialog = null;
+  // ---------- explorable location: over-the-shoulder panorama ----------
+  var SCROLL_SPEED = 0.16;  // px per ms
+  var HERO_X = 16, HERO_Y = 32, VIEW_Y = 16;
+  function Explore(loc, scene, cam) {
+    this.loc = loc; this.scene = scene || 'hall';
+    this.cam = cam || 0; this.look = 0; this.t = 0;
+    this.mode = 'arrive'; this.modeT = 0; this.talk = null; this.target = null;
   }
-  Explore.prototype.blocked = function (x, y) {
-    var ch = ROOM[y] && ROOM[y][x];
-    if (!ch || ch === '#' || ch === 'o') return true;
-    return this.npcs.some(function (n) { return n.x === x && n.y === y; });
+  Explore.prototype.spots = function () { return G.SCENES[this.scene].spots; };
+  Explore.prototype.npcFor = function (sp) { return this.loc.npcs[sp.idx]; };
+  Explore.prototype.focus = function () { // hotspot nearest the middle of the view
+    var c = this.cam + 200, best = null, bd = 70;
+    this.spots().forEach(function (sp) { var d = Math.abs(sp.x - c); if (d < bd) { bd = d; best = sp; } });
+    return best;
   };
   Explore.prototype.update = function (dt) {
-    if (this.dialog) {
-      var d = this.dialog;
-      if (d.menu) d.menu.update();
-      else if (I.any('pressed', 'ok') || I.any('pressed', 'back')) this.dialog = null;
-      return;
-    }
+    this.t += dt;
+    if (this.mode === 'arrive') { this.modeT += dt; if (this.modeT > 300) this.mode = 'walk'; return; }
+    if (this.mode === 'enter') { this.modeT += dt; if (this.modeT > 850) this.arrive(); return; }
+    if (this.mode === 'talk') { this.updateTalk(dt); return; }
     if (I.any('pressed', 'pause')) { go(new Inventory(this)); return; }
-    if (this.moveT > 0) { this.moveT = Math.max(0, this.moveT - dt); return; }
-    var dirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-    for (var d2 in dirs) {
-      if (I.any('down', d2)) {
-        this.face = d2;
-        var nx = this.px + dirs[d2][0], ny = this.py + dirs[d2][1];
-        if (ROOM[ny] && ROOM[ny][nx] === 'E') { go(new MapScreen()); return; }
-        if (!this.blocked(nx, ny)) { this.fromX = this.px; this.fromY = this.py; this.px = nx; this.py = ny; this.moveT = 140; }
-        return;
-      }
-    }
+    if (I.any('pressed', 'back')) { go(new MapScreen()); return; }
+    var dir = (I.any('down', 'right') ? 1 : 0) - (I.any('down', 'left') ? 1 : 0);
+    this.cam = Math.max(0, Math.min(G.PANO_W - 320, this.cam + dir * SCROLL_SPEED * dt));
+    this.look = dir * 4;
     if (I.any('pressed', 'ok')) {
-      var f = dirs[this.face], tx = this.px + f[0], ty = this.py + f[1];
-      var npc = this.npcs.filter(function (n) { return n.x === tx && n.y === ty; })[0];
-      if (npc) this.talk(npc);
+      var sp = this.focus();
+      if (!sp) return;
+      if (sp.kind === 'npc') this.startTalk(sp);
+      else { this.mode = 'enter'; this.modeT = 0; this.target = sp; this.look = 0; }
     }
-    if (I.any('pressed', 'back')) go(new MapScreen());
   };
-  Explore.prototype.talk = function (npc) {
-    var self = this, loc = this.loc, n = npc.data, beaten = save.beaten[loc.id];
-    if (n.boss && !(beaten[0] && beaten[1])) {
-      this.dialog = { who: n.name, line: 'Beat my crew first. Then we talk.' };
+  Explore.prototype.arrive = function () {
+    var sp = this.target, loc = this.loc;
+    if (sp.kind === 'exit') { go(new MapScreen()); return; }
+    var back = G.SCENES[sp.to].spots.filter(function (s) { return s.kind === 'door' || s.kind === 'exit'; })[0];
+    go(new Explore(loc, sp.to, Math.max(0, Math.min(G.PANO_W - 320, back.x - 200))));
+  };
+  Explore.prototype.startTalk = function (sp) {
+    var self = this, loc = this.loc, n = this.npcFor(sp), beaten = save.beaten[loc.id];
+    var talk = { sp: sp, n: n, shown: 0, t: 0 };
+    if (n.boss && !(beaten[0] && beaten[1])) talk.text = 'Beat my crew first. Then we talk.';
+    else {
+      talk.text = n.line + (beaten[sp.idx] ? ' Rematch?' : '');
+      talk.menu = new Menu([
+        { label: 'Battle!', fn: function () { self.mode = 'walk'; self.talk = null; self.startBattle(sp); } },
+        { label: 'Not now', fn: function () { self.mode = 'walk'; self.talk = null; } }
+      ], { back: function () { self.mode = 'walk'; self.talk = null; } });
+    }
+    this.talk = talk; this.mode = 'talk';
+  };
+  Explore.prototype.updateTalk = function (dt) {
+    var tk = this.talk; tk.t += dt;
+    var full = tk.text.length;
+    if (tk.shown < full) {
+      tk.shown = Math.min(full, tk.shown + dt * 0.045);
+      if (tk.t > 150 && (I.any('pressed', 'ok') || I.any('pressed', 'back'))) tk.shown = full;
       return;
     }
-    this.dialog = {
-      who: n.name, line: n.line + (beaten[npc.idx] ? ' (Rematch)' : ''),
-      menu: new Menu([
-        { label: 'Battle!', fn: function () { self.dialog = null; self.startBattle(npc); } },
-        { label: 'Not now', fn: function () { self.dialog = null; } }
-      ], { back: function () { self.dialog = null; } })
-    };
+    if (tk.menu) tk.menu.update();
+    else if (I.any('pressed', 'ok') || I.any('pressed', 'back')) { this.mode = 'walk'; this.talk = null; }
   };
-  Explore.prototype.startBattle = function (npc) {
-    var self = this, loc = this.loc, n = npc.data, me = equippedCard();
-    Explore.returnPos = { loc: loc.id, x: this.px, y: this.py };
+  Explore.prototype.startBattle = function (sp) {
+    var self = this, loc = this.loc, n = this.npcFor(sp), me = equippedCard();
     var foeCard = n.mirror ? me.id : n.card, foeRank = n.mirror ? me.rank : n.rank;
     var foeFeat = n.mirror ? playerFeatures() : G.allFeatures();
     I.setSinglePlayer(true);
+    this.mode = 'arrive'; this.modeT = 0;
     go(new G.Battle({
       title: loc.name, subtitle: 'HOUSE RULE: ' + loc.rule,
       color: loc.color,
       a: { name: 'YOU', features: playerFeatures(), cardId: me.id, rank: me.rank, slot: 0 },
       b: { name: n.name, features: foeFeat, cardId: foeCard, rank: foeRank, cpu: n.level },
       onQuit: function () { go(self); },
-      onEnd: function (winner, battle) { self.afterBattle(npc, winner === 'a', battle); }
+      onEnd: function (winner, battle) { self.afterBattle(sp.idx, winner === 'a', battle); }
     }));
   };
-  Explore.prototype.afterBattle = function (npc, won, battle) {
-    var loc = this.loc, n = npc.data, me = equippedCard(), self = this;
+  Explore.prototype.afterBattle = function (idx, won, battle) {
+    var loc = this.loc, n = loc.npcs[idx], me = equippedCard(), self = this;
     var info = { won: won, toppedOut: !battle.a.alive, me: me.id, lines: [] };
     if (won) {
-      save.beaten[loc.id][npc.idx] = true;
+      save.beaten[loc.id][idx] = true;
       if (me.id !== 'starter') {
         var before = rankOf(me.id);
         save.xp[me.id] += battle.a.score;
@@ -398,83 +379,80 @@
     if (t > 900 && blink()) T('PRESS A', cx, 206, PAL.white, { align: 'center' });
   };
 
-  Explore.prototype.drawProp = function (px, py, loc) {
-    var c = loc.color, d = G.shade(c, -0.55), l = G.shade(c, 0.45);
-    G.bevel(px + 1, py + 2, 14, 13, '#2a2638', '#4a4660', '#100e18', '#000');
-    switch (loc.prop) {
-      case 'gantry':
-        for (var i = 0; i < 4; i++) { R(px + 4, py + 3 + i * 3, 8, 1, c); R(px + 4 + (i % 2) * 6, py + 3 + i * 3, 2, 3, d); }
-        R(px + 7, py + 1, 2, 3, PAL.red); break;
-      case 'pillar':
-        R(px + 5, py + 3, 6, 11, d); for (var j = 0; j < 11; j += 2) R(px + 5, py + 3 + j, 6, 1, (Math.floor(now / 200) + j) % 4 ? c : l); break;
-      case 'vat':
-        R(px + 4, py + 4, 8, 10, d); R(px + 5, py + 7, 6, 6, c); R(px + 6, py + 8 + (Math.floor(now / 300) % 3), 1, 1, l); R(px + 4, py + 4, 8, 1, l); break;
-      case 'vault':
-        R(px + 3, py + 4, 10, 10, d); R(px + 6, py + 7, 4, 4, c); R(px + 7, py + 8, 2, 2, l); break;
-      case 'clock':
-        R(px + 3, py + 4, 10, 9, '#000'); G.text(Math.floor(now / 1000) % 60 < 10 ? '0' + Math.floor(now / 1000) % 60 : String(Math.floor(now / 1000) % 60), px + 8, py + 6, c, { font: 'small', align: 'center' }); break;
-      case 'slots':
-        for (var k = 0; k < 3; k++) { R(px + 3 + k * 4, py + 5, 3, 6, '#fff'); R(px + 4 + k * 4, py + 7, 1, 2, [PAL.red, PAL.yellow, PAL.cyan][(k + Math.floor(now / 150)) % 3]); }
-        R(px + 13, py + 3, 1, 5, c); break;
-    }
-  };
-  Explore.prototype.figure = function (x, y, suit, accent, face, boss) {
-    var pal = { k: '#000', w: suit, v: PAL.cyan, l: '#fff', c: accent, g: '#6a6880', d: PAL.red };
-    var rows = G.ASTRO;
-    if (face === 'up') rows = rows.map(function (r) { return r.replace(/[vl]/g, 'w'); });
-    var key = 'fig' + suit + accent + (face === 'up' ? 'u' : '');
-    R(x + 3, y + 15, 10, 1, 'rgba(0,0,0,0.5)');
-    G.sprite(rows, x, y, pal, key, face === 'left');
-    if (boss) { R(x + 7, y - 3, 2, 3, PAL.yellow); G.px(x + 7, y - 4, PAL.red); }
-  };
+  // ---------- explore drawing ----------
+  function speechCue(x, y) { // 16x16 person cue
+    R(x + 1, y + 1, 14, 10, '#000'); R(x + 2, y + 2, 12, 8, PAL.white);
+    R(x + 4, y + 10, 4, 2, PAL.white); R(x + 4, y + 12, 2, 2, PAL.white);
+    for (var k = 0; k < 3; k++) R(x + 4 + k * 3, y + 5, 2, 2, k <= Math.floor(now / 250) % 3 ? PAL.orange : '#000');
+  }
+  function doorCue(x, y) { // 16x16 door cue: down arrow
+    for (var i = 0; i < 6; i++) R(x + 2 + i, y + 4 + i, 12 - i * 2, 1, PAL.yellow);
+    R(x + 6, y, 4, 4, PAL.yellow);
+  }
   Explore.prototype.draw = function (dt) {
-    var loc = this.loc, self = this;
-    R(0, 0, 320, 224, PAL.black);
-    // header strip
-    G.stripes(0, 0, 60, 1, [loc.color, G.shade(loc.color, -0.3), G.shade(loc.color, -0.5)], 2, 'right');
-    T(loc.name, 66, 5, loc.color, { shadow: '#000' });
-    T('A: TALK  START: CARDS', 316, 6, PAL.grey, { font: 'small', align: 'right' });
-    for (var y = 0; y < ROOM.length; y++) for (var x = 0; x < ROOM[y].length; x++) {
-      var ch = ROOM[y][x], px = RX + x * TILE, py = RY + y * TILE;
-      if (ch === '#') {
-        G.bevel(px, py, TILE, TILE, '#2c2a3e', '#47445e', '#141220');
-        if (y === 0) R(px + 2, py + 6, 12, 2, G.shade(loc.color, -0.4));
-      } else {
-        R(px, py, TILE, TILE, (x + y) % 2 ? '#16141f' : '#1b1926');
-        R(px, py, TILE, 1, '#100e18'); R(px, py, 1, TILE, '#100e18');
-        if (ch === 'E') { R(px + 2, py + 2, 12, 12, G.shade(loc.color, -0.5)); for (var a = 0; a < 3; a++) R(px + 7 - a, py + 5 + a, 2 + a * 2, 1, blink(300) ? loc.color : G.shade(loc.color, 0.4)); }
-        if (ch === 'o') this.drawProp(px, py, loc);
-      }
-    }
-    this.npcs.forEach(function (n) {
-      var beaten = save.beaten[loc.id][n.idx], card = G.CARDS[n.data.mirror ? 'starter' : n.data.card];
-      var suit = n.data.boss ? PAL.yellow : card.color;
-      self.figure(RX + n.x * TILE, RY + n.y * TILE, suit, G.shade(suit, -0.5), 'down', n.data.boss);
-      var name = n.data.name;
-      T(name, RX + n.x * TILE + 8, RY + n.y * TILE - (n.data.boss ? 10 : 7), beaten ? PAL.green : PAL.white, { font: 'small', align: 'center', shadow: '#000' });
+    var loc = this.loc, self = this, cam = Math.round(this.cam);
+    R(0, 0, 320, 224, '#000');
+    ctx.drawImage(G.panorama(loc, this.scene), cam, 0, 320, 176, 0, VIEW_Y, 320, 176);
+    var focus = this.mode === 'walk' ? this.focus() : null;
+    // NPCs
+    this.spots().forEach(function (sp) {
+      if (sp.kind !== 'npc') return;
+      var n = self.npcFor(sp), img = G.npcSprite(n, loc, Math.floor((now + sp.x * 7) / 520) % 2);
+      var x = sp.x - cam - (img.width >> 1), y = VIEW_Y + G.FLOOR_Y - img.height;
+      if (x > 320 || x + img.width < 0) return;
+      R(x + 4, y + img.height - 2, img.width - 8, 3, 'rgba(0,0,0,0.45)');
+      ctx.drawImage(img, x, y);
+      var beaten = save.beaten[loc.id][sp.idx];
+      T(n.name.toUpperCase(), x + (img.width >> 1), y - 8, beaten ? PAL.green : PAL.white, { font: 'small', align: 'center', shadow: '#000' });
+      if (sp === focus) speechCue(x + (img.width >> 1) - 8, y - 26 + (Math.floor(now / 300) % 2));
     });
-    var t = this.moveT / 140;
-    var dx = this.px + (this.fromX - this.px) * t, dy = this.py + (this.fromY - this.py) * t;
-    var bob = this.moveT > 0 && Math.floor(this.moveT / 70) % 2 ? -1 : 0;
-    this.figure(Math.round(RX + dx * TILE), Math.round(RY + dy * TILE) + bob, PAL.white, PAL.orange, this.face);
-
-    // footer
-    var me = equippedCard();
-    R(0, 196, 320, 28, '#0c0a14');
-    T('CARD', 6, 202, PAL.grey, { font: 'small' });
-    T(G.CARDS[me.id].name + ' R' + me.rank, 26, 202, G.CARDS[me.id].color, { font: 'small' });
-    var tokens = G.FEATURES.filter(function (f) { return save.tokens[f.key]; }).length;
-    T('TOKENS ' + tokens + '/6', 314, 202, PAL.amber, { font: 'small', align: 'right' });
-    T('EXIT: BOTTOM DOOR', 160, 212, PAL.grey, { font: 'small', align: 'center' });
-
-    if (this.dialog) {
-      var d = this.dialog, lines = wrap(d.line.toUpperCase(), 66);
-      G.label(10, 136, 300, 62, loc.color);
-      T(d.who, 18, 144, PAL.red);
-      lines.forEach(function (ln, k) { T(ln, 18, 155 + k * 7, PAL.beigeInk, { font: 'small' }); });
-      if (d.menu) d.menu.draw(30, 172, PAL.beigeInk, 10);
-      else if (blink()) T('A: OK', 302, 188, PAL.beigeLo, { font: 'small', align: 'right' });
+    // door labels + cue
+    this.spots().forEach(function (sp) {
+      if (sp.kind === 'npc' || sp !== focus) return;
+      var x = sp.x - cam, top = VIEW_Y + G.FLOOR_Y - sp.h + (sp.h === 64 ? 4 : 12);
+      doorCue(x - 8, top - 28 + (Math.floor(now / 300) % 2));
+    });
+    // hero (foreground, back view)
+    var rim = loc.color;
+    if (this.mode === 'enter') {
+      var p = Math.min(1, this.modeT / 700), sp = this.target;
+      var tx = sp.x - cam, ty = VIEW_Y + G.FLOOR_Y - 20;
+      var sc = 1 - 0.7 * p, w = 112 * sc, h = 160 * sc;
+      var hx = HERO_X + 56 + (tx - HERO_X - 56) * p - w / 2, hy = HERO_Y + 160 + (ty - HERO_Y - 160) * p - h;
+      var step = Math.floor(this.modeT / 140) % 2;
+      ctx.drawImage(G.heroBack(step, 0, rim), Math.round(hx), Math.round(hy), Math.round(w), Math.round(h));
+      if (this.modeT > 550) { ctx.globalAlpha = Math.min(1, (this.modeT - 550) / 250); R(0, 0, 320, 224, '#000'); ctx.globalAlpha = 1; }
+    } else {
+      var bob = [0, 1, 2, 1][Math.floor(this.t / 450) % 4];
+      ctx.drawImage(G.heroBack(bob, this.look, rim), HERO_X, HERO_Y);
     }
+    // talk close-up covers the scene
+    if (this.mode === 'talk') {
+      var tk = this.talk, typing = tk.shown < tk.text.length;
+      var mouth = typing && tk.text[Math.floor(tk.shown)] !== ' ' ? Math.floor(now / 90) % 3 : 0;
+      G.closeup(tk.n, loc, mouth, (now % 3200) < 130);
+    }
+    // letterbox bars
+    R(0, 0, 320, VIEW_Y, '#000'); R(0, 192, 320, 32, '#000');
+    G.stripes(0, 0, 48, 1, [loc.color, G.shade(loc.color, -0.3), G.shade(loc.color, -0.5)], 2, 'right');
+    T(loc.name + ' - ' + G.SCENES[this.scene].name, 54, 5, loc.color, { font: 'small' });
+    var me = equippedCard(), tokens = G.FEATURES.filter(function (f) { return save.tokens[f.key]; }).length;
+    T(G.CARDS[me.id].name + ' R' + me.rank + '   TOKENS ' + tokens + '/6', 316, 5, PAL.grey, { font: 'small', align: 'right' });
+    if (this.mode === 'talk') {
+      var tk2 = this.talk;
+      T(tk2.n.name.toUpperCase(), 8, 195, PAL.red);
+      wrap(tk2.text.slice(0, Math.floor(tk2.shown)).toUpperCase(), 54).slice(0, 3).forEach(function (ln, k) { T(ln, 8, 204 + k * 7, PAL.white, { font: 'small' }); });
+      if (tk2.shown >= tk2.text.length) {
+        if (tk2.menu) tk2.menu.draw(258, 197, PAL.grey, 11);
+        else if (blink()) T('A: OK', 312, 212, PAL.grey, { font: 'small', align: 'right' });
+      }
+    } else if (this.mode === 'walk') {
+      var hint = '';
+      if (focus) hint = focus.kind === 'npc' ? 'A: TALK TO ' + this.npcFor(focus).name : 'A: ' + focus.label;
+      T(hint.toUpperCase(), 8, 198, PAL.white, { font: 'small' });
+      T('< > LOOK AROUND   START: CARDS   B: MAP', 8, 210, PAL.grey, { font: 'small' });
+    }
+    if (this.mode === 'arrive') { ctx.globalAlpha = 1 - Math.min(1, this.modeT / 300); R(0, 0, 320, 224, '#000'); ctx.globalAlpha = 1; }
     drawToasts(dt);
   };
 

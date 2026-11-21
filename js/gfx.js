@@ -176,6 +176,7 @@
 
   var ctx;
   G.gfxInit = function (c) { ctx = c; ctx.imageSmoothingEnabled = false; };
+  G.ctxRef = function () { return ctx; };
 
   G.rect = function (x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x | 0, y | 0, w | 0, h | 0); };
   G.px = function (x, y, c) { ctx.fillStyle = c; ctx.fillRect(x | 0, y | 0, 1, 1); };

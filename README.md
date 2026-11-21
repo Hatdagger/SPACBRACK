@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.2
+# SPACBRACK — prototype v0.3
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,14 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.3 (new exploration)
+
+- Over-the-shoulder exploration: the hero stands in the foreground with his back to you (flight jacket). Left/Right scrolls a wide panorama of the room.
+- Each location has two scenes: a Hall (two crew and the exit) and an Inner Room (the boss). A cue floats over whoever or whatever you're facing; press A to talk or go through a door. Going through a door plays a walk-forward animation.
+- Talking cuts to a full-screen face close-up with a typed line and a moving mouth, then Battle! / Not now.
+- The sector map is now a station cutaway with a cursor that moves between the six rooms.
+- All art is placeholder, sized to the Art Asset Guide (`art-tests/templates/`) so the pixel artist's files drop straight in.
 
 ## New in v0.2 (playtest fixes)
 
@@ -84,6 +92,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 | Stage perk (not used yet) | LT (or LB) | S | ; |
 | Pause / cards menu | Start | Esc | \ |
 | Menu OK / back | A / B | Enter / Backspace | |
+| Explore: look around / talk or enter / map | Left-Right / A / B | Arrows / Enter / Backspace | |
 
 In local 2P, controller 1 plays P1 and controller 2 plays P2.
 
@@ -92,6 +101,7 @@ In local 2P, controller 1 plays P1 and controller 2 plays P2.
 ```
 index.html      canvas + script tags
 js/gfx.js       pixel renderer: fonts, bricks, panels, LEDs, sprites
+js/scenes.js    placeholder explore art: panoramas, hero, NPCs, close-ups, station map
 js/data.js      bricks, kicks, cards, locations, game title
 js/board.js     one player's board rules (no browser code)
 js/ai.js        CPU opponent (no browser code)
