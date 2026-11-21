@@ -139,7 +139,7 @@
     // footer: tape specs
     G.deck(20, 182, 290, 34);
     T('HIGH GRADE', 28, 188, PAL.white, { font: 'small' });
-    T('PROTOTYPE V0.4', 302, 188, PAL.grey, { font: 'small', align: 'right' });
+    T('PROTOTYPE V0.5', 302, 188, PAL.grey, { font: 'small', align: 'right' });
     T(G.padCount ? G.padCount + ' CONTROLLER(S) READY' : 'PRESS A BUTTON ON A CONTROLLER TO CONNECT IT', 165, 198, PAL.amber, { font: 'small', align: 'center' });
     T('KEYBOARD: ARROWS + X / Z, ENTER', 165, 206, PAL.grey, { font: 'small', align: 'center' });
     drawToasts(dt);
@@ -300,6 +300,7 @@
     this.mode = 'arrive'; this.modeT = 0;
     go(new G.Battle({
       title: loc.name, subtitle: 'HOUSE RULE: ' + loc.rule,
+      rule: loc.ruleId, timeLimit: G.launchTimeLimit(cpuLevelFor(n, sp.idx)),
       color: loc.color,
       a: { name: 'YOU', features: playerFeatures(), cardId: me.id, rank: me.rank, slot: 0 },
       b: { name: n.name, features: foeFeat, cardId: foeCard, rank: foeRank, cpu: cpuLevelFor(n, sp.idx) },
@@ -540,12 +541,13 @@
 
   // ---------- versus setup ----------
   var CARD_CHOICES = ['starter'].concat(G.MONSTERS);
-  var vs = { mode: 0, level: 4, feat: G.allFeatures(), c1: 1, r1: 3, c2: 2, r2: 3 };
+  var vs = { mode: 0, rule: 0, level: 4, feat: G.allFeatures(), c1: 1, r1: 3, c2: 2, r2: 3 };
   function VersusSetup() { this.sel = 0; }
   VersusSetup.prototype.rows = function () {
     var r = [
       { label: 'Mode', value: ['VS CPU', '2P LOCAL'][vs.mode], adj: function (d) { vs.mode = (vs.mode + 2 + d) % 2; } }
     ];
+    r.push({ label: 'House rule', value: ['NONE', 'LAUNCH COUNTDOWN'][vs.rule], adj: function (d) { vs.rule = (vs.rule + 2 + d) % 2; } });
     if (vs.mode === 0) r.push({ label: 'CPU level', value: String(vs.level), adj: function (d) { vs.level = Math.max(1, Math.min(G.CPU_MAX_LEVEL, vs.level + d)); } });
     G.FEATURES.forEach(function (f) {
       r.push({ label: f.desc, value: vs.feat[f.key] ? 'ON' : 'OFF', adj: function () { vs.feat[f.key] = !vs.feat[f.key]; } });
@@ -575,6 +577,8 @@
     go(new G.Battle({
       title: 'VERSUS', subtitle: two ? 'LOCAL 2P - NO CARD LOSS' : 'VS CPU LEVEL ' + vs.level + ' - NO CARD LOSS',
       color: PAL.violet,
+      rule: vs.rule === 1 ? 'launch' : null,
+      timeLimit: two ? 360000 : G.launchTimeLimit(vs.level),
       a: { name: 'P1', features: feat, cardId: CARD_CHOICES[vs.c1], rank: vs.r1, slot: 0 },
       b: two ? { name: 'P2', features: feat, cardId: CARD_CHOICES[vs.c2], rank: vs.r2, slot: 1 }
         : { name: 'CPU', features: feat, cardId: CARD_CHOICES[vs.c2], rank: vs.r2, cpu: vs.level },

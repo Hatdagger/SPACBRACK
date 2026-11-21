@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.4
+# SPACBRACK — prototype v0.5
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,15 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.5 (Launch Complex house rule + perk)
+
+- **Countdown race, garbage off:** no garbage is sent in Launch Complex fights. There's a time limit of 1.5x the time the CPU needs to clear 40 lines (about 9 min vs the weakest crew, 4.5 min vs the strongest). When time runs out, more lines wins; a tie goes to sudden death (next line wins).
+- **Launch Countdown perk** (perk button: LT/LB, keyboard S): only while you're ahead, once per match. A 10-count starts; if you're still ahead when it ends, you win. It breaks if you clear a line or the opponent catches up.
+- The clock counts down in the centre, the count shows as "LAUNCH IN 9...", and a hint above your board tells you when the perk is ready.
+- CPUs use the countdown too. Weak CPUs wait for a 3-line lead and are slow to use it; strong ones go at 2 lines.
+- Versus has a new "House rule" option to play with Launch Countdown.
+- Card abilities that send garbage do nothing under this rule; their other effects still work.
 
 ## New in v0.4 (CPU difficulty)
 
@@ -84,7 +93,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## Not in yet (next steps)
 
-- House rules and stage perks for each location (Countdown race, Hologram decoys, Fold garbage, Interest, Save states, Card bet). The perk button is already mapped.
+- House rules and stage perks for the other five locations (Hologram decoys, Fold garbage, Interest, Save states, Card bet). The perk button is already mapped.
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
 - Online versus, sound, and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.

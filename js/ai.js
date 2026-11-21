@@ -20,6 +20,13 @@
     8: { think: 130, step: 50, settle: 0, mistake: 0.02, slop: 2, abilityRate: 0.60 }
   };
   G.CPU_MAX_LEVEL = 8;
+  // Measured median seconds for each level to clear 40 lines alone (no features, no garbage).
+  var SOLO_40L = [0, 355, 306, 294, 270, 240, 214, 200, 185];
+  // Launch Complex time limit: 1.5x the CPU's own 40-line time, rounded to 30 s.
+  G.launchTimeLimit = function (level) {
+    var s = SOLO_40L[Math.max(1, Math.min(8, level | 0))] * 1.5;
+    return Math.round(s / 30) * 30 * 1000;
+  };
 
   function evaluate(grid) {
     var heights = [], holes = 0, agg = 0, bump = 0;
@@ -64,7 +71,10 @@
         }
         var e = evaluate(grid);
         var danger = e.maxH > 14 ? 2 : 1;
-        var score = -0.51 * e.agg + 0.76 * lines * danger - 0.36 * e.holes - 0.18 * e.bump;
+        var lineW = 0.76 * danger;
+        // During its own Launch Countdown the CPU builds without clearing (unless it's in danger).
+        if (player.avoidClears && e.maxH <= 14) lineW = -6;
+        var score = -0.51 * e.agg + lineW * lines - 0.36 * e.holes - 0.18 * e.bump;
         out.push({ rot: rot, x: x, score: score });
       }
     });
@@ -76,6 +86,7 @@
 
   function CPU(player, level) {
     this.p = player;
+    this.level = level;
     this.cfg = LEVELS[Math.max(1, Math.min(8, level | 0))] || LEVELS[2];
     this.lastPiece = -1;
     this.timer = 0;
@@ -107,6 +118,18 @@
       var ready = G.DIRS.filter(function (d) { return p.canFire(d); });
       if (ready.length && p.rng() < this.cfg.abilityRate) {
         p.fire(ready[Math.floor(p.rng() * ready.length)]);
+      }
+    }
+
+    // Stage perk (Launch Countdown): when comfortably ahead, sometimes start the count.
+    var bt = p.battle;
+    if (bt && bt.canLaunch(p)) {
+      this.perkTimer = (this.perkTimer || 0) + dt;
+      if (this.perkTimer > 1000) {
+        this.perkTimer = 0;
+        // Weaker CPUs wait for a bigger lead and are slower to pull the trigger.
+        var lead = p.lines - p.opponent.lines, need = this.level <= 3 ? 3 : 2;
+        if (p.lines >= 8 && lead >= need && p.rng() < 0.03 * this.level) bt.tryLaunch(p);
       }
     }
 

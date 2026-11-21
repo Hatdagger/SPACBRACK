@@ -254,6 +254,7 @@
   };
 
   P.receive = function (rows, pattern) {
+    if (this.noGarbage) return;   // Launch Complex house rule: garbage off
     if (this.effects.fur) { delete this.effects.fur; this.say('BLOCKED'); return; }
     this.pending.push({ rows: rows, pattern: pattern || 'standard', gap: Math.floor(this.rng() * COLS) });
   };

@@ -4,7 +4,7 @@
 
   // Working title lives here so a rename is a one-line change.
   G.TITLE = 'SPACBRACK';
-  G.SUBTITLE = 'prototype v0.4';
+  G.SUBTITLE = 'prototype v0.5';
 
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
@@ -236,11 +236,11 @@
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
-  // House rules and stage perks are listed but not yet in the prototype.
+  // House rules and stage perks: only Launch Complex (ruleId 'launch') is in so far.
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
-      rule: 'Countdown race (coming later)',
+      rule: 'Countdown race - garbage off', ruleId: 'launch',
       npcs: [
         { name: 'Ground Crew Gus', card: 'skeleton', rank: 1, line: 'Fuel is loaded. Want a quick race?' },
         { name: 'Flight Tech Ida', card: 'bat', rank: 2, line: 'Checklist done. Care to test your stacking?' },

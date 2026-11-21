@@ -32,6 +32,7 @@
       if (this.cardMode) return; // d-pad picks abilities while the card button is held
     }
 
+    if (s.pressed('perk') && p.battle) p.battle.tryLaunch(p);
     if (s.pressed('rotCW')) p.rotate(1);
     if (s.pressed('rotCCW')) p.rotate(-1);
     if (s.pressed('hold')) p.hold();
@@ -62,14 +63,66 @@
       var c = i === 0 ? cfg.a : cfg.b;
       return c.cpu != null ? new G.CPU(p, c.cpu) : new Human(p, G.Input.slots[c.slot || 0]);
     });
+    var self = this;
+    [this.a, this.b].forEach(function (p) { p.battle = self; });
+    // House rule. 'launch' = Launch Complex: garbage off, time limit, Launch Countdown perk.
+    this.rule = cfg.rule || null;
+    if (this.rule === 'launch') {
+      this.a.noGarbage = this.b.noGarbage = true;
+      this.limit = cfg.timeLimit || 360000;
+      this.launch = null;              // active count: {by, t, linesAt}
+      this.launchUsed = [false, false];
+    }
+    this.endWhy = null;
     this.countdown = 2400;
     this.paused = false;
     this.over = false;
     this.time = 0;
   }
 
+  // ---------- Launch Complex: Launch Countdown perk ----------
+  var LAUNCH_MS = 10000;
+  Battle.prototype.idx = function (p) { return p === this.a ? 0 : 1; };
+  Battle.prototype.canLaunch = function (p) {
+    return this.rule === 'launch' && !this.over && !this.launch && this.countdown <= 0 &&
+      !this.launchUsed[this.idx(p)] && p.alive && p.lines > p.opponent.lines;
+  };
+  Battle.prototype.tryLaunch = function (p) {
+    if (!this.canLaunch(p)) {
+      if (this.rule === 'launch' && !this.over && !this.launch) p.say(this.launchUsed[this.idx(p)] ? 'COUNT SPENT' : 'GET AHEAD FIRST');
+      return false;
+    }
+    this.launchUsed[this.idx(p)] = true;
+    this.launch = { by: p, t: LAUNCH_MS, linesAt: p.lines };
+    p.avoidClears = true;
+    p.say('COUNTDOWN!');
+    return true;
+  };
+  Battle.prototype.updateLaunch = function (dt) {
+    var L = this.launch;
+    if (L) {
+      var p = L.by, o = p.opponent, why = null;
+      if (p.lines > L.linesAt) why = 'CLEARED A LINE';
+      else if (o.lines >= p.lines) why = o.name + ' CAUGHT UP';
+      if (why) {
+        p.avoidClears = false; this.launch = null;
+        p.say('COUNT BROKEN'); this.brokenMsg = { text: 'COUNT BROKEN - ' + why, t: 1800 };
+      } else {
+        L.t -= dt;
+        if (L.t <= 0) { p.avoidClears = false; this.launch = null; this.forced = this.idx(p) === 0 ? 'a' : 'b'; this.endWhy = 'launch'; }
+      }
+    }
+    if (this.brokenMsg && (this.brokenMsg.t -= dt) <= 0) this.brokenMsg = null;
+    // Time limit: more lines wins. A tie goes to sudden death (next line wins).
+    if (!this.forced && this.time >= this.limit) {
+      if (this.a.lines !== this.b.lines) { this.forced = this.a.lines > this.b.lines ? 'a' : 'b'; this.endWhy = 'time'; }
+      else this.sudden = true;
+    }
+  };
+
   Battle.prototype.result = function () {
     var a = this.a, b = this.b;
+    if (this.forced) return this.forced;
     if (a.won || !b.alive) return 'a';
     if (b.won || !a.alive) return 'b';
     return null;
@@ -91,6 +144,7 @@
     this.time += dt;
     this.ctrl.forEach(function (c) { c.update(dt); });
     this.a.update(dt); this.b.update(dt);
+    if (this.rule === 'launch') this.updateLaunch(dt);
     var r = this.result();
     if (r) { this.over = true; this.winner = r; this.endT = 0; }
   };
@@ -258,10 +312,42 @@
     });
   };
 
+  // Launch Countdown display: big count in the centre console, frame around the initiator's board.
+  Battle.prototype.drawLaunch = function (now) {
+    var L = this.launch;
+    if (L) {
+      var i = this.idx(L.by), n = Math.ceil(L.t / 1000), fx = FX[i], blink = Math.floor(now / 250) % 2;
+      var col = n <= 3 ? PAL.red : PAL.amber;
+      if (blink) { R(fx - 8, FY - 8, FW + 16, 2, col); R(fx - 8, FY + FH + 6, FW + 16, 2, col); R(fx - 8, FY - 8, 2, FH + 16, col); R(fx + FW + 6, FY - 8, 2, FH + 16, col); }
+      R(132, 134, 56, 36, '#000'); R(132, 134, 56, 1, col); R(132, 169, 56, 1, col);
+      T('LAUNCH IN', 160, 137, col, { align: 'center', font: 'small' });
+      G.chrome(String(n), 160, 146, 2, 'center');
+    } else if (this.brokenMsg) {
+      T('COUNT', 160, 140, PAL.red, { align: 'center', font: 'small' });
+      T('BROKEN', 160, 147, PAL.red, { align: 'center', font: 'small' });
+    } else {
+      // Perk hint for human players
+      var self = this;
+      [this.a, this.b].forEach(function (p, k) {
+        if (!(self.ctrl[k] instanceof Human)) return;
+        var used = self.launchUsed[k], ready = self.canLaunch(p);
+        var txt = used ? 'COUNT SPENT' : ready ? 'PERK: LAUNCH!' : 'PERK WHEN AHEAD';
+        var c = used ? '#4a4660' : ready ? (Math.floor(now / 300) % 2 ? PAL.yellow : PAL.amber) : '#6c6880';
+        T(txt, FX[k] + 40, FY - 7, c, { align: 'center', font: 'small' });
+      });
+    }
+  };
+
   var STARS = [];
   for (var si = 0; si < 70; si++) STARS.push([Math.floor(Math.random() * 320), Math.floor(Math.random() * 150), Math.random() < 0.2]);
   G.starfield = function (t) {
     STARS.forEach(function (s) { G.px(s[0], s[1], s[2] && Math.floor(t / 400 + s[0]) % 3 === 0 ? '#fff' : '#5a5878'); });
+  };
+
+  Battle.prototype.whyText = function (win) {
+    if (this.endWhy === 'launch') return win.name + ' WON THE LAUNCH COUNTDOWN';
+    if (this.endWhy === 'time') return 'TIME UP - ' + win.name + ' HAD MORE LINES';
+    return win.name + ' CLEARED ' + G.WIN_LINES + ' LINES FIRST';
   };
 
   Battle.prototype.draw = function (ctx) {
@@ -281,11 +367,20 @@
 
     // centre console
     G.chrome('VS', 160, 76, 2, 'center');
-    var secs = Math.floor(this.time / 1000);
+    var launchRule = this.rule === 'launch';
+    var ms = launchRule ? Math.max(0, this.limit - this.time) : this.time;
+    var secs = launchRule ? Math.ceil(ms / 1000) : Math.floor(ms / 1000);
+    var low = launchRule && secs <= 30;
     G.inset(141, 100, 38, 11);
-    G.led(Math.floor(secs / 60) + ':' + ('0' + secs % 60).slice(-2), 160, 102, PAL.green, 'center', PAL.greenDim);
-    T('FIRST', 160, 118, PAL.grey, { align: 'center', font: 'small' });
-    T('TO ' + G.WIN_LINES, 160, 125, PAL.grey, { align: 'center', font: 'small' });
+    G.led(Math.floor(secs / 60) + ':' + ('0' + secs % 60).slice(-2), 160, 102, low ? PAL.red : PAL.green, 'center', PAL.greenDim);
+    if (launchRule) {
+      T(this.sudden ? 'SUDDEN' : 'GARBAGE', 160, 118, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
+      T(this.sudden ? 'DEATH' : 'OFF', 160, 125, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
+      this.drawLaunch(now);
+    } else {
+      T('FIRST', 160, 118, PAL.grey, { align: 'center', font: 'small' });
+      T('TO ' + G.WIN_LINES, 160, 125, PAL.grey, { align: 'center', font: 'small' });
+    }
 
     if (this.countdown > 0) {
       for (var y = 0; y < 224; y += 2) R(0, y, 320, 1, 'rgba(0,0,0,0.6)');
@@ -308,11 +403,11 @@
         G.chrome('YOU GOT', 160, 92, 2, 'center', red);
         G.chrome('BRICKED UP!', 160, 108, 2, 'center', red);
       } else if (youLost) {
-        G.chrome('OUTRACED!', 160, 94, 2, 'center', red);
-        T(win.name + ' CLEARED ' + G.WIN_LINES + ' LINES FIRST', 160, 113, PAL.red, { align: 'center', font: 'small' });
+        G.chrome(this.endWhy === 'launch' ? 'LIFTOFF!' : this.endWhy === 'time' ? 'TIME UP!' : 'OUTRACED!', 160, 94, 2, 'center', red);
+        T(this.whyText(win), 160, 113, PAL.red, { align: 'center', font: 'small' });
       } else {
         G.chrome(win.name.length > 12 ? 'WINNER!' : win.name + ' WINS', 160, 94, 2, 'center');
-        T(toppedOut ? lose.name + ' GOT BRICKED UP!' : win.name + ' CLEARED ' + G.WIN_LINES + ' LINES FIRST', 160, 113, toppedOut ? PAL.red : PAL.green, { align: 'center', font: 'small' });
+        T(toppedOut ? lose.name + ' GOT BRICKED UP!' : this.whyText(win), 160, 113, toppedOut ? PAL.red : PAL.green, { align: 'center', font: 'small' });
       }
       if (this.endT > 800 && Math.floor(now / 400) % 2) T('PRESS A', 160, 126, PAL.white, { align: 'center', font: 'small' });
     }
