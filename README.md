@@ -4,6 +4,8 @@ A retro-futurism / NASA-punk RPG where every fight is a falling-block versus mat
 
 Note: the falling blocks are called **bricks** everywhere in this game.
 
+**Look:** blank-VHS-box art and cassette futurism, drawn in big chunky pixels at the Neo Geo's native 320x224 with a hand-made pixel font and CRT scanlines. Racing-stripe bands, chrome logo lettering, beige cassette labels, dark tape-deck panels, amber/green LED counters, and a VU meter for the ability meter.
+
 ## Run it
 
 No build step and nothing to install. Open `index.html` in Chrome, Edge or Firefox. That works on Windows, Linux and Android.
@@ -80,6 +82,7 @@ In local 2P, controller 1 plays P1 and controller 2 plays P2.
 
 ```
 index.html      canvas + script tags
+js/gfx.js       pixel renderer: fonts, bricks, panels, LEDs, sprites
 js/data.js      bricks, kicks, cards, locations, game title
 js/board.js     one player's board rules (no browser code)
 js/ai.js        CPU opponent (no browser code)

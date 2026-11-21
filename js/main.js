@@ -1,46 +1,26 @@
 // Screens (title, map, explore, inventory, versus setup, controls), save data, main loop.
+// Everything draws in 320x224 pixel space (Neo Geo resolution), scaled up with hard pixels.
 (function (G) {
   'use strict';
 
   var canvas = document.getElementById('game');
   var ctx = canvas.getContext('2d');
-  var I = G.Input;
+  G.gfxInit(ctx);
+  var I = G.Input, R = G.rect, T = G.text, PAL = G.PAL;
+  var now = 0;
 
-  // ---------- helpers ----------
-  G.roundRect = function (c, x, y, w, h, r) {
-    if (w < 0) w = 0;
-    r = Math.min(r, w / 2, h / 2);
-    c.beginPath();
-    c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
-    c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
-    c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y); c.closePath();
-  };
-  G.shade = function (hex, amt) {
-    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
-    function f(v) { return Math.max(0, Math.min(255, Math.round(amt < 0 ? v * (1 + amt) : v + (255 - v) * amt))); }
-    return 'rgb(' + f(r) + ',' + f(g) + ',' + f(b) + ')';
-  };
-  var stars = [];
-  for (var i = 0; i < 120; i++) stars.push([Math.random() * 1280, Math.random() * 720, Math.random() * 1.6 + 0.3]);
-  G.drawBackdrop = function (c, accent) {
-    var g = c.createLinearGradient(0, 0, 0, 720);
-    g.addColorStop(0, '#0d1428'); g.addColorStop(1, '#1d1530');
-    c.fillStyle = g; c.fillRect(0, 0, 1280, 720);
-    c.fillStyle = 'rgba(244,236,216,0.7)';
-    stars.forEach(function (s) { c.fillRect(s[0], s[1], s[2], s[2]); });
-    c.strokeStyle = accent || '#4fd1c5'; c.globalAlpha = 0.12; c.lineWidth = 2;
-    c.beginPath(); c.ellipse(640, 760, 820, 220, 0, 0, Math.PI * 2); c.stroke();
-    c.globalAlpha = 1;
-  };
-  function text(t, x, y, size, color, align, bold) {
-    ctx.font = (bold === false ? '' : 'bold ') + size + 'px monospace';
-    ctx.fillStyle = color || '#f4ecd8'; ctx.textAlign = align || 'left';
-    ctx.fillText(t, x, y);
+  function wrap(s, max) {
+    var words = String(s).split(' '), lines = [], cur = '';
+    words.forEach(function (w) {
+      if ((cur + ' ' + w).trim().length > max) { if (cur) lines.push(cur); cur = w; }
+      else cur = (cur + ' ' + w).trim();
+    });
+    if (cur) lines.push(cur);
+    return lines;
   }
-  function panel(x, y, w, h, accent) {
-    ctx.fillStyle = 'rgba(20,28,44,0.92)'; G.roundRect(ctx, x, y, w, h, 12); ctx.fill();
-    ctx.strokeStyle = accent || '#4fd1c5'; ctx.lineWidth = 2; G.roundRect(ctx, x, y, w, h, 12); ctx.stroke();
+  function blink(ms) { return Math.floor(now / (ms || 400)) % 2 === 0; }
+  function cursor(x, y, color) { // little play-button triangle
+    for (var i = 0; i < 4; i++) R(x + i, y + i, 1, 7 - i * 2, color || PAL.yellow);
   }
 
   // ---------- save data ----------
@@ -66,27 +46,30 @@
     return { id: id, rank: id === 'starter' ? 1 : G.rankForXp(save.xp[id] || 0) };
   }
 
-  // ---------- messages ----------
+  // ---------- toasts (cassette-label strips) ----------
   var toasts = [];
-  function toast(msg) { toasts.push({ msg: msg, t: 3500 }); }
+  function toast(msg) { toasts.push({ msg: String(msg).toUpperCase(), t: 3500 }); }
   function drawToasts(dt) {
     toasts = toasts.filter(function (t) { t.t -= dt; return t.t > 0; });
     toasts.slice(0, 3).forEach(function (t, k) {
-      ctx.globalAlpha = Math.min(1, t.t / 500);
-      panel(340, 600 - k * 54, 600, 44, '#f2d16b');
-      text(t.msg, 640, 628 - k * 54, 16, '#f2d16b', 'center');
-      ctx.globalAlpha = 1;
+      var w = Math.min(300, G.textWidth(t.msg, 'small') + 16), y = 196 - k * 16;
+      G.label(160 - w / 2, y, w, 13, PAL.orange);
+      T(t.msg, 160, y + 6, PAL.beigeInk, { align: 'center', font: 'small' });
     });
+  }
+
+  // ---------- backgrounds ----------
+  function vhsBackdrop(accent) {
+    R(0, 0, 320, 224, PAL.night);
+    G.starfield(now);
+    G.floor(160, 64, G.shade(accent || PAL.pink, -0.35), now / 16);
   }
 
   // ---------- screen manager ----------
   var screen = null;
   function go(s) { screen = s; if (s.enter) s.enter(); }
 
-  // Generic vertical menu
-  function Menu(items, opts) {
-    this.items = items; this.sel = 0; this.opts = opts || {};
-  }
+  function Menu(items, opts) { this.items = items; this.sel = 0; this.opts = opts || {}; }
   Menu.prototype.update = function () {
     if (I.any('repeat', 'down', 300, 120)) this.sel = (this.sel + 1) % this.items.length;
     if (I.any('repeat', 'up', 300, 120)) this.sel = (this.sel + this.items.length - 1) % this.items.length;
@@ -94,16 +77,16 @@
     if (I.any('pressed', 'back') && this.opts.back) { this.opts.back(); return true; }
     return false;
   };
-  Menu.prototype.draw = function (x, y, w) {
-    var self = this;
+  Menu.prototype.draw = function (x, y, ink, gap) {
+    var self = this; gap = gap || 11;
     this.items.forEach(function (it, k) {
       var sel = k === self.sel;
-      if (sel) { ctx.fillStyle = 'rgba(232,118,58,0.25)'; G.roundRect(ctx, x - 12, y + k * 44 - 28, w, 38, 8); ctx.fill(); }
-      text((sel ? '> ' : '  ') + (typeof it.label === 'function' ? it.label() : it.label), x, y + k * 44, 22, sel ? '#f2d16b' : '#f4ecd8');
+      if (sel) cursor(x - 8, y + k * gap, PAL.red);
+      T(typeof it.label === 'function' ? it.label() : it.label, x, y + k * gap, sel ? PAL.red : (ink || PAL.beigeInk));
     });
   };
 
-  // ---------- title ----------
+  // ---------- title: blank VHS box ----------
   function Title() {
     var self = this;
     this.menu = new Menu([
@@ -112,24 +95,34 @@
       { label: 'Controls', fn: function () { go(new Controls(self)); } },
       { label: 'Reset save', fn: function () { save = freshSave(); persist(); toast('Save data cleared'); } }
     ]);
-    this.t = 0;
   }
-  Title.prototype.update = function (dt) { this.t += dt; this.menu.update(); };
+  Title.prototype.update = function () { this.menu.update(); };
   Title.prototype.draw = function (dt) {
-    G.drawBackdrop(ctx, '#e8763a');
-    // falling demo blocks
-    var types = G.PIECE_TYPES;
-    for (var k = 0; k < 14; k++) {
-      var y = ((this.t / 12 + k * 97) % 820) - 60;
-      G.drawBlock(ctx, 60 + k * 85, y, 34, G.BLOCK_COLORS[types[k % 7]], 0.35);
+    R(0, 0, 320, 224, PAL.black);
+    G.starfield(now);
+    // big diagonal racing stripes across the "box"
+    G.stripes(0, 64, 320, 5, G.STRIPES, 0.8);
+    // spine-style side band
+    R(0, 0, 14, 224, '#1b1826'); for (var y = 0; y < 224; y += 6) R(3, y, 8, 3, '#2a2638');
+    T('BB-40', 7, 6, PAL.amber, { font: 'small', align: 'center' });
+    // logo
+    G.chrome('SPACBRACK', 167, 22, 3, 'center');
+    T('A RETRO-FUTURE BRICK BATTLE RPG', 167, 50, PAL.cyan, { font: 'small', align: 'center' });
+    // falling bricks over the stripes
+    for (var k = 0; k < 6; k++) {
+      var bx = 40 + k * 46, by = ((now / 25 + k * 53) % 260) - 30;
+      G.brick(bx, by, 8, G.BLOCK_COLORS[G.PIECE_TYPES[k]]);
     }
-    text(G.TITLE, 640, 210, 84, '#f2d16b', 'center');
-    text(G.SUBTITLE, 640, 250, 16, '#9fb3d1', 'center', false);
-    text('A RETRO-FUTURE BRICK BATTLE RPG', 640, 290, 18, '#e8763a', 'center');
-    panel(470, 340, 340, 210, '#e8763a');
-    this.menu.draw(510, 392, 290);
-    text(G.padCount ? G.padCount + ' controller(s) connected' : 'Press any button on a controller to connect it', 640, 600, 14, '#9fb3d1', 'center', false);
-    text('Keyboard: arrows + X / Z, Enter', 640, 622, 14, '#9fb3d1', 'center', false);
+    // cassette label holding the menu
+    G.label(104, 104, 126, 66, PAL.red);
+    for (var l = 0; l < 4; l++) R(118, 118 + l * 11, 104, 1, '#c4b694');
+    this.menu.draw(120, 111);
+    // footer: tape specs
+    G.deck(20, 182, 290, 34);
+    T('HIGH GRADE', 28, 188, PAL.white, { font: 'small' });
+    T('PROTOTYPE V0.1', 302, 188, PAL.grey, { font: 'small', align: 'right' });
+    T(G.padCount ? G.padCount + ' CONTROLLER(S) READY' : 'PRESS A BUTTON ON A CONTROLLER TO CONNECT IT', 165, 198, PAL.amber, { font: 'small', align: 'center' });
+    T('KEYBOARD: ARROWS + X / Z, ENTER', 165, 206, PAL.grey, { font: 'small', align: 'center' });
     drawToasts(dt);
   };
 
@@ -137,30 +130,33 @@
   function Controls(back) { this.back = back; }
   Controls.prototype.update = function () { if (I.any('pressed', 'back') || I.any('pressed', 'ok')) go(this.back); };
   Controls.prototype.draw = function () {
-    G.drawBackdrop(ctx);
-    text('CONTROLS', 640, 80, 36, '#f2d16b', 'center');
+    vhsBackdrop(PAL.cyan);
+    G.chrome('CONTROLS', 160, 8, 2, 'center');
+    G.label(8, 30, 304, 150, PAL.cyan);
     var rows = [
-      ['Action', 'Controller', 'Keyboard P1', 'Keyboard P2'],
-      ['Move / soft drop', 'D-pad / stick', 'Arrows', 'J L K'],
-      ['Rotate CW', 'A', 'X', 'O'],
-      ['Rotate CCW', 'B', 'Z', 'U'],
-      ['Hard drop *', 'X', 'Space', 'N'],
-      ['Hold *', 'Y', 'C / Shift', 'M'],
-      ['Card ability', 'RT (or RB)', 'A', 'P'],
-      ['Stage perk', 'LT (or LB)', 'S', ';'],
-      ['Pause / cards menu', 'Start', 'Esc', '\\']
+      ['ACTION', 'PAD', 'KEYS P1', 'KEYS P2'],
+      ['MOVE / SOFT DROP', 'D-PAD/STICK', 'ARROWS', 'J L K'],
+      ['ROTATE CW', 'A', 'X', 'O'],
+      ['ROTATE CCW', 'B', 'Z', 'U'],
+      ['HARD DROP *', 'X', 'SPACE', 'N'],
+      ['HOLD *', 'Y', 'C / SHIFT', 'M'],
+      ['CARD ABILITY', 'RT (RB)', 'A', 'P'],
+      ['STAGE PERK', 'LT (LB)', 'S', ';'],
+      ['PAUSE / CARDS', 'START', 'ESC', '\\'],
+      ['MENU OK / BACK', 'A / B', 'ENTER / BKSP', '']
     ];
     rows.forEach(function (r, k) {
-      var y = 150 + k * 40, c = k === 0 ? '#e8763a' : '#f4ecd8';
-      text(r[0], 160, y, 18, c); text(r[1], 480, y, 18, c); text(r[2], 720, y, 18, c); text(r[3], 960, y, 18, c);
+      var y = 40 + k * 10, c = k === 0 ? PAL.red : PAL.beigeInk;
+      T(r[0], 16, y, c, { font: 'small' }); T(r[1], 100, y, c, { font: 'small' });
+      T(r[2], 166, y, c, { font: 'small' }); T(r[3], 250, y, c, { font: 'small' });
     });
-    text('* needs the matching token in Adventure (always on in Versus if toggled).', 640, 540, 15, '#9fb3d1', 'center', false);
-    text('Card ability: HOLD the card button, hold a direction, RELEASE the card button to fire.', 640, 570, 15, '#9fb3d1', 'center', false);
-    text('Any other button cancels. Abilities cost meter; clear lines to fill it.', 640, 594, 15, '#9fb3d1', 'center', false);
-    text('Press B to go back', 640, 660, 16, '#f2d16b', 'center');
+    T('* NEEDS ITS TOKEN IN ADVENTURE', 16, 146, PAL.beigeLo, { font: 'small' });
+    T('CARD: HOLD THE BUTTON, HOLD A DIRECTION, RELEASE TO FIRE.', 16, 156, PAL.beigeLo, { font: 'small' });
+    T('ANY OTHER BUTTON CANCELS. LINE CLEARS FILL THE METER.', 16, 164, PAL.beigeLo, { font: 'small' });
+    if (blink()) T('PRESS B', 160, 196, PAL.white, { align: 'center' });
   };
 
-  // ---------- map ----------
+  // ---------- map: a shelf of VHS tapes ----------
   function MapScreen() { this.sel = MapScreen.last || 0; }
   MapScreen.prototype.update = function () {
     var s = this.sel;
@@ -172,27 +168,44 @@
     if (I.any('pressed', 'back')) { go(new Title()); return; }
     if (I.any('pressed', 'pause')) go(new Inventory(this));
   };
+  function tapeBox(x, y, w, h, loc, sel, k) {
+    var lift = sel ? -3 : 0;
+    y += lift;
+    R(x + 3, y + 3 - lift, w, h, '#000');
+    R(x, y, w, h, '#120f1c');
+    if (sel) { R(x - 1, y - 1, w + 2, 1, PAL.white); R(x - 1, y + h, w + 2, 1, PAL.white); R(x - 1, y, 1, h, PAL.white); R(x + w, y, 1, h, PAL.white); }
+    // diagonal stripe in the location colour family
+    var cols = [G.shade(loc.color, 0.4), loc.color, G.shade(loc.color, -0.3), G.shade(loc.color, -0.55)];
+    for (var r = 0; r < 16; r++) {
+      var band = Math.floor(r / 4), off = r;
+      R(x + 4 + off, y + 16 + r, w - 8 - off, 1, cols[band]);
+    }
+    // white label + number
+    R(x + 4, y + 4, w - 8, 9, PAL.white);
+    T(loc.name, x + w / 2, y + 6, '#000', { font: 'small', align: 'center' });
+    T('T-' + (k + 1) * 20, x + w - 5, y + h - 9, PAL.grey, { font: 'small', align: 'right' });
+    var got = save.tokens[loc.feature], beaten = save.beaten[loc.id].filter(Boolean).length;
+    if (got) { G.bevel(x + 4, y + h - 13, 30, 9, PAL.yellow, '#fff', PAL.orange, '#000'); T('TOKEN', x + 19, y + h - 11, '#000', { font: 'small', align: 'center' }); }
+    else T(beaten + '/3', x + 5, y + h - 10, PAL.amber, { font: 'small' });
+  }
   MapScreen.prototype.draw = function (dt) {
-    G.drawBackdrop(ctx, G.LOCATIONS[this.sel].color);
-    text('SECTOR MAP', 640, 60, 32, '#f2d16b', 'center');
+    var loc = G.LOCATIONS[this.sel];
+    vhsBackdrop(loc.color);
+    G.chrome('SECTOR MAP', 120, 6, 2, 'center');
     var tokens = G.FEATURES.filter(function (f) { return save.tokens[f.key]; }).length;
-    text('Tokens ' + tokens + '/6', 640, 90, 16, '#9fb3d1', 'center', false);
+    G.inset(236, 6, 70, 13);
+    T('TOKENS', 241, 9, PAL.grey, { font: 'small' });
+    G.led(tokens + '/6', 301, 9, PAL.amber, 'right');
     var self = this;
-    G.LOCATIONS.forEach(function (loc, k) {
-      var cx = 300 + (k % 3) * 340, cy = 220 + Math.floor(k / 3) * 230;
-      var sel = k === self.sel, got = save.tokens[loc.feature];
-      ctx.strokeStyle = loc.color; ctx.lineWidth = sel ? 5 : 2;
-      ctx.fillStyle = sel ? G.shade(loc.color, -0.55) : '#141c2c';
-      ctx.beginPath(); ctx.arc(cx, cy, sel ? 62 : 54, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.ellipse(cx, cy, 92, 22, -0.3, 0, Math.PI * 2); ctx.globalAlpha = 0.5; ctx.stroke(); ctx.globalAlpha = 1;
-      text(loc.name, cx, cy + 96, 18, sel ? '#f2d16b' : '#f4ecd8', 'center');
-      var beaten = save.beaten[loc.id].filter(Boolean).length;
-      text(got ? 'TOKEN GOT' : beaten + '/3 beaten', cx, cy + 6, 14, got ? '#f2d16b' : '#9fb3d1', 'center');
+    G.LOCATIONS.forEach(function (l, k) {
+      tapeBox(14 + (k % 3) * 102, 30 + Math.floor(k / 3) * 66, 90, 56, l, k === self.sel, k);
     });
-    var loc = G.LOCATIONS[this.sel], feat = G.FEATURES.filter(function (f) { return f.key === loc.feature; })[0];
-    panel(240, 620, 800, 70, loc.color);
-    text('Token: ' + feat.name + ' (' + feat.desc + ')   House rule: ' + loc.rule, 640, 648, 15, '#f4ecd8', 'center', false);
-    text('A: enter   Start: cards   B: title', 640, 674, 14, '#9fb3d1', 'center', false);
+    var feat = G.FEATURES.filter(function (f) { return f.key === loc.feature; })[0];
+    G.label(8, 166, 304, 52, loc.color);
+    T(loc.name, 16, 174, PAL.beigeInk);
+    T('TOKEN: ' + feat.name + ' (' + feat.desc + ')', 16, 185, PAL.beigeInk, { font: 'small' });
+    T('HOUSE RULE: ' + loc.rule, 16, 193, PAL.beigeInk, { font: 'small' });
+    T('A: ENTER   START: CARDS   B: TITLE', 16, 205, PAL.beigeLo, { font: 'small' });
     drawToasts(dt);
   };
 
@@ -210,7 +223,7 @@
     '#........P.........#',
     '#########EE#########'
   ];
-  var TILE = 60, RX = 40, RY = 50;
+  var TILE = 16, RX = 0, RY = 18;
 
   function Explore(loc) {
     this.loc = loc;
@@ -262,7 +275,7 @@
       return;
     }
     this.dialog = {
-      who: n.name, line: n.line + (beaten[npc.idx] ? '  (Rematch)' : ''),
+      who: n.name, line: n.line + (beaten[npc.idx] ? ' (Rematch)' : ''),
       menu: new Menu([
         { label: 'Battle!', fn: function () { self.dialog = null; self.startBattle(npc); } },
         { label: 'Not now', fn: function () { self.dialog = null; } }
@@ -276,7 +289,7 @@
     var foeFeat = n.mirror ? playerFeatures() : G.allFeatures();
     I.setSinglePlayer(true);
     go(new G.Battle({
-      title: loc.name.toUpperCase(), subtitle: 'House rule: ' + loc.rule + '  |  First to ' + G.WIN_LINES + ' lines',
+      title: loc.name, subtitle: 'HOUSE RULE: ' + loc.rule,
       color: loc.color,
       a: { name: 'YOU', features: playerFeatures(), cardId: me.id, rank: me.rank, slot: 0 },
       b: { name: n.name, features: foeFeat, cardId: foeCard, rank: foeRank, cpu: n.level },
@@ -314,73 +327,88 @@
     }
     persist();
   };
+  Explore.prototype.drawProp = function (px, py, loc) {
+    var c = loc.color, d = G.shade(c, -0.55), l = G.shade(c, 0.45);
+    G.bevel(px + 1, py + 2, 14, 13, '#2a2638', '#4a4660', '#100e18', '#000');
+    switch (loc.prop) {
+      case 'gantry':
+        for (var i = 0; i < 4; i++) { R(px + 4, py + 3 + i * 3, 8, 1, c); R(px + 4 + (i % 2) * 6, py + 3 + i * 3, 2, 3, d); }
+        R(px + 7, py + 1, 2, 3, PAL.red); break;
+      case 'pillar':
+        R(px + 5, py + 3, 6, 11, d); for (var j = 0; j < 11; j += 2) R(px + 5, py + 3 + j, 6, 1, (Math.floor(now / 200) + j) % 4 ? c : l); break;
+      case 'vat':
+        R(px + 4, py + 4, 8, 10, d); R(px + 5, py + 7, 6, 6, c); R(px + 6, py + 8 + (Math.floor(now / 300) % 3), 1, 1, l); R(px + 4, py + 4, 8, 1, l); break;
+      case 'vault':
+        R(px + 3, py + 4, 10, 10, d); R(px + 6, py + 7, 4, 4, c); R(px + 7, py + 8, 2, 2, l); break;
+      case 'clock':
+        R(px + 3, py + 4, 10, 9, '#000'); G.text(Math.floor(now / 1000) % 60 < 10 ? '0' + Math.floor(now / 1000) % 60 : String(Math.floor(now / 1000) % 60), px + 8, py + 6, c, { font: 'small', align: 'center' }); break;
+      case 'slots':
+        for (var k = 0; k < 3; k++) { R(px + 3 + k * 4, py + 5, 3, 6, '#fff'); R(px + 4 + k * 4, py + 7, 1, 2, [PAL.red, PAL.yellow, PAL.cyan][(k + Math.floor(now / 150)) % 3]); }
+        R(px + 13, py + 3, 1, 5, c); break;
+    }
+  };
+  Explore.prototype.figure = function (x, y, suit, accent, face, boss) {
+    var pal = { k: '#000', w: suit, v: PAL.cyan, l: '#fff', c: accent, g: '#6a6880', d: PAL.red };
+    var rows = G.ASTRO;
+    if (face === 'up') rows = rows.map(function (r) { return r.replace(/[vl]/g, 'w'); });
+    var key = 'fig' + suit + accent + (face === 'up' ? 'u' : '');
+    R(x + 3, y + 15, 10, 1, 'rgba(0,0,0,0.5)');
+    G.sprite(rows, x, y, pal, key, face === 'left');
+    if (boss) { R(x + 7, y - 3, 2, 3, PAL.yellow); G.px(x + 7, y - 4, PAL.red); }
+  };
   Explore.prototype.draw = function (dt) {
     var loc = this.loc, self = this;
-    ctx.fillStyle = '#0d1428'; ctx.fillRect(0, 0, 1280, 720);
-    text(loc.name.toUpperCase(), 40, 36, 22, loc.color);
-    text('A: talk   Start: cards   exit at the bottom door', 1240, 36, 14, '#9fb3d1', 'right', false);
+    R(0, 0, 320, 224, PAL.black);
+    // header strip
+    G.stripes(0, 0, 60, 1, [loc.color, G.shade(loc.color, -0.3), G.shade(loc.color, -0.5)], 2, 'right');
+    T(loc.name, 66, 5, loc.color, { shadow: '#000' });
+    T('A: TALK  START: CARDS', 316, 6, PAL.grey, { font: 'small', align: 'right' });
     for (var y = 0; y < ROOM.length; y++) for (var x = 0; x < ROOM[y].length; x++) {
       var ch = ROOM[y][x], px = RX + x * TILE, py = RY + y * TILE;
-      if (ch === '#') { ctx.fillStyle = '#2a3248'; ctx.fillRect(px, py, TILE, TILE); ctx.fillStyle = '#3a4460'; ctx.fillRect(px + 4, py + 4, TILE - 8, 6); }
-      else {
-        ctx.fillStyle = (x + y) % 2 ? '#1a2236' : '#1e273d'; ctx.fillRect(px, py, TILE, TILE);
-        if (ch === 'E') { ctx.fillStyle = loc.color; ctx.globalAlpha = 0.4; ctx.fillRect(px + 6, py + 6, TILE - 12, TILE - 12); ctx.globalAlpha = 1; }
+      if (ch === '#') {
+        G.bevel(px, py, TILE, TILE, '#2c2a3e', '#47445e', '#141220');
+        if (y === 0) R(px + 2, py + 6, 12, 2, G.shade(loc.color, -0.4));
+      } else {
+        R(px, py, TILE, TILE, (x + y) % 2 ? '#16141f' : '#1b1926');
+        R(px, py, TILE, 1, '#100e18'); R(px, py, 1, TILE, '#100e18');
+        if (ch === 'E') { R(px + 2, py + 2, 12, 12, G.shade(loc.color, -0.5)); for (var a = 0; a < 3; a++) R(px + 7 - a, py + 5 + a, 2 + a * 2, 1, blink(300) ? loc.color : G.shade(loc.color, 0.4)); }
         if (ch === 'o') this.drawProp(px, py, loc);
       }
     }
     this.npcs.forEach(function (n) {
-      var beaten = save.beaten[loc.id][n.idx];
-      self.drawFigure(RX + n.x * TILE, RY + n.y * TILE, n.data.boss ? '#f2d16b' : G.CARDS[n.data.mirror ? 'starter' : n.data.card].color, n.data.boss);
-      text(n.data.name, RX + n.x * TILE + TILE / 2, RY + n.y * TILE - 6, 12, beaten ? '#7fbf6a' : '#f4ecd8', 'center');
+      var beaten = save.beaten[loc.id][n.idx], card = G.CARDS[n.data.mirror ? 'starter' : n.data.card];
+      var suit = n.data.boss ? PAL.yellow : card.color;
+      self.figure(RX + n.x * TILE, RY + n.y * TILE, suit, G.shade(suit, -0.5), 'down', n.data.boss);
+      var name = n.data.name;
+      T(name, RX + n.x * TILE + 8, RY + n.y * TILE - (n.data.boss ? 10 : 7), beaten ? PAL.green : PAL.white, { font: 'small', align: 'center', shadow: '#000' });
     });
     var t = this.moveT / 140;
     var dx = this.px + (this.fromX - this.px) * t, dy = this.py + (this.fromY - this.py) * t;
-    this.drawFigure(RX + dx * TILE, RY + dy * TILE, '#f4ecd8', false, this.face);
+    var bob = this.moveT > 0 && Math.floor(this.moveT / 70) % 2 ? -1 : 0;
+    this.figure(Math.round(RX + dx * TILE), Math.round(RY + dy * TILE) + bob, PAL.white, PAL.orange, this.face);
 
+    // footer
     var me = equippedCard();
-    text('Card: ' + G.CARDS[me.id].name + ' R' + me.rank, 40, 708, 14, G.CARDS[me.id].color, 'left', false);
+    R(0, 196, 320, 28, '#0c0a14');
+    T('CARD', 6, 202, PAL.grey, { font: 'small' });
+    T(G.CARDS[me.id].name + ' R' + me.rank, 26, 202, G.CARDS[me.id].color, { font: 'small' });
+    var tokens = G.FEATURES.filter(function (f) { return save.tokens[f.key]; }).length;
+    T('TOKENS ' + tokens + '/6', 314, 202, PAL.amber, { font: 'small', align: 'right' });
+    T('EXIT: BOTTOM DOOR', 160, 212, PAL.grey, { font: 'small', align: 'center' });
 
     if (this.dialog) {
-      var d = this.dialog;
-      panel(140, 470, 1000, 200, loc.color);
-      text(d.who, 170, 506, 20, loc.color);
-      text(d.line, 170, 540, 18, '#f4ecd8', 'left', false);
-      if (d.menu) d.menu.draw(190, 600, 300);
-      else text('A: OK', 1110, 650, 14, '#9fb3d1', 'right', false);
+      var d = this.dialog, lines = wrap(d.line.toUpperCase(), 66);
+      G.label(10, 136, 300, 62, loc.color);
+      T(d.who, 18, 144, PAL.red);
+      lines.forEach(function (ln, k) { T(ln, 18, 155 + k * 7, PAL.beigeInk, { font: 'small' }); });
+      if (d.menu) d.menu.draw(30, 172, PAL.beigeInk, 10);
+      else if (blink()) T('A: OK', 302, 188, PAL.beigeLo, { font: 'small', align: 'right' });
     }
     drawToasts(dt);
   };
-  Explore.prototype.drawProp = function (px, py, loc) {
-    ctx.fillStyle = G.shade(loc.color, -0.5);
-    G.roundRect(ctx, px + 6, py + 6, TILE - 12, TILE - 12, 8); ctx.fill();
-    ctx.fillStyle = loc.color;
-    switch (loc.prop) {
-      case 'gantry': ctx.fillRect(px + 26, py + 10, 8, TILE - 20); break;
-      case 'pillar': ctx.globalAlpha = 0.6; ctx.fillRect(px + 18, py + 10, 24, TILE - 20); ctx.globalAlpha = 1; break;
-      case 'vat': ctx.beginPath(); ctx.arc(px + 30, py + 32, 14, 0, Math.PI * 2); ctx.fill(); break;
-      case 'vault': ctx.strokeStyle = loc.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(px + 30, py + 30, 14, 0, Math.PI * 2); ctx.stroke(); break;
-      case 'clock': ctx.strokeStyle = loc.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(px + 30, py + 30, 15, 0, Math.PI * 2); ctx.moveTo(px + 30, py + 30); ctx.lineTo(px + 30, py + 19); ctx.moveTo(px + 30, py + 30); ctx.lineTo(px + 38, py + 30); ctx.stroke(); break;
-      case 'slots': for (var k = 0; k < 3; k++) ctx.fillRect(px + 12 + k * 13, py + 22, 10, 16); break;
-    }
-  };
-  Explore.prototype.drawFigure = function (px, py, color, boss, face) {
-    var cx = px + TILE / 2, cy = py + TILE / 2;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(cx, py + TILE - 8, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = color; G.roundRect(ctx, cx - 13, cy - 6, 26, 26, 6); ctx.fill();
-    ctx.fillStyle = '#cfe8ff'; ctx.globalAlpha = 0.85;
-    ctx.beginPath(); ctx.arc(cx, cy - 12, 13, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy - 12, 13, 0, Math.PI * 2); ctx.stroke();
-    if (boss) { ctx.fillStyle = '#e8763a'; ctx.fillRect(cx - 2, cy - 34, 4, 9); }
-    if (face) {
-      var o = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[face];
-      ctx.fillStyle = '#0b1020'; ctx.beginPath(); ctx.arc(cx + o[0] * 6, cy - 12 + o[1] * 4, 3, 0, Math.PI * 2); ctx.fill();
-    }
-  };
 
-  // ---------- inventory (equip, or toss when full) ----------
-  function Inventory(back, incoming) {
-    this.back = back; this.incoming = incoming || null; this.sel = 0;
-  }
+  // ---------- inventory: tape spines + label ----------
+  function Inventory(back, incoming) { this.back = back; this.incoming = incoming || null; this.sel = 0; }
   Inventory.prototype.entries = function () {
     var list = [{ id: 'starter', idx: -1 }];
     save.inventory.forEach(function (id, k) { list.push({ id: id, idx: k }); });
@@ -411,37 +439,49 @@
     if (!this.incoming && (I.any('pressed', 'back') || I.any('pressed', 'pause'))) go(this.back);
   };
   Inventory.prototype.draw = function (dt) {
-    G.drawBackdrop(ctx, '#b06ab3');
-    text(this.incoming ? 'INVENTORY FULL - CHOOSE A CARD TO TOSS' : 'CARDS', 640, 60, 28, '#f2d16b', 'center');
-    text(save.inventory.length + '/' + G.INVENTORY_CAP + ' slots (Cadet Badge is free)', 640, 88, 14, '#9fb3d1', 'center', false);
+    vhsBackdrop(PAL.violet);
+    G.chrome(this.incoming ? 'TOSS ONE' : 'CARDS', 84, 6, 2, 'center');
+    T(save.inventory.length + '/' + G.INVENTORY_CAP + ' SLOTS', 84, 24, PAL.grey, { font: 'small', align: 'center' });
     var list = this.entries(), self = this;
     list.forEach(function (e, k) {
-      var c = G.CARDS[e.id], sel = k === self.sel, y = 120 + k * 52;
+      var c = G.CARDS[e.id], sel = k === self.sel, y = 32 + k * 18, x = sel ? 12 : 8;
+      R(x + 2, y + 2, 148, 15, '#000');
+      R(x, y, 148, 15, '#141120');
+      R(x, y, 6, 15, c.color); R(x + 6, y, 2, 15, G.shade(c.color, -0.5));
+      R(x + 12, y + 3, 100, 9, sel ? PAL.white : '#d8d2c0');
       var rank = e.id === 'starter' ? 1 : G.rankForXp(save.xp[e.id] || 0);
-      ctx.fillStyle = sel ? 'rgba(232,118,58,0.25)' : 'rgba(20,28,44,0.8)';
-      G.roundRect(ctx, 80, y, 520, 44, 8); ctx.fill();
-      ctx.fillStyle = c.color; ctx.fillRect(92, y + 8, 8, 28);
-      var tag = e.idx === save.equipped && !self.incoming ? '  [EQUIPPED]' : e.idx === 'new' ? '  [NEW]' : '';
-      text(c.name + '  R' + rank + tag, 114, y + 29, 18, sel ? '#f2d16b' : '#f4ecd8');
+      T(c.name, x + 15, y + 4, '#000');
+      T('R' + rank, x + 144, y + 5, PAL.amber, { font: 'small', align: 'right' });
+      if (e.idx === save.equipped && !self.incoming) T('ON', x + 128, y + 5, PAL.green, { font: 'small', align: 'right' });
+      if (e.idx === 'new') T('NEW', x + 130, y + 5, PAL.pink, { font: 'small', align: 'right' });
+      if (sel) cursor(x - 7, y + 4, PAL.yellow);
     });
     var e = list[this.sel], c = G.CARDS[e.id];
     var rank = e.id === 'starter' ? 1 : G.rankForXp(save.xp[e.id] || 0);
-    panel(640, 120, 560, 420, c.color);
-    text(c.name, 670, 160, 26, c.color);
+    G.label(166, 8, 148, 182, c.color);
+    T(c.name, 174, 18, PAL.beigeInk);
     if (e.id !== 'starter') {
       var xp = save.xp[e.id] || 0, nxt = G.RANK_XP[Math.min(5, rank + 1)];
-      text('Rank ' + rank + '   XP ' + xp + (rank < 5 ? ' / ' + nxt : ' (max)'), 670, 190, 15, '#9fb3d1', 'left', false);
+      G.inset(174, 29, 132, 11);
+      T('RANK', 177, 32, PAL.grey, { font: 'small' });
+      G.led(String(rank), 200, 31, PAL.amber);
+      T('XP ' + xp + (rank < 5 ? '/' + nxt : ' MAX'), 302, 32, PAL.green, { font: 'small', align: 'right' });
     }
-    text('Passive: ' + c.passive.name + ' - ' + c.passive.desc, 670, 230, 15, '#f4ecd8', 'left', false);
+    T('PASSIVE: ' + c.passive.name, 174, 46, PAL.red, { font: 'small' });
+    wrap(c.passive.desc.toUpperCase(), 33).forEach(function (ln, k) { T(ln, 174, 53 + k * 7, PAL.beigeInk, { font: 'small' }); });
     G.DIRS.forEach(function (d, k) {
-      var a = c.actives[d], y = 270 + k * 50;
+      var a = c.actives[d], y = 70 + k * 28;
       if (!a) return;
       var open = rank >= G.DIR_RANK[d];
-      text(d.toUpperCase() + ' (' + G.DIR_ROLE[d] + ', R' + G.DIR_RANK[d] + ')', 670, y, 14, '#e8763a');
-      text(open ? a.name + ' [' + a.cost + '] - ' + a.desc : '? ? ?', 670, y + 20, 15, open ? '#f4ecd8' : '#5d6880', 'left', false);
+      T(d + ' - ' + G.DIR_ROLE[d] + ' (R' + G.DIR_RANK[d] + ')', 174, y, PAL.red, { font: 'small' });
+      if (open) {
+        T(a.name + ' [' + a.cost + ']', 174, y + 7, PAL.beigeInk, { font: 'small' });
+        T(a.desc, 174, y + 14, PAL.beigeLo, { font: 'small' });
+      } else T('? ? ?', 174, y + 7, PAL.beigeLo, { font: 'small' });
     });
-    text('Win score becomes XP for the equipped card. Losing in Adventure destroys it.', 640, 600, 14, '#9fb3d1', 'center', false);
-    text(this.incoming ? 'A: toss selected' : 'A: equip   B: back', 640, 630, 16, '#f2d16b', 'center');
+    T('WIN SCORE = XP. LOSING IN', 174, 174, PAL.beigeLo, { font: 'small' });
+    T('ADVENTURE DESTROYS THE CARD.', 174, 181, PAL.beigeLo, { font: 'small' });
+    T(this.incoming ? 'A: TOSS SELECTED' : 'A: EQUIP   B: BACK', 84, 182, PAL.white, { font: 'small', align: 'center' });
     drawToasts(dt);
   };
 
@@ -455,12 +495,12 @@
     ];
     if (vs.mode === 0) r.push({ label: 'CPU level', value: String(vs.level), adj: function (d) { vs.level = Math.max(1, Math.min(5, vs.level + d)); } });
     G.FEATURES.forEach(function (f) {
-      r.push({ label: f.name + ' (' + f.desc + ')', value: vs.feat[f.key] ? 'ON' : 'OFF', adj: function () { vs.feat[f.key] = !vs.feat[f.key]; } });
+      r.push({ label: f.desc, value: vs.feat[f.key] ? 'ON' : 'OFF', adj: function () { vs.feat[f.key] = !vs.feat[f.key]; } });
     });
     r.push({ label: 'P1 card', value: G.CARDS[CARD_CHOICES[vs.c1]].name, adj: function (d) { vs.c1 = (vs.c1 + CARD_CHOICES.length + d) % CARD_CHOICES.length; } });
-    r.push({ label: 'P1 card rank', value: String(vs.r1), adj: function (d) { vs.r1 = Math.max(1, Math.min(5, vs.r1 + d)); } });
+    r.push({ label: 'P1 rank', value: String(vs.r1), adj: function (d) { vs.r1 = Math.max(1, Math.min(5, vs.r1 + d)); } });
     r.push({ label: (vs.mode ? 'P2' : 'CPU') + ' card', value: G.CARDS[CARD_CHOICES[vs.c2]].name, adj: function (d) { vs.c2 = (vs.c2 + CARD_CHOICES.length + d) % CARD_CHOICES.length; } });
-    r.push({ label: (vs.mode ? 'P2' : 'CPU') + ' card rank', value: String(vs.r2), adj: function (d) { vs.r2 = Math.max(1, Math.min(5, vs.r2 + d)); } });
+    r.push({ label: (vs.mode ? 'P2' : 'CPU') + ' rank', value: String(vs.r2), adj: function (d) { vs.r2 = Math.max(1, Math.min(5, vs.r2 + d)); } });
     r.push({ label: 'START', value: '', start: true });
     return r;
   };
@@ -480,8 +520,8 @@
     I.setSinglePlayer(!two);
     var feat = Object.assign({}, vs.feat);
     go(new G.Battle({
-      title: 'VERSUS', subtitle: two ? 'Local 2P - no card loss' : 'Vs CPU level ' + vs.level + ' - no card loss',
-      color: '#b06ab3',
+      title: 'VERSUS', subtitle: two ? 'LOCAL 2P - NO CARD LOSS' : 'VS CPU LEVEL ' + vs.level + ' - NO CARD LOSS',
+      color: PAL.violet,
       a: { name: 'P1', features: feat, cardId: CARD_CHOICES[vs.c1], rank: vs.r1, slot: 0 },
       b: two ? { name: 'P2', features: feat, cardId: CARD_CHOICES[vs.c2], rank: vs.r2, slot: 1 }
         : { name: 'CPU', features: feat, cardId: CARD_CHOICES[vs.c2], rank: vs.r2, cpu: vs.level },
@@ -490,38 +530,48 @@
     }));
   };
   VersusSetup.prototype.draw = function () {
-    G.drawBackdrop(ctx, '#b06ab3');
-    text('VERSUS SETUP', 640, 60, 30, '#f2d16b', 'center');
+    vhsBackdrop(PAL.violet);
+    G.chrome('VERSUS', 160, 4, 2, 'center');
     var rows = this.rows(), self = this;
-    panel(240, 90, 800, rows.length * 38 + 30, '#b06ab3');
+    G.deck(16, 24, 288, rows.length * 11 + 10);
     rows.forEach(function (r, k) {
-      var y = 128 + k * 38, sel = k === self.sel;
-      if (sel) { ctx.fillStyle = 'rgba(232,118,58,0.25)'; G.roundRect(ctx, 256, y - 26, 768, 34, 6); ctx.fill(); }
-      text(r.label, 280, y, 18, r.start ? '#e8763a' : (sel ? '#f2d16b' : '#f4ecd8'));
-      if (r.value) text('< ' + r.value + ' >', 1000, y, 18, sel ? '#f2d16b' : '#9fb3d1', 'right');
+      var y = 30 + k * 11, sel = k === self.sel;
+      if (sel) { R(22, y - 2, 276, 11, '#000'); cursor(24, y, PAL.yellow); }
+      T(r.label, 32, y, r.start ? PAL.red : (sel ? PAL.yellow : PAL.white));
+      if (r.value) {
+        var on = r.value === 'ON', off = r.value === 'OFF';
+        T('< ' + r.value + ' >', 294, y, on ? PAL.green : off ? '#6c6880' : PAL.amber, { align: 'right' });
+      }
     });
-    text('Up/Down: choose   Left/Right: change   A: start   B: back', 640, 690, 14, '#9fb3d1', 'center', false);
-    if (vs.mode === 1) text('2P: controller 1 + keyboard P1 keys, controller 2 + keyboard P2 keys', 640, 666, 14, '#9fb3d1', 'center', false);
+    var by = 24 + rows.length * 11 + 16;
+    T('UP/DOWN: CHOOSE  LEFT/RIGHT: CHANGE  A: START  B: BACK', 160, by, PAL.grey, { font: 'small', align: 'center' });
+    if (vs.mode === 1) T('2P: PAD 1 + P1 KEYS / PAD 2 + P2 KEYS', 160, by + 8, PAL.grey, { font: 'small', align: 'center' });
   };
 
   // ---------- canvas scaling + loop ----------
+  var scan = document.getElementById('scan');
   function resize() {
-    var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
-    canvas.style.width = Math.floor(1280 * s) + 'px';
-    canvas.style.height = Math.floor(720 * s) + 'px';
+    var s = Math.min(window.innerWidth / 320, window.innerHeight / 224);
+    if (s >= 2) s = Math.floor(s);
+    var w = Math.floor(320 * s), h = Math.floor(224 * s);
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    if (scan) {
+      scan.style.width = w + 'px'; scan.style.height = h + 'px';
+      scan.style.backgroundSize = '100% ' + Math.max(2, s) + 'px';
+    }
   }
   window.addEventListener('resize', resize); resize();
-  canvas.addEventListener('dblclick', function () {
-    if (document.fullscreenElement) document.exitFullscreen(); else if (canvas.requestFullscreen) canvas.requestFullscreen();
-  });
+  function toggleFs() {
+    if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () { });
+  }
+  canvas.addEventListener('dblclick', toggleFs);
 
   var last = performance.now();
-  function frame(now) {
-    var dt = Math.min(50, now - last); last = now;
+  function frame(t) {
+    var dt = Math.min(50, t - last); last = t; now = t;
     I.poll(dt);
     screen.update(dt);
-    if (screen instanceof G.Battle) screen.draw(ctx); else screen.draw(dt);
-    if (screen instanceof G.Battle) drawToasts(dt);
+    if (screen instanceof G.Battle) { screen.draw(ctx); drawToasts(dt); } else screen.draw(dt);
     requestAnimationFrame(frame);
   }
 

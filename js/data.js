@@ -199,9 +199,9 @@
 
   G.INVENTORY_CAP = 6;
 
-  // Block colours: NASA-punk palette (deliberately not the familiar guideline colours).
+  // Brick colours: VHS-box palette (deliberately not the familiar guideline colours).
   G.BLOCK_COLORS = {
-    I: '#5ec8d8', J: '#3f6fb5', L: '#e8833a', O: '#f2d16b', S: '#7fbf6a', T: '#b06ab3', Z: '#d9534f',
-    G: '#6d6a63', R: '#8c7b62', B: '#e8e1cf'
+    I: '#ff3fa4', J: '#2fe0ff', L: '#ffdc2e', O: '#ff8a1e', S: '#9d4dff', T: '#a6ff3a', Z: '#ff3b47',
+    G: '#4a4858', R: '#a8743a', B: '#efe6cc'
   };
 })(globalThis.G = globalThis.G || {});

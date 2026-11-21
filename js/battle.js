@@ -3,7 +3,9 @@
   'use strict';
 
   var DAS = 160, ARR = 40;
-  var CELL = 26;
+  var C = 8;                 // brick size in pixels
+  var FW = 80, FH = 160;     // field size
+  var FX = [48, 192], FY = 30;
 
   // Human controller for one board.
   function Human(player, slot) {
@@ -93,202 +95,177 @@
     if (r) { this.over = true; this.winner = r; this.endT = 0; }
   };
 
-  // ---------- drawing ----------
-  function drawBlock(ctx, x, y, s, color, alpha) {
-    ctx.globalAlpha = alpha == null ? 1 : alpha;
-    ctx.fillStyle = color;
-    G.roundRect(ctx, x + 1, y + 1, s - 2, s - 2, 5); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
-    G.roundRect(ctx, x + 3, y + 3, s - 6, (s - 6) * 0.38, 3); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.arc(x + s - 7, y + s - 7, 1.8, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-  G.drawBlock = drawBlock;
+  // ---------- drawing (320x224 pixel space) ----------
+  var R = G.rect, T = G.text, PAL = G.PAL;
 
-  function drawMini(ctx, type, cx, cy, s) {
+  function mini(type, cx, cy, s) {
     if (!type) return;
-    var cells = G.SHAPES[type][0];
-    var minX = 9, maxX = -1, minY = 9, maxY = -1;
+    var cells = G.SHAPES[type][0], minX = 9, maxX = -1, minY = 9, maxY = -1;
     cells.forEach(function (c) { minX = Math.min(minX, c[0]); maxX = Math.max(maxX, c[0]); minY = Math.min(minY, c[1]); maxY = Math.max(maxY, c[1]); });
     var w = (maxX - minX + 1) * s, h = (maxY - minY + 1) * s;
-    cells.forEach(function (c) {
-      drawBlock(ctx, cx - w / 2 + (c[0] - minX) * s, cy - h / 2 + (c[1] - minY) * s, s, G.BLOCK_COLORS[type]);
-    });
+    cells.forEach(function (c) { G.brick(cx - (w >> 1) + (c[0] - minX) * s, cy - (h >> 1) + (c[1] - minY) * s, s, G.BLOCK_COLORS[type]); });
   }
 
-  Battle.prototype.drawBoard = function (ctx, p, ox, oy, ctrl, label) {
-    var W = G.COLS * CELL, H = (G.ROWS - G.HIDDEN) * CELL;
-    var accent = p.card.color;
+  function ghostCell(x, y, color) {
+    for (var yy = 0; yy < C; yy++) for (var xx = 0; xx < C; xx++) {
+      var edge = xx === 0 || yy === 0 || xx === C - 1 || yy === C - 1;
+      if (edge ? (xx + yy) % 2 === 0 : false) G.px(x + xx, y + yy, color);
+    }
+  }
 
-    // Frame: chunky console panel
-    ctx.fillStyle = '#1b2436';
-    G.roundRect(ctx, ox - 14, oy - 14, W + 28, H + 28, 14); ctx.fill();
-    ctx.strokeStyle = accent; ctx.lineWidth = 3;
-    G.roundRect(ctx, ox - 14, oy - 14, W + 28, H + 28, 14); ctx.stroke();
-    ctx.fillStyle = '#0b1020'; ctx.fillRect(ox, oy, W, H);
-    ctx.strokeStyle = 'rgba(120,160,220,0.07)'; ctx.lineWidth = 1;
-    for (var gx = 1; gx < G.COLS; gx++) { ctx.beginPath(); ctx.moveTo(ox + gx * CELL, oy); ctx.lineTo(ox + gx * CELL, oy + H); ctx.stroke(); }
-    for (var gy = 1; gy < G.ROWS - G.HIDDEN; gy++) { ctx.beginPath(); ctx.moveTo(ox, oy + gy * CELL); ctx.lineTo(ox + W, oy + gy * CELL); ctx.stroke(); }
+  Battle.prototype.drawBoard = function (p, i, ctrl) {
+    var fx = FX[i], fy = FY, accent = p.card.color, t = this.time;
+    // Deck bezel + recessed field
+    G.deck(fx - 6, fy - 6, FW + 12, FH + 12);
+    G.inset(fx, fy, FW, FH, '#05060c');
+    for (var gy = 1; gy < 20; gy++) for (var gx = 1; gx < 10; gx++) G.px(fx + gx * C, fy + gy * C, '#161a2c');
 
     for (var y = G.HIDDEN; y < G.ROWS; y++) for (var x = 0; x < G.COLS; x++) {
       var c = p.grid[y][x];
-      if (c) drawBlock(ctx, ox + x * CELL, oy + (y - G.HIDDEN) * CELL, CELL, c === 'G' ? G.shade(accent, -0.45) : G.BLOCK_COLORS[c]);
+      if (c) G.brick(fx + x * C, fy + (y - G.HIDDEN) * C, C, c === 'G' ? G.shade(accent, -0.55) : G.BLOCK_COLORS[c]);
     }
-
     if (p.alive && !p.won) {
       var pc = p.piece, col = G.BLOCK_COLORS[pc.type];
       if (p.showGhost()) {
         var gyy = p.ghostY();
         p.cells(pc.type, pc.rot, pc.x, gyy).forEach(function (c) {
-          if (c[1] >= G.HIDDEN) {
-            ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.globalAlpha = 0.55;
-            G.roundRect(ctx, ox + c[0] * CELL + 3, oy + (c[1] - G.HIDDEN) * CELL + 3, CELL - 6, CELL - 6, 4); ctx.stroke();
-            ctx.globalAlpha = 1;
-          }
+          if (c[1] >= G.HIDDEN) ghostCell(fx + c[0] * C, fy + (c[1] - G.HIDDEN) * C, col);
         });
       }
       p.cells(pc.type, pc.rot, pc.x, pc.y).forEach(function (c) {
-        if (c[1] >= G.HIDDEN) drawBlock(ctx, ox + c[0] * CELL, oy + (c[1] - G.HIDDEN) * CELL, CELL, col);
+        if (c[1] >= G.HIDDEN) G.brick(fx + c[0] * C, fy + (c[1] - G.HIDDEN) * C, C, col);
       });
     }
+    if (p.effects.dark) {
+      for (var dy = 0; dy < 112; dy++) R(fx, fy + dy, FW, 1, dy % 2 ? '#000' : '#07040f');
+      T('DARK', fx + 40, fy + 50, PAL.violet, { align: 'center', font: 'small' });
+    }
+    if (p.clearAnim) { var ctxA = this._ctx; ctxA.globalAlpha = p.clearAnim / 180 * 0.5; R(fx, fy, FW, FH, '#fff8ec'); ctxA.globalAlpha = 1; }
+    if (p.kickFlash) T('THRUST!', fx + 40, fy + 3, PAL.orange, { align: 'center', font: 'small' });
 
-    if (p.effects.dark) { ctx.fillStyle = 'rgba(5,5,15,0.82)'; ctx.fillRect(ox, oy, W, H * 0.7); }
-    if (p.clearAnim) { ctx.fillStyle = 'rgba(255,255,230,' + (p.clearAnim / 180 * 0.25) + ')'; ctx.fillRect(ox, oy, W, H); }
-    if (p.kickFlash) { ctx.fillStyle = '#e8763a'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center'; ctx.fillText('THRUST!', ox + W / 2, oy + 18); }
-
-    // Incoming garbage gauge
+    // Incoming garbage gauge in the bezel
     var pend = p.pendingRows();
-    ctx.fillStyle = '#2a1414'; ctx.fillRect(ox - 10, oy, 6, H);
-    if (pend) { ctx.fillStyle = '#ff5544'; var gh = Math.min(H, pend * CELL); ctx.fillRect(ox - 10, oy + H - gh, 6, gh); }
+    R(fx - 5, fy, 3, FH, '#16080a');
+    if (pend) { var gh = Math.min(FH, pend * C); R(fx - 5, fy + FH - gh, 3, gh, (Math.floor(t / 150) % 2) ? PAL.red : '#ff8a8a'); }
 
-    // Side panel: hold + next
-    var side = label === 'left' ? ox - 120 : ox + W + 22;
-    ctx.textAlign = 'left'; ctx.font = 'bold 13px monospace';
+    // Side panel: hold, next, lucky-7 reel
+    var sx = i === 0 ? 4 : 280;
     if (p.features.hold) {
-      ctx.fillStyle = '#9fb3d1'; ctx.fillText('HOLD', side, oy + 10);
-      ctx.fillStyle = '#141c2c'; G.roundRect(ctx, side, oy + 16, 96, 64, 8); ctx.fill();
-      ctx.globalAlpha = p.holdUsed ? 0.4 : 1;
-      drawMini(ctx, p.holdType, side + 48, oy + 48, 18);
-      ctx.globalAlpha = 1;
+      T('HOLD', sx, fy - 4, PAL.amber, { font: 'small' });
+      G.inset(sx, fy + 3, 36, 20);
+      if (p.holdUsed) this._ctx.globalAlpha = 0.35;
+      mini(p.holdType, sx + 18, fy + 13, 4);
+      this._ctx.globalAlpha = 1;
     }
     var n = p.previewCount();
     if (n) {
-      var ny = oy + 100;
-      ctx.fillStyle = '#9fb3d1'; ctx.fillText('NEXT', side, ny);
-      ctx.fillStyle = '#141c2c'; G.roundRect(ctx, side, ny + 6, 96, n * 52 + 8, 8); ctx.fill();
-      for (var i = 0; i < n; i++) drawMini(ctx, p.queue[i], side + 48, ny + 36 + i * 52, i === 0 ? 18 : 15);
+      var ny = fy + 30;
+      T('NEXT', sx, ny, PAL.amber, { font: 'small' });
+      G.inset(sx, ny + 7, 36, n * 14 + 4);
+      for (var k = 0; k < n; k++) mini(p.queue[k], sx + 18, ny + 15 + k * 14, 4);
     }
     if (p.features.bag) {
-      // Lucky Seven reel: shapes still left in the current bag light up.
-      var ry = oy + H - 40;
-      ctx.fillStyle = '#9fb3d1'; ctx.fillText('LUCKY 7', side, ry - 6);
-      G.PIECE_TYPES.forEach(function (t, k) {
-        var lit = p.bagPool.indexOf(t) >= 0;
-        ctx.fillStyle = lit ? G.BLOCK_COLORS[t] : '#20283a';
-        G.roundRect(ctx, side + k * 14, ry, 12, 18, 3); ctx.fill();
+      var ry = fy + FH - 12;
+      T('LUCKY 7', sx, ry, PAL.pink, { font: 'small' });
+      G.PIECE_TYPES.forEach(function (tp, k2) {
+        var lit = p.bagPool.indexOf(tp) >= 0;
+        G.bevel(sx + k2 * 5, ry + 7, 4, 7, lit ? G.BLOCK_COLORS[tp] : '#1c1a28', lit ? '#fff' : '#2a2838', lit ? G.shade(G.BLOCK_COLORS[tp], -0.5) : '#0c0b12');
       });
     }
 
-    // Bottom HUD: name, card, lines, meter
-    var by = oy + H + 24;
-    ctx.textAlign = 'left'; ctx.fillStyle = '#f4ecd8'; ctx.font = 'bold 16px monospace';
-    ctx.fillText(p.name, ox, by);
-    ctx.textAlign = 'right'; ctx.fillStyle = '#f2d16b';
-    ctx.fillText(Math.min(p.lines, G.WIN_LINES) + '/' + G.WIN_LINES, ox + W, by);
-    ctx.textAlign = 'left'; ctx.font = '13px monospace'; ctx.fillStyle = accent;
-    ctx.fillText(p.card.name + ' R' + p.rank, ox, by + 18);
-    // meter
-    var mx = ox, my = by + 26, mw = W;
-    ctx.fillStyle = '#2a3550'; G.roundRect(ctx, mx, my, mw, 10, 5); ctx.fill();
-    ctx.fillStyle = accent; G.roundRect(ctx, mx, my, mw * p.meter / p.meterMax, 10, 5); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    for (var m = 1; m < p.meterMax; m++) ctx.fillRect(mx + mw * m / p.meterMax, my, 1, 10);
+    // Under the board: name, card, LED line counter, VU meter (= ability meter)
+    var by = fy + FH + 8;
+    T(p.name.slice(0, 15), fx - 6, by, PAL.white, { font: 'small' });
+    T(p.card.name + ' R' + p.rank, fx - 6, by + 7, accent, { font: 'small' });
+    G.led(('0' + Math.min(p.lines, G.WIN_LINES)).slice(-2) + '/' + G.WIN_LINES, fx + FW + 6, by, PAL.amber, 'right');
+    G.vu(fx - 6, by + 15, 10, p.meter, 8, 4);
 
-    // Floating flash messages
-    ctx.textAlign = 'center'; ctx.font = 'bold 22px monospace';
-    p.flash.forEach(function (f, k) {
-      ctx.globalAlpha = Math.min(1, f.t / 400);
-      ctx.fillStyle = '#fff3c4'; ctx.fillText(f.text, ox + W / 2, oy + H / 2 - 60 - k * 26 - (1200 - f.t) / 30);
-      ctx.globalAlpha = 1;
+    // Floating callouts
+    p.flash.forEach(function (f, k3) {
+      var yy = fy + 60 - k3 * 10 - Math.floor((1200 - f.t) / 60);
+      T(f.text, fx + 40, yy, PAL.yellow, { align: 'center', shadow: '#000' });
     });
 
-    if (ctrl && ctrl.cardMode) this.drawCardOverlay(ctx, p, ctrl, ox + W / 2, oy + H / 2);
-    if (!p.alive) { this.banner(ctx, ox + W / 2, oy + H / 2, 'BRICKED UP!', '#d9534f'); }
+    if (ctrl && ctrl.cardMode) this.drawCardOverlay(p, ctrl, fx + 40, fy + 80);
+    if (!p.alive) {
+      R(fx, fy + 62, FW, 30, '#000'); R(fx, fy + 62, FW, 1, PAL.red); R(fx, fy + 91, FW, 1, PAL.red);
+      T('BRICKED', fx + 40, fy + 67, PAL.red, { align: 'center' });
+      T('UP!', fx + 40, fy + 78, PAL.red, { align: 'center' });
+    }
   };
 
-  Battle.prototype.drawCardOverlay = function (ctx, p, ctrl, cx, cy) {
-    ctx.fillStyle = 'rgba(8,12,24,0.8)';
-    ctx.fillRect(cx - 130, cy - 130, 260, 260);
-    ctx.textAlign = 'center';
-    if (!Object.keys(p.card.actives).length) {
-      ctx.font = 'bold 14px monospace'; ctx.fillStyle = '#9fb3d1';
-      ctx.fillText('No abilities', cx, cy - 6); ctx.fillText('on ' + p.card.name, cx, cy + 14);
+  Battle.prototype.drawCardOverlay = function (p, ctrl, cx, cy) {
+    var c = p.card;
+    G.label(cx - 62, cy - 56, 124, 112, c.color);
+    if (!Object.keys(c.actives).length) {
+      T('NO ABILITIES', cx, cy - 6, PAL.beigeInk, { align: 'center', font: 'small' });
+      T('ON ' + c.name, cx, cy + 2, PAL.beigeInk, { align: 'center', font: 'small' });
       return;
     }
-    var pos = { up: [0, -80], down: [0, 80], left: [-86, 0], right: [86, 0] };
-    ctx.font = 'bold 10px monospace'; ctx.fillStyle = p.card.color;
-    ctx.fillText(p.card.passive.name, cx, cy - 2);
-    ctx.font = '9px monospace'; ctx.fillStyle = '#9fb3d1'; ctx.fillText('passive', cx, cy + 10);
+    T('PASSIVE: ' + c.passive.name, cx, cy - 48, PAL.beigeInk, { align: 'center', font: 'small' });
+    var pos = { up: [0, -28], down: [0, 28], left: [-31, 0], right: [31, 0] };
     G.DIRS.forEach(function (d) {
-      var a = p.card.actives[d], x = cx + pos[d][0], y = cy + pos[d][1];
-      var unlocked = p.unlocked(d), afford = p.canFire(d);
-      var sel = ctrl.cardDir === d;
-      ctx.fillStyle = sel ? p.card.color : '#1b2436';
-      G.roundRect(ctx, x - 42, y - 22, 84, 44, 8); ctx.fill();
-      ctx.fillStyle = sel ? '#0b1020' : (afford ? '#f4ecd8' : '#5d6880');
-      ctx.font = 'bold 11px monospace';
-      ctx.fillText(unlocked ? a.name : '?', x, y - 2);
-      ctx.font = '10px monospace';
-      ctx.fillText(unlocked ? 'cost ' + a.cost : 'Rank ' + G.DIR_RANK[d], x, y + 13);
+      var a = c.actives[d], x = cx + pos[d][0] - 28, y = cy + pos[d][1] - 8;
+      var open = p.unlocked(d), afford = p.canFire(d), sel = ctrl.cardDir === d;
+      G.bevel(x, y, 56, 16, sel ? c.color : '#1a1726', sel ? '#fff' : '#3a3650', sel ? G.shade(c.color, -0.5) : '#000', '#000');
+      var ink = sel ? '#000' : (afford ? PAL.white : '#6c6880');
+      T(open ? a.name : '? ? ?', x + 28, y + 2, ink, { align: 'center', font: 'small' });
+      T(open ? 'COST ' + a.cost : 'RANK ' + G.DIR_RANK[d], x + 28, y + 9, sel ? '#000' : (open ? PAL.amber : '#4a4660'), { align: 'center', font: 'small' });
     });
   };
 
-  Battle.prototype.banner = function (ctx, x, y, text, color) {
-    ctx.fillStyle = 'rgba(8,12,24,0.85)'; ctx.fillRect(x - 140, y - 30, 280, 60);
-    ctx.fillStyle = color; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(text, x, y + 10);
+  var STARS = [];
+  for (var si = 0; si < 70; si++) STARS.push([Math.floor(Math.random() * 320), Math.floor(Math.random() * 150), Math.random() < 0.2]);
+  G.starfield = function (t) {
+    STARS.forEach(function (s) { G.px(s[0], s[1], s[2] && Math.floor(t / 400 + s[0]) % 3 === 0 ? '#fff' : '#5a5878'); });
   };
 
   Battle.prototype.draw = function (ctx) {
-    G.drawBackdrop(ctx, this.cfg.color || '#4fd1c5');
-    var W = G.COLS * CELL;
-    var lx = 230, rx = 1280 - 230 - W, oy = 70;
-    this.drawBoard(ctx, this.a, lx, oy, this.ctrl[0] instanceof Human ? this.ctrl[0] : null, 'left');
-    this.drawBoard(ctx, this.b, rx, oy, this.ctrl[1] instanceof Human ? this.ctrl[1] : null, 'right');
+    this._ctx = ctx;
+    var accent = this.cfg.color || PAL.cyan, now = performance.now();
+    R(0, 0, 320, 224, PAL.night);
+    G.starfield(now);
+    G.floor(150, 74, G.shade(accent, -0.35), now / 16);
+    // title strip with stripes
+    G.stripes(0, 0, 70, 1, G.STRIPES, 1, 'right');
+    G.stripes(250, 0, 70, 1, G.STRIPES, 1);
+    T(this.cfg.title || 'VERSUS', 160, 4, accent, { align: 'center', shadow: '#000' });
+    if (this.cfg.subtitle) T(this.cfg.subtitle, 160, 14, PAL.grey, { align: 'center', font: 'small' });
 
-    ctx.textAlign = 'center'; ctx.fillStyle = '#f4ecd8'; ctx.font = 'bold 18px monospace';
-    ctx.fillText(this.cfg.title || 'VERSUS', 640, 36);
-    ctx.font = '12px monospace'; ctx.fillStyle = '#9fb3d1';
-    if (this.cfg.subtitle) ctx.fillText(this.cfg.subtitle, 640, 56);
-    ctx.font = 'bold 15px monospace'; ctx.fillStyle = '#f2d16b';
+    this.drawBoard(this.a, 0, this.ctrl[0] instanceof Human ? this.ctrl[0] : null);
+    this.drawBoard(this.b, 1, this.ctrl[1] instanceof Human ? this.ctrl[1] : null);
+
+    // centre console
+    G.chrome('VS', 160, 76, 2, 'center');
     var secs = Math.floor(this.time / 1000);
-    ctx.fillText(Math.floor(secs / 60) + ':' + ('0' + secs % 60).slice(-2), 640, 360);
-    ctx.font = 'bold 40px monospace'; ctx.fillStyle = '#e8763a'; ctx.fillText('VS', 640, 320);
+    G.inset(141, 100, 38, 11);
+    G.led(Math.floor(secs / 60) + ':' + ('0' + secs % 60).slice(-2), 160, 102, PAL.green, 'center', PAL.greenDim);
+    T('FIRST', 160, 118, PAL.grey, { align: 'center', font: 'small' });
+    T('TO ' + G.WIN_LINES, 160, 125, PAL.grey, { align: 'center', font: 'small' });
 
     if (this.countdown > 0) {
+      for (var y = 0; y < 224; y += 2) R(0, y, 320, 1, 'rgba(0,0,0,0.6)');
       var n = Math.ceil(this.countdown / 800);
-      ctx.fillStyle = 'rgba(8,12,24,0.6)'; ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#f2d16b'; ctx.font = 'bold 96px monospace';
-      ctx.fillText(n > 0 ? String(n) : 'GO', 640, 400);
+      R(0, 82, 320, 60, '#000'); G.stripes(0, 82, 320, 1); G.stripes(0, 137, 320, 1, G.STRIPES.slice().reverse());
+      G.chrome(n > 0 ? String(n) : 'GO', 160, 92, 5, 'center');
     }
     if (this.paused) {
-      ctx.fillStyle = 'rgba(8,12,24,0.8)'; ctx.fillRect(0, 0, 1280, 720);
-      ctx.fillStyle = '#f4ecd8'; ctx.font = 'bold 48px monospace'; ctx.fillText('PAUSED', 640, 340);
-      ctx.font = '16px monospace'; ctx.fillText('Start / Esc: resume    B / Backspace: quit match', 640, 380);
+      R(0, 80, 320, 64, '#000'); G.stripes(0, 80, 320, 1); G.stripes(0, 139, 320, 1, G.STRIPES.slice().reverse());
+      G.chrome('PAUSED', 160, 92, 3, 'center');
+      T('START: RESUME   B: QUIT MATCH', 160, 124, PAL.white, { align: 'center', font: 'small' });
     }
     if (this.over) {
       var win = this.winner === 'a' ? this.a : this.b, lose = this.winner === 'a' ? this.b : this.a;
       var youLost = lose.name === 'YOU' || (lose === this.a && this.ctrl[1] instanceof G.CPU);
-      ctx.fillStyle = 'rgba(8,12,24,0.95)'; ctx.fillRect(0, 290, 1280, 120);
-      ctx.font = 'bold 44px monospace';
-      if (youLost) { ctx.fillStyle = '#d9534f'; ctx.fillText('YOU GOT BRICKED UP!', 640, 350); }
-      else {
-        ctx.fillStyle = '#f2d16b'; ctx.fillText(win.name + ' WINS', 640, 342);
-        ctx.font = 'bold 18px monospace'; ctx.fillStyle = '#d9534f';
-        ctx.fillText(lose.name + ' got bricked up!', 640, 366);
+      R(0, 84, 320, 56, '#000'); G.stripes(0, 84, 320, 1); G.stripes(0, 135, 320, 1, G.STRIPES.slice().reverse());
+      if (youLost) {
+        G.chrome('YOU GOT', 160, 92, 2, 'center', ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a']);
+        G.chrome('BRICKED UP!', 160, 108, 2, 'center', ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a']);
+      } else {
+        G.chrome(win.name.length > 12 ? 'WINNER!' : win.name + ' WINS', 160, 94, 2, 'center');
+        T(lose.name + ' GOT BRICKED UP!', 160, 113, PAL.red, { align: 'center', font: 'small' });
       }
-      if (this.endT > 800) { ctx.font = '16px monospace'; ctx.fillStyle = '#f4ecd8'; ctx.fillText('Press A / Enter', 640, 395); }
+      if (this.endT > 800 && Math.floor(now / 400) % 2) T('PRESS A', 160, 126, PAL.white, { align: 'center', font: 'small' });
     }
   };
 
