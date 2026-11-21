@@ -60,6 +60,8 @@
     return out;
   }
 
+  var HARD_DROP_RATE = 0.25;  // share of bricks a CPU with hard drop actually hard-drops
+
   function CPU(player, level) {
     this.p = player;
     this.cfg = LEVELS[level] || LEVELS[2];
@@ -79,6 +81,8 @@
       this.timer = -this.cfg.think;
       this.fails = 0;
       p.softDrop = false;
+      // Bosses use hard drop sparingly: only on some bricks.
+      this.useHard = p.features.hardDrop && p.rng() < HARD_DROP_RATE;
     }
     this.timer += dt;
 
@@ -109,7 +113,7 @@
     else if (pc.x < t.x && this.fails < 6) ok = p.move(1);
     else if (pc.x > t.x && this.fails < 6) ok = p.move(-1);
     else {
-      if (p.features.hardDrop) p.hardDrop();
+      if (this.useHard) p.hardDrop();
       else p.softDrop = true;
       return;
     }
