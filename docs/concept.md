@@ -118,6 +118,8 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - **Turning:** Left/Right scrolls a **wide background strip** (panorama) behind the hero. No free walking.
 - **Interactables** (people, doors) get a visible cue (bouncing "A" marker). Confirm on the person you're facing starts the conversation; confirm on a door enters/leaves.
 - **Walk-forward animation** plays before each scene transition.
+- **Talking = full-screen close-up (decided):** Snatcher/Policenauts-style face close-up with blink and lip flap, dialogue underneath.
+- **Art target:** Policenauts / Snatcher / Art of Fighting quality, using the Neo Geo's big sprites. Flat 8-bit-looking samples rejected. Hero test sample (satin tour jacket with a rocket patch, one 15-colour palette): https://claude.ai/artifact/2mfqrKbQcQLEswp8UhpSTX
 - Letterbox bars top and bottom are fine if rendering is tight, with a few pixel details layered over them (location name, tokens, button hints).
 - **Look:** no space suits. NPC outfits are **mixed by location** (ground crew, ushers, scientists, tellers, timekeepers, dealers); bosses get a fancier take on their location's outfit. Hero outfit not picked yet (samples: mission control, jet-age pilot, B-movie hero).
 - **Map:** a static image with a cursor that moves between the 6 locations (samples: star chart, station cutaway).

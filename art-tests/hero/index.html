@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPACBRACK hero sample</title>
+<style>
+  * { box-sizing: border-box; min-width: 0; }
+  body { margin: 0; background: #0e0c1a; color: #f2e8cc; font: 16px/1.55 system-ui, -apple-system, Segoe UI, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px 16px 30px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: #b4aec8; margin: 0 0 14px; }
+  canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 6px; background: #000; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+  @media (max-width: 600px) { .row { grid-template-columns: minmax(0, 1fr); } }
+  .cap { font-size: 14px; color: #b4aec8; margin-top: 6px; }
+  .sw { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .sw span { width: 30px; height: 30px; border-radius: 4px; border: 1px solid #000; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hero sample: satin tour jacket</h1>
+  <p>In-game at 320×224 with no smoothing: over the shoulder, looking toward the launch pad at sunset. The hero uses one 15-colour palette, which is legal for a single Neo Geo sprite palette.</p>
+  <canvas id="scene" width="320" height="224"></canvas>
+  <div class="cap">Gameplay framing. The background is still a rough stand-in; only the hero is the high-effort part.</div>
+  <div class="row">
+    <div><canvas id="solo" width="176" height="216"></canvas><div class="cap">Sprite on its own (168×208 px).</div></div>
+    <div><canvas id="zoom" width="96" height="96"></canvas><div class="cap">Close-up of the back patch and the shoulder rim light.</div>
+      <div class="sw" id="sw"></div><div class="cap">The hero's 15 colours.</div></div>
+  </div>
+</main>
+<script src="hero.js"></script>
+<script>
+{
+  const { W, H, PAL, pixels } = HERO;
+  // hero to an offscreen canvas
+  const hc = document.createElement('canvas'); hc.width = W; hc.height = H;
+  const hx = hc.getContext('2d');
+  pixels.forEach((k, i) => { if (k) { hx.fillStyle = PAL[k]; hx.fillRect(i % W, (i / W) | 0, 1, 1); } });
+
+  // ---- backdrop (separate palette; rough stand-in) ----
+  const s = document.getElementById('scene').getContext('2d');
+  const R = (x, y, w, h, c) => { s.fillStyle = c; s.fillRect(x, y, w, h); };
+  const sky = ['#120826', '#2a0e48', '#4e1466', '#86206e', '#c8346a', '#f05a5a', '#ff8c4a', '#ffbe5a'];
+  for (let y = 28; y < 150; y++) { const f = (y - 28) / 122 * (sky.length - 1), i = Math.floor(f), fr = f - i;
+    for (let x = 0; x < 320; x++) R(x, y, 1, 1, (fr > 0.6 && ((x + y) & 1)) || fr > 0.85 ? sky[Math.min(sky.length - 1, i + 1)] : sky[i]); }
+  for (let y = -30; y <= 0; y++) { if (y > -18 && ((y + 40) % 5 < 2)) continue; const w = Math.round(30 * Math.sqrt(1 - y * y / 900)); R(230 - w, 150 + y, w * 2, 1, y < -20 ? '#fff0a0' : y < -9 ? '#ffc04a' : '#ff8030'); }
+  for (let x = 0; x < 320; x++) { const h = 6 + Math.round(4 * Math.sin(x / 19) + 2 * Math.sin(x / 6)); R(x, 150 - h, 1, h, '#3a1250'); }
+  R(0, 150, 320, 46, '#2a1838');
+  for (let j = 0; j < 7; j++) R(0, 150 + Math.round((j / 7) ** 2 * 46), 320, 1, '#4a2a5a');
+  for (let i = -12; i <= 12; i++) for (let r = 0; r < 46; r++) R(Math.round(200 + i * 28 * (r / 46) + i * 3), 150 + r, 1, 1, '#4a2a5a');
+  // gantry + rocket silhouettes
+  R(268, 56, 5, 94, '#1a0a26'); for (let y = 58; y < 150; y += 7) R(268, y, 22, 2, '#1a0a26');
+  R(290, 66, 14, 84, '#1a0a26'); s.beginPath(); s.fillStyle = '#1a0a26'; s.moveTo(290, 66); s.lineTo(297, 50); s.lineTo(304, 66); s.fill();
+  R(304, 66, 1, 84, '#ff8c4a');
+  // letterbox
+  R(0, 0, 320, 28, '#000'); R(0, 196, 320, 28, '#000');
+  const st = ['#ff3b47', '#ff8a1e', '#ffdc2e', '#2fe0ff'];
+  st.forEach((c, k) => { R(320 - 80 + k, 24 + k * 0, 80 - k, 1, c); R(240 + k * 2, 24 - k, 80 - k * 2, 1, c); });
+  R(0, 196, 320, 1, '#e8763a');
+  // hero, over the shoulder, overlapping the top bar
+  s.drawImage(hc, 6, 22);
+  R(0, 197, 320, 27, '#000'); R(0, 196, 320, 1, '#e8763a');
+
+  const solo = document.getElementById('solo').getContext('2d');
+  solo.fillStyle = '#1a1430'; solo.fillRect(0, 0, 176, 216); solo.drawImage(hc, 4, 4);
+  const z = document.getElementById('zoom').getContext('2d');
+  z.fillStyle = '#1a1430'; z.fillRect(0, 0, 96, 96);
+  z.drawImage(hc, 64, 98, 96, 96, 0, 0, 96, 96);
+  document.getElementById('sw').innerHTML = Object.values(PAL).map(c => `<span style="background:${c}"></span>`).join('');
+}
+</script>
+</body>
+</html>
