@@ -16,9 +16,9 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## New in v0.6 (Chrono Station save states)
 
-- **Save states:** at 10 lines you can start marking your field. Tap the perk button to mark (a new mark replaces the old one), hold it to jump back to the mark.
+- **Save states:** at 10 lines you can start marking your field. Tap the perk button to mark (a new mark replaces the old one), hold it to jump back to the mark. Each mark is one use: it disappears after the jump.
 - Jumps are earned at 10, 20 and 30 lines (so the first 10 lines give you both marking and a jump), and unused jumps stack.
-- A jump brings back only the field. The brick in hand, the held brick and your line count stay, so farming lines from a good mark is allowed.
+- A jump brings the field back exactly as it was when marked and wipes all garbage waiting to come in. The brick in hand, the held brick and your line count stay, so farming lines is allowed.
 - The marked field shows as a faint "photo" in the corner of your board, and the line above the board shows your jumps.
 - CPUs use it: they mark a clean, low field and jump back when their stack gets tall or messy.
 - Versus "House rule" option now also has Save States.

@@ -103,10 +103,12 @@ Options that were considered:
 - **Only the field comes back.** The brick in hand and the held brick stay as they are at the moment of the jump.
 - **Line count is NOT rewound — farming is intended.**
 - **Jumps are earned:** a charge each time the player reaches another 10 cleared lines (10, 20, 30) — **3 per race to 40**. **Charges stack.** The first 10 lines give both marking and a jump.
-- In the build (v0.6): the mark stays after a jump (so you can farm the same mark again); garbage already in the field goes back with the field, garbage still waiting does not; marked field shown as a faint photo in the board corner; CPUs mark clean low fields and jump when their stack is tall or messy.
+- **One use per mark (decided):** the mark disappears after a jump.
+- **A jump removes all garbage (decided):** the field reloads exactly as marked and all waiting garbage is wiped.
+- In the build: marked field shown as a faint photo in the board corner; CPUs mark clean low fields and jump when their stack is tall or messy.
 - Designer's estimate: best case is around 12 farmed lines in a row from one save.
 - Playtest: farmed lines count toward the next 10 (snowball).
-- Proposals: jump erases garbage received since the mark; one mark at a time; marked field shown as a faint "photo" in the corner.
+- One mark at a time (a new mark replaces the old one).
 
 ### Chrono Station boss: Past You
 - Uses a snapshot of the player from their previous visit: card, rank, and only the features they had then.

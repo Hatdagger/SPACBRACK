@@ -175,7 +175,9 @@
     if (e.holes === 0 && e.maxH >= 2 && e.maxH <= 7 && (!this.markE || e.agg > this.markE.agg || this.markE.maxH > 7)) {
       p.mark(); this.markE = e; return;
     }
-    if (this.markE && p.jumpsLeft() > 0 && (e.maxH >= 13 || e.holes >= this.markE.holes + 5) && this.markE.maxH < e.maxH - 3) p.jump();
+    if (this.markE && p.markGrid && p.jumpsLeft() > 0 && (e.maxH >= 13 || e.holes >= this.markE.holes + 5) && this.markE.maxH < e.maxH - 3) {
+      if (p.jump()) this.markE = null;
+    }
   };
 
   G.CPU = CPU;

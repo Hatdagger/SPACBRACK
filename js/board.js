@@ -115,7 +115,8 @@
 
   // ---------- Chrono Station: save states ----------
   // Marking opens at 10 lines. A jump is earned at 10, 20 and 30 lines (so 10 lines gives both).
-  // A jump restores only the field; the brick in hand, the held brick and the line count stay.
+  // A jump restores the field as marked and wipes waiting garbage; the brick in hand, the held brick
+  // and the line count stay. Each mark is one use: it disappears after the jump.
   P.jumpsLeft = function () { return Math.min(3, Math.floor(this.lines / 10)) - (this.jumpsUsed || 0); };
   P.canMark = function () { return !!this.chronoOn && this.alive && this.lines >= 10; };
   P.mark = function () {
@@ -128,7 +129,10 @@
     if (!this.chronoOn || !this.alive) return false;
     if (!this.markGrid) { this.say(this.lines < 10 ? 'MARK AT 10 LINES' : 'NO MARK YET'); return false; }
     if (this.jumpsLeft() <= 0) { this.say('NO JUMPS LEFT'); return false; }
-    this.grid = this.markGrid.map(function (r) { return r.slice(); });
+    // The field comes back exactly as marked, all waiting garbage is wiped, and the mark is used up.
+    this.grid = this.markGrid;
+    this.markGrid = null;
+    this.pending = [];
     this.jumpsUsed = (this.jumpsUsed || 0) + 1;
     this.fieldVersion = (this.fieldVersion || 0) + 1;
     var p = this.piece;
