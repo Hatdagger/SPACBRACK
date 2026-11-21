@@ -48,7 +48,11 @@
     this.shiverTimer = 0;
     this.flash = [];         // {text, t} floating messages for the renderer
     this.fxEvents = [];      // short visual effects for the renderer: {kind, x, y, t, ...}
-    this.cooldown = 0;       // ms until card abilities can fire again    this.clearAnim = 0;
+    this.cooldown = 0;       // ms until card abilities can fire again
+    this.clearAnim = 0;
+    this.foldHeld = [];      // Fold Lab: chunks waiting to fold to the opponent {rows, pattern, h, gap}
+    this.foldIn = [];        // Fold Lab: chunks folded to you, landing at your next placement
+    this.foldLock = 0;       // Fold Lab: ms of input lock while a fold plays
     this.opponent = null;
     this.fillQueue();
     this.spawn();
@@ -212,6 +216,7 @@
     this.flash = this.flash.filter(function (f) { f.t -= dt; return f.t > 0; });
     this.fxEvents = this.fxEvents.filter(function (f) { f.t -= dt; return f.t > 0; });
     if (this.cooldown) this.cooldown = Math.max(0, this.cooldown - dt);
+    if (this.foldLock > 0) { this.foldLock -= dt; this.gravTimer = 0; return; }   // fold playing: everything waits
 
     if (this.effects.shiver) {
       this.shiverTimer += dt;
@@ -250,37 +255,135 @@
     });
     var cleared = this.clearLines();
     if (cleared > 0) {
-      this.lines += cleared;
-      this.score += LINE_SCORE[cleared];
-      this.meter = Math.min(this.meterMax, this.meter + cleared);
-      var out = LINE_GARBAGE[cleared];
-      // Outgoing garbage cancels incoming first.
-      while (out > 0 && this.pending.length) {
-        var b = this.pending[0], n = Math.min(out, b.rows);
-        b.rows -= n; out -= n;
-        if (b.rows <= 0) this.pending.shift();
-      }
-      if (out > 0 && this.opponent) this.opponent.receive(out, this.card.pattern);
-      if (cleared === 4) this.say('QUAD!');
-      if (this.lines >= G.WIN_LINES) { this.won = true; return; }
-    } else {
+      this.scoreClear(cleared);
+      if (this.won) return;
+    } else if (!this.foldOn) {
       this.applyGarbage();
     }
+    // Fold Lab: folded garbage lands at the next placement, cleared or not.
+    if (this.foldOn && this.foldIn.length) { this.applyFold(); if (this.won) return; }
     if (above && cleared === 0) { this.alive = false; return; }
+    if (!this.alive) return;
     this.holdUsed = false;
     this.spawn();
   };
 
+  // Lines, score, meter and outgoing garbage for a clear (also used for lines a fold completes).
+  P.scoreClear = function (cleared) {
+    var prev = this.lines;
+    this.lines += cleared;
+    this.score += LINE_SCORE[Math.min(4, cleared)];
+    this.meter = Math.min(this.meterMax, this.meter + cleared);
+    var out = LINE_GARBAGE[Math.min(4, cleared)];
+    // Outgoing garbage cancels incoming first.
+    out = cancelFrom(this.pending, out);
+    if (this.foldOn) {
+      // Fold Lab: cancel what's folding in to you, then what the opponent is holding; keep the rest.
+      out = cancelFrom(this.foldIn, out);
+      if (this.opponent) out = cancelFrom(this.opponent.foldHeld, out);
+      if (out > 0) this.foldHeld.push({ rows: out, pattern: this.card.pattern, h: this.lastClearH, gap: Math.floor(this.rng() * COLS) });
+    } else if (out > 0 && this.opponent) this.opponent.receive(out, this.card.pattern);
+    if (cleared >= 4) this.say('QUAD!');
+    if (this.lines >= G.WIN_LINES) { this.won = true; return; }
+    if (this.foldOn && Math.floor(prev / FOLD_EVERY) < Math.floor(this.lines / FOLD_EVERY)) this.sendFold(false);
+  };
+
+  function cancelFrom(list, n) {
+    while (n > 0 && list.length) {
+      var b = list[0], k = Math.min(n, b.rows);
+      b.rows -= k; n -= k;
+      if (b.rows <= 0) list.shift();
+    }
+    return n;
+  }
+
+  // ---------- Fold Lab: fold garbage ----------
+  // Garbage from your clears is held as chunks (one per clear, remembering the row height it was
+  // cleared at). Every 8 cleared lines (8, 16, 24, 32) the held chunks fold over to the opponent and
+  // land at their next placement: inside their stack a chunk overwrites those rows (solid cells only,
+  // so it can complete lines, which then clear normally); above their stack it drops onto it.
+  // The receiver's input is locked while the fold plays. Early Fold (perk) sends the held chunks now.
+  var FOLD_EVERY = 8, FOLD_LOCK_MS = 700;
+  G.FOLD_EVERY = FOLD_EVERY; G.FOLD_LOCK_MS = FOLD_LOCK_MS;
+  P.foldInLines = function () { return FOLD_EVERY - (this.lines % FOLD_EVERY); };
+  P.heldRows = function () { return this.foldHeld.reduce(function (s, b) { return s + b.rows; }, 0); };
+  P.sendFold = function (early) {
+    var o = this.opponent;
+    if (!o || !this.foldHeld.length) return false;
+    o.foldIn = o.foldIn.concat(this.foldHeld);
+    this.foldHeld = [];
+    this.say(early ? 'EARLY FOLD!' : 'FOLD!');
+    o.say('FOLD INCOMING');
+    return true;
+  };
+  // Early Fold charges: one per 10 lines, stackable (perk-charge proposal).
+  P.earlyCharges = function () { return Math.floor(this.lines / 10) - (this.earlyUsed || 0); };
+  P.earlyFoldBlock = function () {
+    if (!this.foldOn || !this.alive) return 'OFF';
+    if (this.earlyCharges() <= 0) return this.lines < 10 ? 'EARLY FOLD AT 10' : 'NO CHARGE';
+    if (!this.foldHeld.length) return 'NOTHING HELD';
+    if (this.opponent && this.opponent.foldIn.length) return 'FOLD ALREADY QUEUED';
+    return null;
+  };
+  P.earlyFold = function () {
+    var why = this.earlyFoldBlock();
+    if (why) { if (why !== 'OFF') this.say(why); return false; }
+    this.earlyUsed = (this.earlyUsed || 0) + 1;   // the 8-line counter is NOT reset
+    return this.sendFold(true);
+  };
+
+  P.stackHeight = function () {
+    for (var y = 0; y < ROWS; y++) if (this.grid[y].some(function (c) { return c; })) return ROWS - y;
+    return 0;
+  };
+  // Where a chunk would land right now (height from the floor), for the side markers.
+  P.foldLandings = function (chunks) {
+    var top = this.stackHeight(), out = [];
+    chunks.forEach(function (b) {
+      var base = Math.min(b.h || 0, top);
+      out.push({ base: base, rows: b.rows });
+      top = Math.max(top, base + b.rows);
+    });
+    return out;
+  };
+
+  P.applyFold = function () {
+    var chunks = this.foldIn, rows = [];
+    this.foldIn = [];
+    for (var k = 0; k < chunks.length; k++) {
+      var b = chunks[k];
+      if (this.effects.fur) { delete this.effects.fur; this.say('BLOCKED'); continue; }
+      var base = Math.min(b.h || 0, this.stackHeight());
+      for (var i = 0; i < b.rows; i++) {
+        var y = ROWS - 1 - (base + i);
+        if (y < 0) { this.alive = false; break; }
+        var g = this.garbageRow(b.pattern, b.gap, i);
+        for (var x = 0; x < COLS; x++) if (g[x]) this.grid[y][x] = 'G';
+        rows.push(y);
+      }
+      if (!this.alive) break;
+    }
+    this.foldLock = FOLD_LOCK_MS;
+    this.softDrop = false;
+    this.fxEvents.push({ kind: 'fold', rows: rows, t: FOLD_LOCK_MS });
+    this.fieldVersion = (this.fieldVersion || 0) + 1;
+    if (!this.alive) return;
+    // Lines a fold completes clear normally (they count and send garbage).
+    var c = this.clearLines();
+    if (c) this.scoreClear(c);
+  };
+
   P.clearLines = function () {
-    var n = 0;
+    var n = 0, low = -1;
     for (var y = ROWS - 1; y >= 0; y--) {
       if (this.grid[y].every(function (c) { return c; })) {
+        if (low < 0) low = ROWS - 1 - y + n;   // height of the lowest cleared row (Fold Lab chunks)
         this.grid.splice(y, 1);
         this.grid.unshift(new Array(COLS).fill(null));
         n++; y++;
       }
     }
-    if (n) this.clearAnim = 180;
+    if (n) { this.clearAnim = 180; this.lastClearH = low; }
     return n;
   };
 

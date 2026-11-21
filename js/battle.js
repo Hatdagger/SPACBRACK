@@ -17,6 +17,7 @@
   Human.prototype.update = function (dt) {
     var p = this.p, s = this.slot;
     if (!p.alive || p.won) return;
+    if (p.foldLock > 0) { this.cardMode = false; p.softDrop = false; this.dasDir = 0; return; }   // fold playing: input locked
 
     // Card ability: hold button, pick direction, release to fire.
     if (s.pressed('card')) { this.cardMode = true; this.cardDir = null; }
@@ -34,6 +35,7 @@
     }
 
     if (s.pressed('perk') && p.battle && p.battle.rule === 'launch') p.battle.tryLaunch(p);
+    if (s.pressed('perk') && p.foldOn) p.earlyFold();
     // Chrono Station: tap the perk button = mark, hold it = jump.
     if (p.chronoOn) {
       if (s.pressed('perk')) { this.perkT = 0; this.perkFired = false; }
@@ -83,6 +85,7 @@
       this.launchUsed = [false, false];
     }
     if (this.rule === 'chrono') this.a.chronoOn = this.b.chronoOn = true;
+    if (this.rule === 'fold') this.a.foldOn = this.b.foldOn = true;
     this.endWhy = null;
     this.countdown = 2400;
     this.paused = false;
@@ -274,6 +277,7 @@
     if (p.effects.fur) { var sc = Math.floor(t / 120) % 2 ? PAL.orange : G.shade(PAL.orange, -0.4); R(fx, fy + FH - 1, FW, 1, sc); R(fx, fy + FH - 3, FW, 1, sc); }
 
     if (p.chronoOn) this.drawChrono(p, i, fx, fy, t);
+    if (p.foldOn) this.drawFold(p, i, fx, fy, t);
 
     // Floating callouts
     p.flash.forEach(function (f, k3) {
@@ -345,6 +349,36 @@
     if (j) { ctx.globalAlpha = j.t / 500; R(fx, fy, FW, FH, '#bfe4ff'); ctx.globalAlpha = 1; }
   };
 
+  // Fold Lab: "FOLD IN n" over the board, side markers for chunks heading to this board, fold flash.
+  Battle.prototype.drawFold = function (p, i, fx, fy, t) {
+    var ctx = this._ctx, human = this.ctrl[i] instanceof Human, o = p.opponent;
+    var held = p.heldRows();
+    var txt = 'FOLD IN ' + p.foldInLines() + (held ? '  HELD ' + held : '');
+    T(txt, fx + 40, fy - 7, held ? PAL.green : '#6c6880', { align: 'center', font: 'small' });
+    if (human && p.earlyFoldBlock() === null) T('PERK: EARLY FOLD', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
+    // Right bezel: dim = held by the opponent, blinking red = folded in, lands next placement.
+    var mx = fx + FW + 2, bottom = fy + FH, vis = G.ROWS - G.HIDDEN;
+    R(mx, fy, 3, FH, '#0a1608');
+    var marks = function (chunks, col) {
+      p.foldLandings(chunks).forEach(function (m) {
+        var top = Math.min(vis, m.base + m.rows), h0 = Math.min(vis, m.base);
+        if (top <= h0) { R(mx, fy, 3, 2, col); return; }
+        R(mx, bottom - top * C, 3, (top - h0) * C - 1, col);
+      });
+    };
+    var queued = p.foldIn.length;
+    if (!queued && o) marks(o.foldHeld, G.shade(PAL.green, -0.35));
+    if (queued) marks(p.foldIn, Math.floor(t / 120) % 2 ? PAL.red : '#ff8a8a');
+    // Fold flash: stamped rows light up while input is locked.
+    var f = p.fxEvents.filter(function (e) { return e.kind === 'fold'; })[0];
+    if (f) {
+      ctx.globalAlpha = 0.25 + 0.5 * f.t / G.FOLD_LOCK_MS;
+      f.rows.forEach(function (y) { if (y >= G.HIDDEN) R(fx, fy + (y - G.HIDDEN) * C, FW, C, Math.floor(t / 80) % 2 ? '#d8ffc0' : PAL.green); });
+      ctx.globalAlpha = 1;
+      T('FOLD!', fx + 40, fy + 40, PAL.green, { align: 'center', shadow: '#000' });
+    }
+  };
+
   // Launch Countdown display: big count in the centre console, frame around the initiator's board.
   Battle.prototype.drawLaunch = function (now) {
     var L = this.launch;
@@ -410,6 +444,9 @@
       T(this.sudden ? 'SUDDEN' : 'GARBAGE', 160, 118, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
       T(this.sudden ? 'DEATH' : 'OFF', 160, 125, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
       this.drawLaunch(now);
+    } else if (this.rule === 'fold') {
+      T('FOLD EVERY', 160, 118, PAL.green, { align: 'center', font: 'small' });
+      T(G.FOLD_EVERY + ' LINES', 160, 125, PAL.green, { align: 'center', font: 'small' });
     } else {
       T('FIRST', 160, 118, PAL.grey, { align: 'center', font: 'small' });
       T('TO ' + G.WIN_LINES, 160, 125, PAL.grey, { align: 'center', font: 'small' });

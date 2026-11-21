@@ -547,7 +547,7 @@
     var r = [
       { label: 'Mode', value: ['VS CPU', '2P LOCAL'][vs.mode], adj: function (d) { vs.mode = (vs.mode + 2 + d) % 2; } }
     ];
-    r.push({ label: 'House rule', value: ['NONE', 'LAUNCH COUNTDOWN', 'SAVE STATES'][vs.rule], adj: function (d) { vs.rule = (vs.rule + 3 + d) % 3; } });
+    r.push({ label: 'House rule', value: ['NONE', 'LAUNCH COUNTDOWN', 'SAVE STATES', 'FOLD GARBAGE'][vs.rule], adj: function (d) { vs.rule = (vs.rule + 4 + d) % 4; } });
     if (vs.mode === 0) r.push({ label: 'CPU level', value: String(vs.level), adj: function (d) { vs.level = Math.max(1, Math.min(G.CPU_MAX_LEVEL, vs.level + d)); } });
     G.FEATURES.forEach(function (f) {
       r.push({ label: f.desc, value: vs.feat[f.key] ? 'ON' : 'OFF', adj: function () { vs.feat[f.key] = !vs.feat[f.key]; } });
@@ -577,7 +577,7 @@
     go(new G.Battle({
       title: 'VERSUS', subtitle: two ? 'LOCAL 2P - NO CARD LOSS' : 'VS CPU LEVEL ' + vs.level + ' - NO CARD LOSS',
       color: PAL.violet,
-      rule: [null, 'launch', 'chrono'][vs.rule],
+      rule: [null, 'launch', 'chrono', 'fold'][vs.rule],
       timeLimit: two ? 360000 : G.launchTimeLimit(vs.level),
       a: { name: 'P1', features: feat, cardId: CARD_CHOICES[vs.c1], rank: vs.r1, slot: 0 },
       b: two ? { name: 'P2', features: feat, cardId: CARD_CHOICES[vs.c2], rank: vs.r2, slot: 1 }

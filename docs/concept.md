@@ -90,6 +90,7 @@ After the token, the HUD shows a slot reel of the 7 shapes, each going dark as i
   - Above the receiver's stack → drops as a rigid brick onto the stack.
 - Indicator: "FOLD IN 3" counter for both players, plus side markers for pending chunk heights.
 - Card garbage patterns keep their shape when stamped in.
+- **In the build (v0.7):** input lock 0.7 s; your clears cancel garbage folding in to you, then the opponent's held chunks (proposal); Early Fold charges = one per 10 lines, stackable (perk-charge proposal); card-ability garbage still arrives instantly, outside the fold (proposal); a chunk "inside" the stack overwrites solid cells only and anything that pokes above the stack sits on top.
 
 #### Folds can create line clears for the receiver (decided: they clear normally, "it is what it is")
 Options that were considered:
@@ -208,6 +209,6 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - Matches: single round or best-of-3?
 - Approve Hologram and Casino perks; perk charge rules.
 - Exact inventory size.
-- Fold Lab: input-lock duration.
+- Fold Lab: input-lock duration (0.7 s in the build), cancelling held chunks, Early Fold charges, card garbage outside the fold.
 - Hologram Hall: new house rule idea (user thinking it over).
 - Neo Geo: accept single rotate direction? Stage perk on Select vs combo.

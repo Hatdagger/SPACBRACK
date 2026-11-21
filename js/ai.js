@@ -98,7 +98,9 @@
   CPU.prototype.update = function (dt) {
     var p = this.p;
     if (!p.alive || p.won) return;
+    if (p.foldLock > 0) { p.softDrop = false; return; }   // fold playing: input locked
     if (p.chronoOn) this.chrono(dt);
+    if (p.foldOn) this.fold(dt);
     if (p.pieceId !== this.lastPiece || p.fieldVersion !== this.lastField) {
       this.lastPiece = p.pieceId; this.lastField = p.fieldVersion;
       this.target = null;
@@ -177,6 +179,21 @@
     }
     if (this.markE && p.markGrid && p.jumpsLeft() > 0 && (e.maxH >= 13 || e.holes >= this.markE.holes + 5) && this.markE.maxH < e.maxH - 3) {
       if (p.jump()) this.markE = null;
+    }
+  };
+
+  // Fold Lab Early Fold: send held garbage when there's a decent pile and the next fold is far off,
+  // or when the opponent's stack is already tall. Weaker CPUs wait for more and are slower to act.
+  CPU.prototype.fold = function (dt) {
+    var p = this.p;
+    this.foldT = (this.foldT || 0) + dt;
+    if (this.foldT < 1000) return;
+    this.foldT = 0;
+    if (p.earlyFoldBlock() !== null) return;
+    var need = this.level <= 3 ? 3 : 2, far = p.foldInLines() >= 3;
+    var foeTall = p.opponent && p.opponent.stackHeight() >= 12;
+    if ((p.heldRows() >= need && far) || (foeTall && p.heldRows() >= 2)) {
+      if (p.rng() < 0.05 * this.level + 0.1) p.earlyFold();
     }
   };
 

@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.6
+# SPACBRACK — prototype v0.7
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,18 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.7 (Fold Lab fold garbage)
+
+- **Fold garbage:** the garbage your clears make is held, not sent. Every 8 lines you clear (8, 16, 24, 32) it all folds over to the opponent and lands on their next brick placement.
+- Each clear is its own chunk and remembers the height it was cleared at. Inside the opponent's stack it overwrites those rows; above their stack it drops onto the top. Card garbage patterns keep their shape.
+- Folded rows can complete lines for the receiver. Those clear normally (they count and send garbage).
+- The receiver's controls lock for 0.7 s while the fold plays (rows flash green).
+- Your clears cancel garbage folding in to you first, then what the opponent is holding.
+- **Early Fold perk** (perk button): send your held garbage now. One charge per 10 lines, stackable. Not while a fold is already on its way. It does not reset the 8-line counter.
+- Over each board: "FOLD IN n  HELD n". Markers on the right edge show where incoming chunks will land (dim = still held by the opponent, blinking red = landing next placement).
+- CPUs use Early Fold when they've banked a few rows or your stack is tall.
+- Versus "House rule" option now also has Fold Garbage.
 
 ## New in v0.6 (Chrono Station save states)
 
@@ -102,7 +114,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## Not in yet (next steps)
 
-- House rules and stage perks for the other four locations (Hologram Hall being rethought, Fold garbage, Interest, Card bet). The perk button is already mapped.
+- House rules and stage perks for the other three locations (Hologram Hall being rethought, Interest, Card bet). The perk button is already mapped.
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
 - Online versus, sound, and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.
@@ -116,7 +128,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 | Hard drop | X | Space | N |
 | Hold | Y | C / Shift | M |
 | Card ability | RT (or RB) | A | P |
-| Stage perk (not used yet) | LT (or LB) | S | ; |
+| Stage perk | LT (or LB) | S | ; |
 | Pause / cards menu | Start | Esc | \ |
 | Menu OK / back | A / B | Enter / Backspace | |
 | Explore: look around / talk or enter / map | Left-Right / A / B | Arrows / Enter / Backspace | |

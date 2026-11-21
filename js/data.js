@@ -236,7 +236,7 @@
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
-  // House rules and stage perks: Launch Complex ('launch') and Chrono Station ('chrono') are in so far.
+  // House rules and stage perks: Launch Complex ('launch'), Fold Lab ('fold') and Chrono Station ('chrono') are in so far.
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
@@ -258,7 +258,7 @@
     },
     {
       id: 'fold', name: 'Fold Lab', feature: 'hardDrop', color: '#9ae66e', prop: 'vat',
-      rule: 'Fold garbage (coming later)',
+      rule: 'Fold garbage - held, folded in every 8 lines', ruleId: 'fold',
       npcs: [
         { name: 'Lab Intern Pip', card: 'skeleton', rank: 2, line: 'Space folds. So will you.' },
         { name: 'Dr. Crease', card: 'cyclops', rank: 3, line: 'An experiment! You are the control group.' },
