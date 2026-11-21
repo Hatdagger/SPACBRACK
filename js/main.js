@@ -286,8 +286,9 @@
     var self = this, loc = this.loc, n = this.npcFor(sp), me = equippedCard();
     var foeCard = n.mirror ? me.id : n.card, foeRank = n.mirror ? me.rank : n.rank;
     // Crew have no features. Each boss has only the one feature its token unlocks (and uses it sparingly).
-    var foeFeat = G.noFeatures();
-    if (n.boss) foeFeat[loc.feature] = true;
+    // Past You is the exception: it carries whatever features you have.
+    var foeFeat = n.mirror ? playerFeatures() : G.noFeatures();
+    if (n.boss && !n.mirror) foeFeat[loc.feature] = true;
     I.setSinglePlayer(true);
     this.mode = 'arrive'; this.modeT = 0;
     go(new G.Battle({
