@@ -10,7 +10,9 @@ Note: the falling blocks are called **bricks** everywhere in this game.
 
 No build step and nothing to install. Open `index.html` in Chrome, Edge or Firefox. That works on Windows, Linux and Android.
 
-- To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
+- **Download:** grab the zip from the [Releases page](https://github.com/Hatdagger/SPACBRACK/releases), unzip it and open `index.html`.
+- **Play in the browser (GitHub Pages):** one-time setup: in the repo go to **Settings → Pages** and set **Source** to **GitHub Actions**. After that every push to `main` updates the demo at https://hatdagger.github.io/SPACBRACK/
+- **New release:** change the number in `VERSION` (e.g. `v0.13`) and push; a release with a zip is made automatically.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
 
