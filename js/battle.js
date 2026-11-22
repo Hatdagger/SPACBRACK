@@ -38,6 +38,7 @@
     if (s.pressed('perk') && p.foldOn) p.earlyFold();
     if (s.pressed('perk') && p.bankOn) p.withdraw();
     if (s.pressed('perk') && p.leverOn) p.pullLever();
+    if (s.pressed('perk') && p.holoOn) p.holoFreeze();
     // Chrono Station: tap the perk button = mark, hold it = jump.
     if (p.chronoOn) {
       if (s.pressed('perk')) { this.perkT = 0; this.perkFired = false; }
@@ -90,6 +91,7 @@
     if (this.rule === 'fold') this.a.foldOn = this.b.foldOn = true;
     if (this.rule === 'bank') this.a.bankOn = this.b.bankOn = true;
     if (this.rule === 'casino') this.a.leverOn = this.b.leverOn = true;
+    if (this.rule === 'holo') this.a.holoOn = this.b.holoOn = true;
     this.bet = cfg.bet || null;        // Space Casino card bet (Adventure): {mine, theirs} card ids
     this.endWhy = null;
     this.countdown = 2400;
@@ -237,7 +239,8 @@
           if (c[1] >= G.HIDDEN) ghostCell(fx + c[0] * C, fy + (c[1] - G.HIDDEN) * C, col);
         });
       }
-      p.cells(pc.type, pc.rot, pc.x, pc.y).forEach(function (c) {
+      if (pc.holo) this.drawHoloPiece(p, fx, fy, t);
+      else p.cells(pc.type, pc.rot, pc.x, pc.y).forEach(function (c) {
         if (c[1] >= G.HIDDEN) G.brick(fx + c[0] * C, fy + (c[1] - G.HIDDEN) * C, C, col);
       });
     }
@@ -319,6 +322,7 @@
     if (p.foldOn) this.drawFold(p, i, fx, fy, t);
     if (p.bankOn) this.drawBank(p, i, fx, fy, t);
     if (p.leverOn) this.drawLever(p, i, fx, fy, t);
+    if (p.holoOn) this.drawHolo(p, i, fx, fy, t);
 
     // Floating callouts
     p.flash.forEach(function (f, k3) {
@@ -443,6 +447,43 @@
       R(x + 2, y + 5, 4, 4, PAL.red); R(x + 6, y + 4, 4, 4, PAL.red); G.px(x + 3, y + 6, '#fff'); G.px(x + 7, y + 5, '#fff');
     } else { R(x + 2, y + 2, 7, 6, '#c8c4d8'); R(x + 3, y + 4, 2, 2, '#000'); R(x + 6, y + 4, 2, 2, '#000'); R(x + 3, y + 8, 5, 2, '#c8c4d8'); }
   }
+  // Hologram brick: see-through cyan with scanlines and flicker. Cells over empty space (what a
+  // freeze would fill) are bright; cells phasing through bricks are just a dotted outline.
+  Battle.prototype.drawHoloPiece = function (p, fx, fy, t) {
+    var ctx = this._ctx, pc = p.piece, g = p.grid;
+    var flick = 0.55 + 0.25 * Math.sin(t / 60) + (Math.random() < 0.06 ? -0.3 : 0);
+    var shift = Math.random() < 0.08 ? (Math.random() < 0.5 ? -1 : 1) : 0;    // rare glitch jitter
+    p.cells(pc.type, pc.rot, pc.x, pc.y).forEach(function (c) {
+      if (c[1] < G.HIDDEN) return;
+      var x = fx + c[0] * C + shift, y = fy + (c[1] - G.HIDDEN) * C, solid = g[c[1]][c[0]];
+      if (!solid) {
+        ctx.globalAlpha = Math.max(0.2, flick * 0.7);
+        R(x, y, C, C, '#2fe8ff');
+        ctx.globalAlpha = Math.max(0.3, flick);
+        for (var yy = 0; yy < C; yy += 2) R(x, y + yy, C, 1, '#c8fbff');      // scanlines
+        R(x, y, C, 1, '#ffffff'); R(x, y, 1, C, '#ffffff');
+      } else {
+        ctx.globalAlpha = Math.max(0.35, flick);
+        for (var k = 0; k < C; k += 2) { G.px(x + k, y, '#7ff6ff'); G.px(x + k, y + C - 1, '#7ff6ff'); G.px(x, y + k, '#7ff6ff'); G.px(x + C - 1, y + k, '#7ff6ff'); }
+      }
+    });
+    ctx.globalAlpha = 1;
+  };
+  Battle.prototype.drawHolo = function (p, i, fx, fy, t) {
+    var human = this.ctrl[i] instanceof Human, n = p.holoReady(), pc = p.piece;
+    var txt = pc && pc.holo ? 'HOLOGRAM - FILLS ' + p.holoFills() : p.lines < 10 ? 'HOLOGRAM AT 10 LINES' : n > 0 ? 'HOLOGRAM NEXT' : 'HOLOGRAM AT ' + (Math.floor(p.lines / 10) + 1) * 10;
+    if (p.holoUsed >= 3 && !(pc && pc.holo)) txt = 'NO MORE HOLOGRAMS';
+    T(txt, fx + 40, fy - 7, (pc && pc.holo) || n > 0 ? '#7ff6ff' : '#6c6880', { align: 'center', font: 'small' });
+    if (human && pc && pc.holo && p.alive) T('PERK: FREEZE', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? '#7ff6ff' : PAL.white, { align: 'center', font: 'small' });
+    // flash on arrival and when it's set
+    p.fxEvents.forEach(function (f) {
+      if (f.kind === 'holo' || f.kind === 'holoSet') {
+        var a = f.t / (f.kind === 'holo' ? 600 : 400);
+        this._ctx.globalAlpha = a * 0.25; R(fx, fy, FW, FH, '#7ff6ff'); this._ctx.globalAlpha = 1;
+      }
+    }, this);
+  };
+
   Battle.prototype.drawLever = function (p, i, fx, fy, t) {
     var human = this.ctrl[i] instanceof Human, n = p.spinsLeft();
     var txt = p.lines < 10 ? 'LEVER AT 10 LINES' : 'SPINS ' + n;

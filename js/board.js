@@ -7,6 +7,9 @@
   var LINE_SCORE = [0, 100, 300, 500, 800];
   var LINE_GARBAGE = [0, 0, 1, 2, 4];
   var LOCK_MS = 500, MAX_RESETS = 15;
+  // Players get a much shorter lock delay (CPUs keep 500 ms so their measured difficulty stays the same),
+  // and holding soft drop onto the floor locks at once.
+  var PLAYER_LOCK_MS = 150;
   var SOFT_MS = 50;           // soft drop: one row every 50 ms while held
   // Card abilities: shared cooldown after any ability fires, so they can't be chained.
   var ABILITY_COOLDOWN = 8000;
@@ -97,6 +100,9 @@
   P.cells = function (type, rot, x, y) {
     return G.SHAPES[type][rot].map(function (c) { return [x + c[0], y + c[1]]; });
   };
+  // A hologram brick phases through every other brick: it only collides with the walls and the floor.
+  var EMPTY = makeGrid();
+  P.pc = function (type, rot, x, y) { return this.collides(type, rot, x, y, this.piece && this.piece.holo ? EMPTY : null); };
   P.collides = function (type, rot, x, y, grid) {
     grid = grid || this.grid;
     var s = G.SHAPES[type][rot];
@@ -109,11 +115,19 @@
   };
 
   P.spawn = function (type) {
+    var fromQueue = !type;
     type = type || this.queue.shift();
     this.fillQueue();
     var x = type === 'O' ? 4 : 3;
     this.piece = { type: type, rot: 0, x: x, y: 0 };
     this.pieceId++;
+    // Hologram Hall: one hologram brick per 10 lines, dealt as the next brick from the queue.
+    if (this.holoOn && fromQueue && this.holoReady() > 0) {
+      this.piece.holo = true; this.holoUsed = (this.holoUsed || 0) + 1;
+      this.fxEvents.push({ kind: 'holo', t: 600 }); this.say('HOLOGRAM!');
+      this.gravTimer = 0; this.lockTimer = 0; this.lockResets = 0;
+      return;
+    }
     this.gravTimer = 0; this.lockTimer = 0; this.lockResets = 0;
     if (this.collides(type, 0, x, 0)) {
       if (!this.collides(type, 0, x, -1)) this.piece.y = -1;
@@ -144,8 +158,8 @@
     this.jumpsUsed = (this.jumpsUsed || 0) + 1;
     this.fieldVersion = (this.fieldVersion || 0) + 1;
     var p = this.piece;
-    while (this.collides(p.type, p.rot, p.x, p.y) && p.y > -3) p.y--;
-    if (this.collides(p.type, p.rot, p.x, p.y)) this.alive = false;
+    while (this.pc(p.type, p.rot, p.x, p.y) && p.y > -3) p.y--;
+    if (this.pc(p.type, p.rot, p.x, p.y)) this.alive = false;
     this.lockTimer = 0;
     this.fxEvents.push({ kind: 'jump', t: 500 });
     this.say('JUMP!');
@@ -154,7 +168,7 @@
 
   P.onGround = function () {
     var p = this.piece;
-    return this.collides(p.type, p.rot, p.x, p.y + 1);
+    return this.pc(p.type, p.rot, p.x, p.y + 1);
   };
   P.touched = function () {
     if (this.onGround() && this.lockResets < MAX_RESETS) { this.lockTimer = 0; this.lockResets++; }
@@ -162,7 +176,7 @@
 
   P.move = function (dx) {
     var p = this.piece;
-    if (!this.alive || this.collides(p.type, p.rot, p.x + dx, p.y)) return false;
+    if (!this.alive || this.pc(p.type, p.rot, p.x + dx, p.y)) return false;
     p.x += dx; this.touched(); return true;
   };
 
@@ -173,7 +187,7 @@
     var kicks = this.features.wallKick ? G.kicks(p.type, p.rot, to) : [[0, 0]];
     for (var i = 0; i < kicks.length; i++) {
       var nx = p.x + kicks[i][0], ny = p.y + kicks[i][1];
-      if (!this.collides(p.type, to, nx, ny)) {
+      if (!this.pc(p.type, to, nx, ny)) {
         p.x = nx; p.y = ny; p.rot = to; this.touched();
         if (i > 0) this.kickFlash = 200;
         return true;
@@ -184,7 +198,7 @@
 
   P.ghostY = function () {
     var p = this.piece, y = p.y;
-    while (!this.collides(p.type, p.rot, p.x, y + 1)) y++;
+    while (!this.pc(p.type, p.rot, p.x, y + 1)) y++;
     return y;
   };
 
@@ -202,6 +216,7 @@
 
   P.hold = function () {
     if (!this.alive || !this.features.hold || this.holdUsed) return false;
+    if (this.piece.holo) { this.say("CAN'T HOLD A HOLOGRAM"); return false; }
     var cur = this.piece.type;
     if (this.holdType) { var h = this.holdType; this.holdType = cur; this.spawn(h); }
     else { this.holdType = cur; this.spawn(); }
@@ -251,7 +266,8 @@
     }
     if (this.onGround()) {
       this.lockTimer += dt;
-      if (this.lockTimer >= LOCK_MS) this.lock();
+      if (!this.isCPU && this.softDrop) { this.lock(); return; }
+      if (this.lockTimer >= (this.isCPU ? LOCK_MS : PLAYER_LOCK_MS)) this.lock();
     } else this.lockTimer = 0;
   };
 
@@ -259,9 +275,11 @@
     var p = this.piece, self = this;
     var above = true;
     this.cells(p.type, p.rot, p.x, p.y).forEach(function (c) {
-      if (c[1] >= 0) self.grid[c[1]][c[0]] = p.type;
+      // A hologram only fills the empty cells it covers; bricks already there stay.
+      if (c[1] >= 0 && !(p.holo && self.grid[c[1]][c[0]])) self.grid[c[1]][c[0]] = p.type;
       if (c[1] >= G.HIDDEN) above = false;
     });
+    if (p.holo) this.fxEvents.push({ kind: 'holoSet', frozen: !!p.frozen, t: 400 });
     var cleared = this.clearLines();
     if (cleared > 0) {
       this.scoreClear(cleared);
@@ -382,7 +400,7 @@
     this.grid.unshift(new Array(COLS).fill(null));
     this.fieldVersion = (this.fieldVersion || 0) + 1;
     var p = this.piece, tries = 0;
-    while (this.collides(p.type, p.rot, p.x, p.y) && tries < 2) { p.y--; tries++; }
+    while (this.pc(p.type, p.rot, p.x, p.y) && tries < 2) { p.y--; tries++; }
   };
 
   // ---------- Fold Lab: fold garbage ----------
@@ -418,6 +436,25 @@
     if (why) { if (why !== 'OFF') { this.say(why); this.perkFx('deny'); } return false; }
     this.earlyUsed = (this.earlyUsed || 0) + 1;   // the 8-line counter is NOT reset
     return this.sendFold(true);
+  };
+
+  // ---------- Hologram Hall: hologram bricks ----------
+  // One hologram per 10 lines (10, 20, 30), dealt as your next brick. It phases through other bricks.
+  // Perk button = freeze it where it is: it fills the empty cells it covers (holes included).
+  // If it isn't frozen it falls to the floor and is placed there the same way (filling the bottom rows' gaps).
+  P.holoReady = function () { return Math.min(3, Math.floor(this.lines / 10)) - (this.holoUsed || 0); };
+  P.holoFreeze = function () {
+    if (!this.holoOn || !this.alive) return false;
+    if (!this.piece.holo) { this.say(this.lines < 10 ? 'HOLOGRAM AT 10 LINES' : 'NO HOLOGRAM'); this.perkFx('deny'); return false; }
+    this.piece.frozen = true;
+    this.perkFx('freeze');
+    this.lock();
+    return true;
+  };
+  // Which cells of the current hologram would fill something if frozen now.
+  P.holoFills = function () {
+    var p = this.piece, g = this.grid;
+    return this.cells(p.type, p.rot, p.x, p.y).filter(function (c) { return c[1] >= 0 && !g[c[1]][c[0]]; }).length;
   };
 
   P.stackHeight = function () {
@@ -576,8 +613,8 @@
     if (y0 < 0) this.alive = false;
     // If the rock landed on the falling piece's cells, nudge the piece up.
     var p = this.piece, tries = 0;
-    while (this.alive && this.collides(p.type, p.rot, p.x, p.y) && tries < 4) { p.y--; tries++; }
-    if (this.collides(p.type, p.rot, p.x, p.y)) this.alive = false;
+    while (this.alive && this.pc(p.type, p.rot, p.x, p.y) && tries < 4) { p.y--; tries++; }
+    if (this.pc(p.type, p.rot, p.x, p.y)) this.alive = false;
   };
 
   P.bonePatch = function (n) {

@@ -56,11 +56,20 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 | # | Location | Token / feature | House rule | Stage perk (button) |
 |---|---|---|---|---|
 | 1 | **Launch Complex** | **Thrusters** — wall kicks | **Countdown race, garbage off:** clear the target lines within a target time AND before the opponent | **Launch Countdown (decided):** 10-count; when it ends, the player ahead wins (see below) |
-| 2 | **Hologram Hall** | **Ghost brick** (hologram) | **Being rethought** (was: hologram decoys, fake blocks that bricks fall through) | **Projector** (proposal): tap = scan, briefly reveal which of your blocks are fake; hold = beam a decoy onto the opponent's board |
+| 2 | **Hologram Hall** | **Ghost brick** (hologram) | **Hologram bricks (decided, v0.11):** 1 per 10 lines; phases through other bricks | **Freeze (decided):** freeze the hologram where it is, filling the holes it covers |
 | 3 | **Fold Lab** | **Hard drop** | **Fold garbage** (see below) | **Early Fold (decided):** send your held fold garbage now; cannot stack with other folds |
 | 4 | **Space Bank** | **Hold** | **Interest:** held-back garbage grows over time, lost if the opponent clears enough first | **Withdraw:** release your banked garbage at the opponent |
 | 5 | **Chrono Station** | **Next-brick preview** | **Save states** (see below) | **Mark / Jump:** tap = mark, hold = jump (decided) |
 | 6 | **Space Casino** | **7-bag randomizer** | **Card bet:** both players stake an inventory card; winner takes both | **Pull the Lever** (decided): slot spin for a random effect — jackpot (garbage to opponent), cherries (clear your bottom row), bust (garbage to you) |
+
+### Hologram Hall: hologram bricks (decided, v0.11)
+- The player gets **one hologram brick every 10 lines** (10, 20, 30). It is dealt as your next brick (same shape the preview showed).
+- It is **see-through** with a cyan scanline look, and it **phases through all other bricks** (only walls and the floor stop it).
+- **Perk button = Freeze:** it locks where it is and **fills only the empty cells it covers** (holes included). Bricks already there stay. Filled rows clear normally.
+- **Not frozen:** it falls to the floor and is placed there the same way (fills gaps in the bottom rows).
+- In the build: can't be held; hard drop teleports it to the floor; the top of the board shows "HOLOGRAM - FILLS n" (cells a freeze would fill). Cells over empty space look solid-ish, cells inside bricks are a dotted outline.
+- CPUs plan the best reachable spot and freeze it there.
+- Replaces the old decoy idea and the Projector perk proposal.
 
 ### Launch Complex perk: Launch Countdown (decided)
 - Pressing the perk button starts a **10-count**. **Only allowed while you are ahead**, and **one use per round**.
@@ -149,6 +158,9 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - CPU uses it: needs a 3-line lead at levels 1-3, 2 lines above; at least 8 lines cleared; while counting it builds without clearing.
 - Card abilities that send garbage are blanked by the rule (decided; other ability effects still work).
 
+## Lock speed (v0.11, user request: "play really fast")
+- Player lock delay 0.15 s (was 0.5 s); holding soft drop onto the floor locks instantly. CPUs keep 0.5 s so their measured levels stay the same.
+
 ## Sound and music (v0.10, placeholders)
 - All synthesized in code (chiptune: square/triangle/noise), no sound files; each sound and track is a replaceable entry.
 - Tracks: title, map, exploration, battle (key changes by location), boss; win/lose jingles. Battle music speeds up when your stack is tall.
@@ -229,8 +241,7 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 ## Open questions
 - Card abilities: fixed role per direction across all cards? Full ability sets per monster.
 - Matches: single round or best-of-3?
-- Approve Hologram perk; perk charge rules (Early Fold and Lever use one per 10 lines).
+- Perk charge rules (Early Fold and Lever use one per 10 lines).
 - Exact inventory size.
 - Fold Lab: input-lock duration (0.7 s in the build), cancelling held chunks, Early Fold charges, card garbage outside the fold.
-- Hologram Hall: new house rule idea (user thinking it over).
 - Neo Geo: accept single rotate direction? Stage perk on Select vs combo.

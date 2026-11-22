@@ -226,6 +226,20 @@
       noise({ d: 0.9, v: 0.07 * o.v, type: 'bandpass', f: 3000, q: 2, pan: o.pan });
     },
 
+    // ----- Hologram Hall -----
+    holo: function (o) {   // a hologram brick materializes
+      arp(['C6', 'G6', 'C7', 'G7'], 0.05, { type: 'sine', d: 0.3, v: 0.07 * o.v, pan: o.pan, vib: 1 });
+      noise({ d: 0.4, v: 0.06 * o.v, type: 'bandpass', f: 5000, q: 6, pan: o.pan });
+    },
+    holoSet: function (o) {   // landed on the floor without being frozen
+      tone({ f: 1200, to: 300, d: 0.2, v: 0.08 * o.v, type: 'sine', pan: o.pan });
+    },
+    perk_freeze: function (o) {   // frozen in place: crystal "shing"
+      tone({ f: 3000, to: 900, d: 0.15, v: 0.08 * o.v, type: 'sawtooth', pan: o.pan });
+      ['E7', 'B6', 'G#6'].forEach(function (n, k) { tone({ f: hz(NOTE(n)), d: 0.5, v: 0.06 * o.v, type: 'sine', at: ctx.currentTime + 0.05 + k * 0.04, pan: o.pan }); });
+      noise({ d: 0.25, v: 0.1 * o.v, type: 'highpass', f: 6000, pan: o.pan });
+    },
+
     // ----- stage perks -----
     perk_deny: function (o) { tone({ f: 120, d: 0.18, v: 0.13 * o.v, type: 'square', pan: o.pan, sus: 1 }); tone({ f: 127, d: 0.18, v: 0.1 * o.v, type: 'square', pan: o.pan, sus: 1 }); },
     perk_mark: function (o) {   // camera shutter
@@ -501,6 +515,7 @@
       if (f.kind === 'lever') play('lever', Object.assign({ result: f.result }, o));
       else if (f.kind === 'cast') play(SFX['ab_' + f.id] ? 'ab_' + f.id : 'cast', o);
       else if (f.kind === 'perk') play('perk_' + f.id, o);
+      else if (f.kind === 'holoSet') { if (!f.frozen) play('holoSet', o); }
       else if (SFX[f.kind]) play(f.kind, o);
     });
     (p.flash || []).forEach(function (f) {

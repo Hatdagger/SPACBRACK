@@ -82,6 +82,36 @@
     return out;
   }
 
+  // Hologram brick: try every rotation / column / height it can still reach (it phases through bricks,
+  // so it can only go down from where it is) and score the field after it fills the empty cells there.
+  function holoPlacements(player) {
+    var p = player.piece, out = [];
+    var rots = p.type === 'O' ? [0] : [0, 1, 2, 3];
+    rots.forEach(function (rot) {
+      for (var x = -3; x < COLS; x++) {
+        for (var y = p.y + 2; y < ROWS; y++) {
+          if (player.pc(p.type, rot, x, y)) continue;   // off the walls/floor
+          var grid = player.grid.map(function (r) { return r.slice(); });
+          var fills = 0, above = true;
+          player.cells(p.type, rot, x, y).forEach(function (c) {
+            if (c[1] >= 0 && !grid[c[1]][c[0]]) { grid[c[1]][c[0]] = p.type; fills++; }
+            if (c[1] >= G.HIDDEN) above = false;
+          });
+          if (above || !fills) continue;
+          var lines = 0;
+          for (var yy = ROWS - 1; yy >= 0; yy--) {
+            if (grid[yy].every(function (c) { return c; })) { grid.splice(yy, 1); grid.unshift(new Array(COLS).fill(null)); lines++; yy++; }
+          }
+          var e = evaluate(grid);
+          var score = -0.51 * e.agg + 0.9 * lines - 0.36 * e.holes - 0.18 * e.bump;
+          out.push({ rot: rot, x: x, y: y, score: score });
+        }
+      }
+    });
+    out.sort(function (a, b) { return b.score - a.score; });
+    return out;
+  }
+
   var HARD_DROP_RATE = 0.25;  // share of bricks a CPU with hard drop actually hard-drops
 
   function CPU(player, level) {
@@ -139,6 +169,7 @@
     }
 
     if (this.timer < 0) return;
+    if (p.piece.holo) { this.holo(); return; }
     if (!this.target) {
       var opts = placements(p);
       if (!opts.length) { p.softDrop = true; return; }
@@ -166,6 +197,28 @@
       return;
     }
     if (!ok) this.fails++;
+  };
+
+  // Hologram Hall: steer the hologram over the best spot it can still reach, soft drop down to that
+  // height and freeze it there. If the plan gets missed (it fell past), plan again from where it is.
+  CPU.prototype.holo = function () {
+    var p = this.p, pc = p.piece;
+    if (this.target && pc.y > this.target.y) this.target = null;
+    if (!this.target) {
+      var opts = holoPlacements(p);
+      if (!opts.length) { p.softDrop = true; return; }
+      var pick = opts[0];
+      if (p.rng() < this.cfg.mistake && opts.length > 1) pick = opts[Math.min(opts.length - 1, 1 + Math.floor(p.rng() * this.cfg.slop))];
+      this.target = pick;
+    }
+    var t = this.target;
+    if (pc.y === t.y && pc.rot === t.rot && pc.x === t.x) { p.softDrop = false; p.holoFreeze(); return; }
+    if (this.timer < this.cfg.step) return;
+    this.timer = 0;
+    if (pc.rot !== t.rot) { if (!p.rotate(1)) p.move(pc.x < 4 ? 1 : -1); }
+    else if (pc.x < t.x) p.move(1);
+    else if (pc.x > t.x) p.move(-1);
+    else p.softDrop = true;
   };
 
   // Chrono Station save states: mark a clean, low field; jump back when the stack gets bad.

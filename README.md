@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.10
+# SPACBRACK — prototype v0.11
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,15 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.11 (Hologram Hall, faster locking)
+
+- **Hologram bricks (Hologram Hall):** every 10 lines (10, 20, 30) your next brick is a hologram. It's see-through cyan and phases through every other brick.
+  - **Perk button = Freeze:** it sets right where it is and fills the empty cells it covers, holes included. Bricks already there stay put. Full rows clear as usual.
+  - If you don't freeze it, it falls to the floor and fills the gaps there the same way.
+  - The top of the board shows how many cells a freeze would fill right now. A hologram can't be held; hard drop sends it straight to the floor.
+  - CPUs use holograms too. Versus "House rule" option now has Holograms. All six locations now have their rule.
+- **Faster locking:** a brick you hold down on locks the moment it lands, and one that lands on its own locks after 0.15 s (was 0.5 s). CPUs keep the old delay so their difficulty is unchanged.
 
 ## New in v0.10 (placeholder sound and music, hard drop teleport)
 
@@ -147,7 +156,6 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 ## Not in yet (next steps)
 
-- Hologram Hall house rule and perk (being rethought).
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
 - Online versus, real sound/music (placeholders are in), and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.

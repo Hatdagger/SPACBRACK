@@ -236,7 +236,7 @@
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
-  // House rules and stage perks: Launch Complex ('launch'), Fold Lab ('fold'), Space Bank ('bank'), Chrono Station ('chrono') and Space Casino ('casino') are in.
+  // House rules and stage perks: all six are in (launch, holo, fold, bank, chrono, casino).
   G.LOCATIONS = [
     {
       id: 'launch', name: 'Launch Complex', feature: 'wallKick', color: '#e8763a', prop: 'gantry',
@@ -249,7 +249,7 @@
     },
     {
       id: 'holo', name: 'Hologram Hall', feature: 'ghost', color: '#4fd1c5', prop: 'pillar',
-      rule: 'Hologram decoys (coming later)',
+      rule: 'Holograms - 1 per 10 lines, perk to freeze', ruleId: 'holo',
       npcs: [
         { name: 'Usher Lumen', card: 'bat', rank: 2, line: 'The show starts when the blocks drop.' },
         { name: 'Projectionist Rae', card: 'werewolf', rank: 2, line: 'I see every frame. Do you?' },
