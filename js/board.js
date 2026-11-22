@@ -7,9 +7,6 @@
   var LINE_SCORE = [0, 100, 300, 500, 800];
   var LINE_GARBAGE = [0, 0, 1, 2, 4];
   var LOCK_MS = 500, MAX_RESETS = 15;
-  // Players get a much shorter lock delay (CPUs keep 500 ms so their measured difficulty stays the same),
-  // and holding soft drop onto the floor locks at once.
-  var PLAYER_LOCK_MS = 150;
   var SOFT_MS = 50;           // soft drop: one row every 50 ms while held
   // Card abilities: shared cooldown after any ability fires, so they can't be chained.
   var ABILITY_COOLDOWN = 8000;
@@ -266,8 +263,7 @@
     }
     if (this.onGround()) {
       this.lockTimer += dt;
-      if (!this.isCPU && this.softDrop) { this.lock(); return; }
-      if (this.lockTimer >= (this.isCPU ? LOCK_MS : PLAYER_LOCK_MS)) this.lock();
+      if (this.lockTimer >= LOCK_MS) this.lock();   // normal and soft drops keep the delay (slides, T-spins); hard drop locks at once
     } else this.lockTimer = 0;
   };
 

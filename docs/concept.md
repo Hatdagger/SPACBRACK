@@ -158,8 +158,8 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - CPU uses it: needs a 3-line lead at levels 1-3, 2 lines above; at least 8 lines cleared; while counting it builds without clearing.
 - Card abilities that send garbage are blanked by the rule (decided; other ability effects still work).
 
-## Lock speed (v0.11, user request: "play really fast")
-- Player lock delay 0.15 s (was 0.5 s); holding soft drop onto the floor locks instantly. CPUs keep 0.5 s so their measured levels stay the same.
+## Lock delay (decided, v0.11)
+- **Hard drop locks instantly; normal and soft drops keep the 0.5 s lock delay** so bricks can be slid and T-spins are possible. (A shorter player delay was tried and dropped.)
 
 ## Sound and music (v0.10, placeholders)
 - All synthesized in code (chiptune: square/triangle/noise), no sound files; each sound and track is a replaceable entry.

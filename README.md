@@ -14,14 +14,14 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
 
-## New in v0.11 (Hologram Hall, faster locking)
+## New in v0.11 (Hologram Hall)
 
 - **Hologram bricks (Hologram Hall):** every 10 lines (10, 20, 30) your next brick is a hologram. It's see-through cyan and phases through every other brick.
   - **Perk button = Freeze:** it sets right where it is and fills the empty cells it covers, holes included. Bricks already there stay put. Full rows clear as usual.
   - If you don't freeze it, it falls to the floor and fills the gaps there the same way.
   - The top of the board shows how many cells a freeze would fill right now. A hologram can't be held; hard drop sends it straight to the floor.
   - CPUs use holograms too. Versus "House rule" option now has Holograms. All six locations now have their rule.
-- **Faster locking:** a brick you hold down on locks the moment it lands, and one that lands on its own locks after 0.15 s (was 0.5 s). CPUs keep the old delay so their difficulty is unchanged.
+- **Lock delay:** hard drop locks instantly; bricks that fall normally or by soft drop keep the 0.5 s delay so you can slide them and do T-spins.
 
 ## New in v0.10 (placeholder sound and music, hard drop teleport)
 
