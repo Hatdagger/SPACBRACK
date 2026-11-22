@@ -14,6 +14,27 @@
     this.dasDir = 0; this.dasT = 0;
     this.cardMode = false; this.cardDir = null;
   }
+  // One button driving one rule's perk. Save states: tap = mark, hold = jump.
+  Human.prototype.perkButton = function (btn, rule, dt) {
+    var p = this.p, s = this.slot, st = this['pb_' + btn] || (this['pb_' + btn] = { t: 0, fired: false });
+    if (rule === 'chrono') {
+      if (s.pressed(btn)) { st.t = 0; st.fired = false; }
+      if (s.down(btn)) {
+        st.t += dt;
+        if (!st.fired && st.t >= HOLD_MS) { st.fired = true; p.jump(); }
+      } else if (s.released(btn) && !st.fired) p.mark();
+      return;
+    }
+    if (!s.pressed(btn)) return;
+    if (rule === 'launch') p.battle.tryLaunch(p);
+    else if (rule === 'fold') p.earlyFold();
+    else if (rule === 'bank') p.withdraw();
+    else if (rule === 'casino') p.pullLever();
+    else if (rule === 'holo') p.holoFreeze();
+  };
+  // Which button runs a rule's perk for this player, for the on-screen hints.
+  Battle.prototype.btnName = function (p, rule) { return this.rule === rule ? 'PERK' : 'CARD'; };
+
   Human.prototype.update = function (dt) {
     var p = this.p, s = this.slot;
     if (!p.alive || p.won) return;
@@ -27,8 +48,13 @@
       p.softDrop = false;
       return;
     }
+    // Unique boss cards have no directional moves: the card button runs the card's own perk.
+    // The stage perk button only ever runs the location's house rule.
+    var houseRule = p.battle && p.battle.rule, cardRule = p.card.unique ? p.card.rule : null;
+    if (houseRule) this.perkButton('perk', houseRule, dt);
+    if (cardRule) this.perkButton('card', cardRule, dt);
     // Card ability: hold button, pick direction, release to fire.
-    if (s.pressed('card')) { this.cardMode = true; this.cardDir = null; }
+    if (s.pressed('card') && !cardRule) { this.cardMode = true; this.cardDir = null; }
     if (this.cardMode) {
       var self = this;
       G.DIRS.forEach(function (d) { if (s.down(d)) self.cardDir = d; });
@@ -42,19 +68,6 @@
       if (this.cardMode) return; // d-pad picks abilities while the card button is held
     }
 
-    if (s.pressed('perk') && p.battle && p.battle.hasLaunch(p)) p.battle.tryLaunch(p);
-    if (s.pressed('perk') && p.foldOn) p.earlyFold();
-    if (s.pressed('perk') && p.bankOn) p.withdraw();
-    if (s.pressed('perk') && p.leverOn) p.pullLever();
-    if (s.pressed('perk') && p.holoOn) p.holoFreeze();
-    // Chrono Station: tap the perk button = mark, hold it = jump.
-    if (p.chronoOn) {
-      if (s.pressed('perk')) { this.perkT = 0; this.perkFired = false; }
-      if (s.down('perk')) {
-        this.perkT += dt;
-        if (!this.perkFired && this.perkT >= HOLD_MS) { this.perkFired = true; p.jump(); }
-      } else if (s.released('perk') && !this.perkFired) p.mark();
-    }
     if (s.pressed('rotCW')) p.rotate(1);
     if (s.pressed('rotCCW')) p.rotate(-1);
     if (s.pressed('hold')) p.hold();
@@ -409,8 +422,8 @@
     var ctx = this._ctx, jumps = p.jumpsLeft(), human = this.ctrl[i] instanceof Human;
     var txt, col;
     if (p.lines < 10) { txt = 'MARK AT 10 LINES'; col = '#6c6880'; }
-    else if (!p.markGrid) { txt = human ? 'TAP PERK: MARK' : 'NO MARK'; col = Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber; }
-    else { txt = 'JUMPS ' + jumps + (human && jumps ? '  HOLD PERK' : ''); col = jumps ? PAL.cyan : '#6c6880'; }
+    else if (!p.markGrid) { txt = human ? 'TAP ' + this.btnName(p, 'chrono') + ': MARK' : 'NO MARK'; col = Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber; }
+    else { txt = 'JUMPS ' + jumps + (human && jumps ? '  HOLD ' + this.btnName(p, 'chrono') : ''); col = jumps ? PAL.cyan : '#6c6880'; }
     T(txt, fx + 40, fy - 7, col, { align: 'center', font: 'small' });
     if (p.markGrid) {
       var px = fx + FW - 23, py = fy + 2, s = 2;
@@ -431,7 +444,7 @@
     var held = p.heldRows();
     var txt = 'FOLD IN ' + p.foldInLines() + (held ? '  HELD ' + held : '');
     T(txt, fx + 40, fy - 7, held ? PAL.green : '#6c6880', { align: 'center', font: 'small' });
-    if (human && p.earlyFoldBlock() === null) T('PERK: EARLY FOLD', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
+    if (human && p.earlyFoldBlock() === null) T(this.btnName(p, 'fold') + ': EARLY FOLD', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
     // Right bezel: dim = held by the opponent, blinking red = folded in, lands next placement.
     var mx = fx + FW + 2, bottom = fy + FH, vis = G.ROWS - G.HIDDEN;
     R(mx, fy, 3, FH, '#0a1608');
@@ -467,7 +480,7 @@
     R(fx + 50, fy - 6, 28, 3, '#1a1726');
     if (p.bank && !full) R(fx + 50, fy - 6, Math.round(28 * p.interestT / G.INTEREST_MS), 3, PAL.amber);
     if (full) R(fx + 50, fy - 6, 28, 3, Math.floor(t / 200) % 2 ? PAL.yellow : PAL.amber);
-    if (human && p.bank) T('PERK: WITHDRAW', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
+    if (human && p.bank) T(this.btnName(p, 'bank') + ': WITHDRAW', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
   };
 
   // Space Casino: spins counter over the board; a three-reel slot over the field while spinning.
@@ -505,7 +518,7 @@
     var txt = pc && pc.holo ? 'HOLOGRAM - FILLS ' + p.holoFills() : p.lines < 10 ? 'HOLOGRAM AT 10 LINES' : n > 0 ? 'HOLOGRAM NEXT' : 'HOLOGRAM AT ' + (Math.floor(p.lines / 10) + 1) * 10;
     if (p.holoUsed >= 3 && !(pc && pc.holo)) txt = 'NO MORE HOLOGRAMS';
     T(txt, fx + 40, fy - 7, (pc && pc.holo) || n > 0 ? '#7ff6ff' : '#6c6880', { align: 'center', font: 'small' });
-    if (human && pc && pc.holo && p.alive) T('PERK: FREEZE', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? '#7ff6ff' : PAL.white, { align: 'center', font: 'small' });
+    if (human && pc && pc.holo && p.alive) T(this.btnName(p, 'holo') + ': FREEZE', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? '#7ff6ff' : PAL.white, { align: 'center', font: 'small' });
     // flash on arrival and when it's set
     p.fxEvents.forEach(function (f) {
       if (f.kind === 'holo' || f.kind === 'holoSet') {
@@ -519,7 +532,7 @@
     var human = this.ctrl[i] instanceof Human, n = p.spinsLeft();
     var txt = p.lines < 10 ? 'LEVER AT 10 LINES' : 'SPINS ' + n;
     T(txt, fx + 40, fy - 7, n > 0 ? PAL.pink : '#6c6880', { align: 'center', font: 'small' });
-    if (human && n > 0 && !p.spin) T('PERK: PULL LEVER', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
+    if (human && n > 0 && !p.spin) T(this.btnName(p, 'casino') + ': PULL LEVER', fx + 40, fy + FH + 1, Math.floor(t / 300) % 2 ? PAL.yellow : PAL.amber, { align: 'center', font: 'small' });
     var done = p.fxEvents.filter(function (e) { return e.kind === 'lever'; })[0];
     if (!p.spin && !done) return;
     var bx = fx + 18, by = fy + 24;
@@ -557,7 +570,7 @@
       [this.a, this.b].forEach(function (p, k) {
         if (!(self.ctrl[k] instanceof Human) || !self.hasLaunch(p)) return;
         var used = self.launchUsed[k], ready = self.canLaunch(p);
-        var txt = used ? 'COUNT SPENT' : ready ? 'PERK: LAUNCH!' : 'PERK WHEN AHEAD';
+        var txt = used ? 'COUNT SPENT' : ready ? self.btnName(p, 'launch') + ': LAUNCH!' : self.btnName(p, 'launch') + ' WHEN AHEAD';
         var c = used ? '#4a4660' : ready ? (Math.floor(now / 300) % 2 ? PAL.yellow : PAL.amber) : '#6c6880';
         T(txt, FX[k] + 40, FY - 7, c, { align: 'center', font: 'small' });
       });

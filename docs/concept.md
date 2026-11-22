@@ -166,6 +166,7 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - **Unique boss cards (decided):** each boss drops a unique, non-stackable card with that location's house mechanic + perk built in, no leveling. In the build: bosses also fight with their own card; drop only if you don't own it (else a random card). Names: Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars. Card rules work per player (fold/bank/hologram/save states/lever/launch countdown).
 - **Chrono Station boss (decided):** first fight = a computer terminal on a desk with your stats/abilities from the last boss you faced. Later fights and rematches = someone (Past You) at the computer with your stats from your last fight there. First win = token, no card. (Build: later wins drop the Time Capsule.)
 - **Ending (decided):** a short congratulations scene once all six tokens are won.
+- **Unique card perk on its own button (decided):** the stage perk button is only for the location's house rule. In the build the unique card's perk uses the card ability button (unique cards have no directional moves); save states on a card = tap/hold the card button.
 
 ## Lock delay (decided, v0.11)
 - **Hard drop locks instantly; normal and soft drops keep the 0.5 s lock delay** so bricks can be slid and T-spins are possible. (A shorter player delay was tried and dropped.)

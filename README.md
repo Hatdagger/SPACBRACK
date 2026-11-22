@@ -25,6 +25,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
   - Giant Bat **Echo Wall:** bounces incoming garbage back, and anything sent for the next 6 s.
 - **Unique boss cards:** every boss fights with its own card and drops it when you win (if you don't have it). They can't stack, never level, and carry that location's rule + perk into any fight: Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars. Losing with one equipped destroys it; beat the boss again to win it back. They're also in Versus.
 - **Chrono Station boss:** your first fight is against a **computer terminal on a desk**, running your card, rank and tokens from the last boss you faced. After that, **Past You** sits at the terminal with your loadout from your last fight there. The first win gives the token but no card; later wins drop the Time Capsule.
+- **Separate buttons:** a unique card's perk is on the **card button** (RT/RB, keyboard A), since those cards have no directional moves. The **stage perk button** (LT/LB, keyboard S) only runs the location's house rule. Hints on screen say CARD or PERK. Save states on a card: tap the card button to mark, hold it to jump.
 - **Ending:** winning the sixth token plays a short "Mission Complete" scene once.
 - Fix: garbage from card abilities and the lever's jackpot now lands on players under Fold Lab rules (it used to be skipped).
 
@@ -182,7 +183,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 | Rotate CW / CCW | A / B | X / Z | O / U |
 | Hard drop | X | Space | N |
 | Hold | Y | C / Shift | M |
-| Card ability | RT (or RB) | A | P |
+| Card ability (unique card: its perk) | RT (or RB) | A | P |
 | Stage perk | LT (or LB) | S | ; |
 | Pause / cards menu | Start | Esc | \ |
 | Menu OK / back | A / B | Enter / Backspace | |
