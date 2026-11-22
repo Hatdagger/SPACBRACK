@@ -10,7 +10,9 @@
   var SOFT_MS = 50;           // soft drop: one row every 50 ms while held
   // Card abilities: shared cooldown after any ability fires, so they can't be chained.
   var ABILITY_COOLDOWN = 8000;
-  var CAST_MS = 1100;          // how long the card shows over the field when an ability fires
+  var CAST_MS = 1100;
+  var TELEPORT_MS = 220;       // hard drop phase-out / phase-in flash (does not delay the lock)
+  G.TELEPORT_MS = TELEPORT_MS;          // how long the card shows over the field when an ability fires
   G.CAST_MS = CAST_MS; G.ABILITY_COOLDOWN = ABILITY_COOLDOWN;
 
   function makeGrid() {
@@ -126,15 +128,15 @@
   P.jumpsLeft = function () { return Math.min(3, Math.floor(this.lines / 10)) - (this.jumpsUsed || 0); };
   P.canMark = function () { return !!this.chronoOn && this.alive && this.lines >= 10; };
   P.mark = function () {
-    if (!this.canMark()) { if (this.chronoOn) this.say('MARK AT 10 LINES'); return false; }
+    if (!this.canMark()) { if (this.chronoOn) { this.say('MARK AT 10 LINES'); this.perkFx('deny'); } return false; }
     this.markGrid = this.grid.map(function (r) { return r.slice(); });
-    this.say('MARKED');
+    this.say('MARKED'); this.perkFx('mark');
     return true;
   };
   P.jump = function () {
     if (!this.chronoOn || !this.alive) return false;
-    if (!this.markGrid) { this.say(this.lines < 10 ? 'MARK AT 10 LINES' : 'NO MARK YET'); return false; }
-    if (this.jumpsLeft() <= 0) { this.say('NO JUMPS LEFT'); return false; }
+    if (!this.markGrid) { this.say(this.lines < 10 ? 'MARK AT 10 LINES' : 'NO MARK YET'); this.perkFx('deny'); return false; }
+    if (this.jumpsLeft() <= 0) { this.say('NO JUMPS LEFT'); this.perkFx('deny'); return false; }
     // The field comes back exactly as marked, all waiting garbage is wiped, and the mark is used up.
     this.grid = this.markGrid;
     this.markGrid = null;
@@ -189,6 +191,9 @@
   P.hardDrop = function () {
     if (!this.alive || !this.features.hardDrop) return false;
     var y = this.ghostY();
+    // Teleport look: the brick phases out where it was and phases in where it lands (visual only,
+    // the lock itself is instant).
+    this.fxEvents.push({ kind: 'teleport', type: this.piece.type, rot: this.piece.rot, x: this.piece.x, y0: this.piece.y, y1: y, t: TELEPORT_MS });
     this.score += (y - this.piece.y) * 2;
     this.piece.y = y;
     this.lock();
@@ -330,11 +335,11 @@
   };
   P.withdraw = function () {
     if (!this.bankOn || !this.alive) return false;
-    if (!this.bank) { this.say('VAULT EMPTY'); return false; }
+    if (!this.bank) { this.say('VAULT EMPTY'); this.perkFx('deny'); return false; }
     var n = this.bank;
     this.bank = 0; this.interestT = 0;
     if (this.opponent) this.opponent.receive(n, this.card.pattern);
-    this.say('WITHDRAW ' + n + '!');
+    this.say('WITHDRAW ' + n + '!'); this.perkFx('withdraw');
     return true;
   };
 
@@ -352,11 +357,12 @@
   P.pullLever = function () {
     if (!this.leverOn || !this.alive) return false;
     if (this.spin) return false;
-    if (this.spinsLeft() <= 0) { this.say(this.lines < 10 ? 'LEVER AT 10 LINES' : 'NO SPINS LEFT'); return false; }
+    if (this.spinsLeft() <= 0) { this.say(this.lines < 10 ? 'LEVER AT 10 LINES' : 'NO SPINS LEFT'); this.perkFx('deny'); return false; }
     this.spinsUsed = (this.spinsUsed || 0) + 1;
     var r = this.rng(), pick = G.LEVER[G.LEVER.length - 1];
     for (var i = 0, acc = 0; i < G.LEVER.length; i++) { acc += G.LEVER[i].odds; if (r < acc) { pick = G.LEVER[i]; break; } }
     this.spin = { t: SPIN_MS, result: pick.id };
+    this.perkFx('spin');
     return true;
   };
   P.updateLever = function (dt) {
@@ -394,7 +400,7 @@
     if (!o || !this.foldHeld.length) return false;
     o.foldIn = o.foldIn.concat(this.foldHeld);
     this.foldHeld = [];
-    this.say(early ? 'EARLY FOLD!' : 'FOLD!');
+    this.say(early ? 'EARLY FOLD!' : 'FOLD!'); this.perkFx(early ? 'earlyFold' : 'fold');
     o.say('FOLD INCOMING');
     return true;
   };
@@ -409,7 +415,7 @@
   };
   P.earlyFold = function () {
     var why = this.earlyFoldBlock();
-    if (why) { if (why !== 'OFF') this.say(why); return false; }
+    if (why) { if (why !== 'OFF') { this.say(why); this.perkFx('deny'); } return false; }
     this.earlyUsed = (this.earlyUsed || 0) + 1;   // the 8-line counter is NOT reset
     return this.sendFold(true);
   };
@@ -508,6 +514,8 @@
   };
 
   P.say = function (text) { this.flash.push({ text: text, t: 1200 }); };
+  // Stage perk events for sound/visuals: id = mark, jump, withdraw, earlyFold, fold, spin, launch, deny.
+  P.perkFx = function (id) { this.fxEvents.push({ kind: 'perk', id: id, t: 300 }); };
 
   // ---------- card abilities ----------
   P.canFire = function (dir) {
@@ -520,7 +528,7 @@
     var a = this.card.actives[dir], foe = this.opponent;
     this.meter -= a.cost;
     this.cooldown = ABILITY_COOLDOWN;
-    this.fxEvents.push({ kind: 'cast', name: a.name, t: CAST_MS });
+    this.fxEvents.push({ kind: 'cast', name: a.name, id: a.id, t: CAST_MS });
     switch (a.id) {
       case 'boulder': foe && foe.dropBoulder(); break;
       case 'rockslide': if (foe) { foe.dropBoulder(); foe.dropBoulder(); foe.dropBoulder(); } break;

@@ -14,13 +14,16 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
 
-## New in v0.10 (placeholder sound and music)
+## New in v0.10 (placeholder sound and music, hard drop teleport)
 
 - All sound is made in code (Web Audio chiptune synth), so there are no sound files yet. Real samples and tracks can replace each entry later.
 - **Music:** title theme, station map theme, a moody exploration theme, a fast battle theme (it changes key by location) and a heavier boss theme. Win and lose jingles at the end of a fight.
 - The battle music speeds up a little when your stack gets tall.
 - **Sound effects:** menu blips, typing blips when NPCs talk (each NPC has its own pitch), footsteps through doors, move/rotate/wall kick, lock, hard drop, hold, line clears (a bigger fanfare for 4 lines), incoming-garbage warning and garbage landing, top-out, card abilities, and every house rule (save state mark/jump, fold, interest/withdraw, slot reels and result, launch countdown ticks), plus the 3-2-1-GO start.
 - The CPU's sounds are quieter and panned to its side.
+- **Hard drop teleport:** the brick flashes white and shakes where it was while its landing spot does the same, with a zap sound. It's only a look; the brick still locks instantly.
+- Every card ability has its own sound (16), and every stage perk has one (mark, withdraw ka-ching, early fold warp, lever clunk and reels, launch ignition), plus a buzzer when a perk isn't ready.
+- Songs are longer (about 45-60 s before they loop, with verse, chorus and a breakdown). Win and lose are now short tunes (about 5-6 s), and the next screen's music waits for them to finish.
 - **Title menu → Sound:** ALL ON / MUSIC OFF / ALL OFF (remembered).
 - Browsers only allow sound after a tap or key press, so the title screen asks for one. A controller button alone doesn't count.
 

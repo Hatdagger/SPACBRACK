@@ -170,9 +170,7 @@
     interest: function (o) { arp(['B5', 'E6'], 0.07, { d: 0.25, v: 0.09 * o.v, pan: o.pan }); },
     bankHit: function (o) { arp(['E5', 'C5', 'A4'], 0.05, { d: 0.08, v: 0.09 * o.v, pan: o.pan }); },
     lever: function (o) {
-      var t0 = ctx.currentTime;
-      for (var i = 0; i < 14; i++) noise({ d: 0.02, v: 0.08 * o.v, type: 'highpass', f: 3000, at: t0 + i * 0.07, pan: o.pan });
-      var at = t0 + 1.0;
+      var at = ctx.currentTime;
       if (o.result === 'jackpot') {
         ['C6', 'E6', 'G6', 'C7', 'G6', 'C7'].forEach(function (n, k) { tone({ f: hz(NOTE(n)), d: 0.12, v: 0.1 * o.v, at: at + k * 0.07, pan: o.pan }); });
       } else if (o.result === 'bust') {
@@ -183,24 +181,86 @@
         tone({ f: hz(NOTE('E7')), d: 0.3, v: 0.08 * o.v, at: at + 0.08, pan: o.pan });
       }
     },
+    // hard drop teleport: a quick phase-out zap and a phase-in thump
+    teleport: function (o) {
+      tone({ f: 2400, to: 300, d: 0.09, v: 0.1 * o.v, type: 'square', pan: o.pan });
+      noise({ d: 0.09, v: 0.1 * o.v, type: 'bandpass', f: 6000, to: 800, q: 3, pan: o.pan });
+      tone({ f: 160, to: 45, d: 0.12, v: 0.25 * o.v, type: 'triangle', pan: o.pan, at: ctx.currentTime + 0.03 });
+    },
+
+    // ----- card abilities (one each) -----
+    ab_boulder: function (o) { noise({ d: 0.3, v: 0.15 * o.v, f: 250, pan: o.pan }); tone({ f: 60, to: 120, d: 0.3, v: 0.2 * o.v, type: 'triangle', pan: o.pan }); },
+    ab_rockslide: function (o) {
+      noise({ d: 1.2, v: 0.2 * o.v, f: 300, to: 120, pan: o.pan });
+      for (var i = 0; i < 6; i++) tone({ f: 90 - i * 6, to: 35, d: 0.15, v: 0.2 * o.v, type: 'triangle', pan: o.pan, at: ctx.currentTime + 0.1 + i * 0.16 });
+    },
+    ab_staredown: function (o) { tone({ f: 330, to: 110, d: 0.7, v: 0.16 * o.v, type: 'sine', pan: o.pan, vib: 1 }); tone({ f: 333, to: 112, d: 0.7, v: 0.1 * o.v, type: 'triangle', pan: o.pan }); },
+    ab_glare: function (o) {
+      tone({ f: 400, to: 3200, d: 0.25, v: 0.1 * o.v, type: 'sawtooth', pan: o.pan });
+      tone({ f: 3200, d: 0.6, v: 0.06 * o.v, type: 'sine', pan: o.pan, at: ctx.currentTime + 0.25, vib: 1 });
+    },
+    ab_rattle: function (o) { for (var i = 0; i < 5; i++) noise({ d: 0.03, v: 0.2 * o.v, type: 'bandpass', f: 2200 + (i % 2) * 600, q: 6, pan: o.pan, at: ctx.currentTime + i * 0.05 }); },
+    ab_bonepatch: function (o) { arp(['C5', 'E5', 'G5', 'B5'], 0.06, { type: 'triangle', d: 0.12, v: 0.16 * o.v, pan: o.pan }); },
+    ab_shiver: function (o) { for (var i = 0; i < 12; i++) noise({ d: 0.025, v: 0.13 * o.v, type: 'bandpass', f: 1800 + Math.random() * 1500, q: 8, pan: o.pan, at: ctx.currentTime + i * 0.045 }); tone({ f: 220, d: 0.55, v: 0.07 * o.v, type: 'sine', vib: 1, pan: o.pan }); },
+    ab_bonestorm: function (o) {
+      for (var i = 0; i < 18; i++) noise({ d: 0.03, v: 0.16 * o.v, type: 'bandpass', f: 1500 + i * 150, q: 7, pan: o.pan, at: ctx.currentTime + i * 0.04 });
+      tone({ f: 200, to: 1200, d: 0.75, v: 0.1 * o.v, type: 'sawtooth', pan: o.pan });
+    },
+    ab_claw3: function (o) { for (var i = 0; i < 3; i++) noise({ d: 0.12, v: 0.22 * o.v, type: 'bandpass', f: 7000, to: 900, q: 2, pan: o.pan, at: ctx.currentTime + i * 0.13 }); },
+    ab_fur: function (o) { noise({ d: 0.5, v: 0.12 * o.v, f: 600, pan: o.pan }); tone({ f: 110, d: 0.5, v: 0.12 * o.v, type: 'triangle', sus: 1, pan: o.pan }); },
+    ab_howl: function (o) {
+      var t = ctx.currentTime, osc = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(300, t); osc.frequency.linearRampToValueAtTime(700, t + 0.35);
+      osc.frequency.setValueAtTime(700, t + 0.8); osc.frequency.linearRampToValueAtTime(420, t + 1.2);
+      lfo.frequency.value = 6; lg.gain.value = 12; lfo.connect(lg); lg.connect(osc.frequency);
+      var flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = 1600;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12 * o.v, t + 0.15); g.gain.setValueAtTime(0.12 * o.v, t + 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.25);
+      osc.connect(flt); flt.connect(g); g.connect(out(sfxBus, o.pan)); osc.start(t); lfo.start(t); osc.stop(t + 1.3); lfo.stop(t + 1.3);
+    },
+    ab_fullmoon: function (o) { ['E6', 'G#6', 'B6', 'E7'].forEach(function (n, k) { tone({ f: hz(NOTE(n)), d: 0.9, v: 0.06 * o.v, type: 'sine', at: ctx.currentTime + k * 0.08, vib: 1, pan: o.pan }); }); },
+    ab_nightfall: function (o) { tone({ f: 500, to: 80, d: 0.9, v: 0.12 * o.v, type: 'sawtooth', pan: o.pan }); noise({ d: 0.9, v: 0.08 * o.v, f: 1200, to: 100, pan: o.pan }); },
+    ab_roost: function (o) { for (var i = 0; i < 5; i++) noise({ d: 0.09, v: 0.18 * o.v, f: 900, pan: o.pan, at: ctx.currentTime + i * 0.13 }); },
+    ab_sonar: function (o) { for (var i = 0; i < 4; i++) tone({ f: 1500, d: 0.25, v: 0.12 * o.v * Math.pow(0.5, i), type: 'sine', pan: o.pan, at: ctx.currentTime + i * 0.22 }); },
+    ab_swarm: function (o) {
+      for (var i = 0; i < 24; i++) tone({ f: 2500 + Math.random() * 2500, to: 1500 + Math.random() * 1000, d: 0.05, v: 0.06 * o.v, type: 'square', pan: (o.pan || 0) + (Math.random() - 0.5) * 0.6, at: ctx.currentTime + Math.random() * 0.9 });
+      noise({ d: 0.9, v: 0.07 * o.v, type: 'bandpass', f: 3000, q: 2, pan: o.pan });
+    },
+
+    // ----- stage perks -----
+    perk_deny: function (o) { tone({ f: 120, d: 0.18, v: 0.13 * o.v, type: 'square', pan: o.pan, sus: 1 }); tone({ f: 127, d: 0.18, v: 0.1 * o.v, type: 'square', pan: o.pan, sus: 1 }); },
+    perk_mark: function (o) {   // camera shutter
+      noise({ d: 0.03, v: 0.25 * o.v, type: 'highpass', f: 3000, pan: o.pan });
+      noise({ d: 0.05, v: 0.2 * o.v, type: 'bandpass', f: 1500, q: 2, pan: o.pan, at: ctx.currentTime + 0.07 });
+      tone({ f: 2000, d: 0.08, v: 0.06 * o.v, pan: o.pan, at: ctx.currentTime + 0.12 });
+    },
+    perk_withdraw: function (o) {   // ka-ching
+      noise({ d: 0.08, v: 0.2 * o.v, type: 'bandpass', f: 2500, q: 3, pan: o.pan });
+      tone({ f: 2093, d: 0.5, v: 0.1 * o.v, type: 'square', pan: o.pan, at: ctx.currentTime + 0.08 });
+      tone({ f: 2637, d: 0.6, v: 0.08 * o.v, type: 'square', pan: o.pan, at: ctx.currentTime + 0.12 });
+      tone({ f: 120, to: 60, d: 0.4, v: 0.2 * o.v, type: 'triangle', pan: o.pan, at: ctx.currentTime + 0.15 });
+    },
+    perk_earlyFold: function (o) {
+      tone({ f: 100, to: 1600, d: 0.45, v: 0.12 * o.v, type: 'sawtooth', pan: o.pan });
+      tone({ f: 104, to: 1700, d: 0.45, v: 0.1 * o.v, type: 'square', pan: o.pan });
+      noise({ d: 0.5, v: 0.12 * o.v, type: 'bandpass', f: 400, to: 5000, q: 5, pan: o.pan });
+    },
+    perk_fold: function (o) { tone({ f: 200, to: 900, d: 0.3, v: 0.08 * o.v, type: 'sawtooth', pan: o.pan }); noise({ d: 0.3, v: 0.08 * o.v, type: 'bandpass', f: 600, to: 3000, q: 4, pan: o.pan }); },
+    perk_spin: function (o) {   // lever clunk, then the reels clicking until they stop (1.2 s)
+      var t0 = ctx.currentTime;
+      tone({ f: 140, to: 70, d: 0.15, v: 0.25 * o.v, type: 'triangle', pan: o.pan });
+      noise({ d: 0.1, v: 0.15 * o.v, f: 900, pan: o.pan });
+      for (var i = 0; i < 16; i++) noise({ d: 0.02, v: 0.09 * o.v, type: 'highpass', f: 3000, at: t0 + 0.15 + i * (0.05 + i * 0.002), pan: o.pan });
+    },
+    perk_launch: function (o) {   // ignition rumble + rising engine
+      noise({ d: 1.4, v: 0.25 * o.v, f: 200, to: 900, pan: o.pan });
+      tone({ f: 50, to: 160, d: 1.4, v: 0.18 * o.v, type: 'sawtooth', pan: o.pan, sus: 1 });
+      tone({ f: 880, d: 0.15, v: 0.1 * o.v, type: 'square', pan: o.pan });
+    },
+
     count: function () { tone({ f: 660, d: 0.15, v: 0.14, type: 'square' }); },
     go: function () { tone({ f: 1320, d: 0.4, v: 0.14, type: 'square', sus: 1 }); },
     tick: function (o) { tone({ f: o.last ? 1760 : 1100, d: 0.06, v: 0.1, type: 'square' }); },
-    alarm: function () { tone({ f: 880, to: 440, d: 0.3, v: 0.1, type: 'sawtooth' }); },
-    win: function () {
-      var t0 = ctx.currentTime;
-      [['C5', 0], ['E5', 0.12], ['G5', 0.24], ['C6', 0.36], ['A5', 0.6], ['C6', 0.72], ['D6', 0.84]].forEach(function (s) {
-        tone({ f: hz(NOTE(s[0])), d: 0.14, v: 0.12, at: t0 + s[1], bus: sfxBus });
-      });
-      ['C5', 'E5', 'G5', 'D6'].forEach(function (n) { tone({ f: hz(NOTE(n)), d: 1.2, v: 0.07, at: t0 + 1.0, type: 'square', sus: 1, vib: 1 }); });
-      tone({ f: hz(NOTE('C3')), d: 1.2, v: 0.15, at: t0 + 1.0, type: 'triangle', sus: 1 });
-    },
-    lose: function () {
-      var t0 = ctx.currentTime;
-      [['G4', 0], ['F#4', 0.25], ['F4', 0.5]].forEach(function (s) { tone({ f: hz(NOTE(s[0])), d: 0.24, v: 0.12, at: t0 + s[1], type: 'square' }); });
-      tone({ f: hz(NOTE('E4')), d: 1.2, v: 0.12, at: t0 + 0.75, type: 'square', sus: 1, vib: 1 });
-      tone({ f: hz(NOTE('C3')), to: hz(NOTE('C2')), d: 1.4, v: 0.15, at: t0 + 0.75, type: 'triangle', sus: 1 });
-    }
+    alarm: function () { tone({ f: 880, to: 440, d: 0.3, v: 0.1, type: 'sawtooth' }); }
   };
 
   function play(name, o) {
@@ -214,86 +274,162 @@
   // and an optional lead line (one token per 16th: note, '-' = keep holding, '.' = rest).
   // C = chord tones as MIDI offsets; written as [root note, quality].
   var Q = { min: [0, 3, 7], maj: [0, 4, 7], m7: [0, 3, 7, 10], M7: [0, 4, 7, 11], dom: [0, 4, 7, 10], sus: [0, 5, 7] };
+  // Songs are built from sections (A, B, C...) played in the order given by `form`, then looped.
+  // A section: chords (one per bar) and an optional lead (16 tokens per bar). It can also override
+  // the song's bass / arp / drums (e.g. a breakdown with no lead and lighter drums).
+  // `once: true` = a jingle that plays one time and then stops.
   var SONGS = {
     title: {
-      bpm: 128,
-      chords: [['A2', 'min'], ['F2', 'maj'], ['C3', 'maj'], ['G2', 'maj'], ['A2', 'min'], ['F2', 'maj'], ['C3', 'maj'], ['E2', 'dom']],
-      bass: 'R.ROR.ROR.ROR.RO', arp: '0123', arpOct: 2, drums: 'k.h.s.h.k.hks.ho',
-      lead: 'A4 - - - C5 - E5 - D5 - - C5 B4 - G4 - ' + 'A4 - - - - - . . C5 - D5 - E5 - - - ' +
-            'G5 - - - E5 - C5 - D5 - - E5 D5 - B4 - ' + 'C5 - - - - - B4 - G#4 - - - - - . . ' +
-            'A4 - - - C5 - E5 - D5 - - C5 B4 - G4 - ' + 'A4 - - - - - . . C5 - D5 - E5 - G5 - ' +
-            'A5 - - - G5 - E5 - G5 - - E5 D5 - C5 - ' + 'B4 - - - - - - - G#4 - - - B4 - - - '
+      bpm: 128, bass: 'R.ROR.ROR.ROR.RO', arp: '0123', arpOct: 2, drums: 'k.h.s.h.k.hks.ho', fill: 'k.h.s.h.s.ssssss',
+      form: 'ABAC',
+      A: {
+        chords: [['A2', 'min'], ['F2', 'maj'], ['C3', 'maj'], ['G2', 'maj'], ['A2', 'min'], ['F2', 'maj'], ['C3', 'maj'], ['E2', 'dom']],
+        lead: 'A4 - - - C5 - E5 - D5 - - C5 B4 - G4 - ' + 'A4 - - - - - . . C5 - D5 - E5 - - - ' +
+              'G5 - - - E5 - C5 - D5 - - E5 D5 - B4 - ' + 'C5 - - - - - B4 - G#4 - - - - - . . ' +
+              'A4 - - - C5 - E5 - D5 - - C5 B4 - G4 - ' + 'A4 - - - - - . . C5 - D5 - E5 - G5 - ' +
+              'A5 - - - G5 - E5 - G5 - - E5 D5 - C5 - ' + 'B4 - - - - - - - G#4 - - - B4 - - - '
+      },
+      B: {
+        chords: [['F2', 'maj'], ['G2', 'maj'], ['E2', 'min'], ['A2', 'min'], ['D2', 'min'], ['G2', 'maj'], ['C3', 'maj'], ['E2', 'dom']],
+        lead: 'A5 - - - G5 - F5 - E5 - - - C5 - - - ' + 'D5 - - - E5 - G5 - - - B5 - A5 - G5 - ' +
+              'G5 - - - - - E5 - B4 - - - - - . . ' + 'C5 - - - E5 - A5 - - - G5 - E5 - - - ' +
+              'F5 - - - E5 - D5 - A4 - - - D5 - F5 - ' + 'G5 - - - F5 - D5 - B4 - - - G4 - - - ' +
+              'E5 - - - G5 - C6 - - - B5 - G5 - E5 - ' + 'G#5 - - - - - - - B5 - - - E6 - - - '
+      },
+      C: {   // breakdown: same chords as A, arpeggio and kick only
+        chords: [['A2', 'min'], ['F2', 'maj'], ['C3', 'maj'], ['G2', 'maj'], ['A2', 'min'], ['F2', 'maj'], ['C3', 'maj'], ['E2', 'dom']],
+        drums: 'k.......k.......', bass: 'R.......R.......', arp: '01231232'
+      }
     },
     map: {
-      bpm: 92,
-      chords: [['C3', 'M7'], ['A2', 'm7'], ['F2', 'M7'], ['G2', 'dom']],
-      bass: 'R...O...R...F...', arp: '0213', arpOct: 2, arpWave: 'triangle', drums: 'k...h...s...h..h',
-      lead: 'E5 - - - - - G5 - - - - - - - . . ' + 'C5 - - - - - E5 - - - D5 - - - . . ' +
-            'A4 - - - C5 - - - E5 - - - D5 - C5 - ' + 'B4 - - - - - - - D5 - - - - - . . ',
-      leadWave: 'triangle'
+      bpm: 92, bass: 'R...O...R...F...', arp: '0213', arpOct: 2, arpWave: 'triangle', drums: 'k...h...s...h..h',
+      leadWave: 'triangle', form: 'AABAC',
+      A: {
+        chords: [['C3', 'M7'], ['A2', 'm7'], ['F2', 'M7'], ['G2', 'dom']],
+        lead: 'E5 - - - - - G5 - - - - - - - . . ' + 'C5 - - - - - E5 - - - D5 - - - . . ' +
+              'A4 - - - C5 - - - E5 - - - D5 - C5 - ' + 'B4 - - - - - - - D5 - - - - - . . '
+      },
+      B: {
+        chords: [['F2', 'M7'], ['G2', 'dom'], ['E2', 'm7'], ['A2', 'm7']],
+        lead: 'A4 - - - C5 - - - E5 - - - - - . . ' + 'D5 - - - - - B4 - - - G4 - - - . . ' +
+              'G4 - - - B4 - - - D5 - - - E5 - - - ' + 'C5 - - - - - - - - - - - . . . . '
+      },
+      C: { chords: [['C3', 'M7'], ['A2', 'm7'], ['F2', 'M7'], ['G2', 'dom']], drums: 'k.......h.......' }
     },
     explore: {
-      bpm: 84,
-      chords: [['D3', 'm7'], ['E3', 'm7'], ['D3', 'm7'], ['C3', 'M7']],
-      bass: 'R.....R...O.....', arp: '0.2.1.3.', arpOct: 2, arpWave: 'triangle', drums: 'k.......s.....h.',
-      lead: 'F5 - - - - - - - . . A5 - G5 - - - ' + 'E5 - - - - - - - . . . . . . . . ' +
-            'D5 - - - F5 - - - A5 - - - C6 - - - ' + 'B5 - - - - - - - G5 - - - - - . . ',
-      leadWave: 'sine', leadVib: 1
+      bpm: 84, bass: 'R.....R...O.....', arp: '0.2.1.3.', arpOct: 2, arpWave: 'triangle', drums: 'k.......s.....h.',
+      leadWave: 'sine', leadVib: 1, form: 'ABAC',
+      A: {
+        chords: [['D3', 'm7'], ['E3', 'm7'], ['D3', 'm7'], ['C3', 'M7']],
+        lead: 'F5 - - - - - - - . . A5 - G5 - - - ' + 'E5 - - - - - - - . . . . . . . . ' +
+              'D5 - - - F5 - - - A5 - - - C6 - - - ' + 'B5 - - - - - - - G5 - - - - - . . '
+      },
+      B: {
+        chords: [['Bb2', 'M7'], ['C3', 'maj'], ['A2', 'm7'], ['A2', 'dom']],
+        lead: 'D5 - - - - - F5 - - - A5 - - - . . ' + 'G5 - - - - - E5 - - - - - . . . . ' +
+              'C5 - - - E5 - - - A5 - - - G5 - E5 - ' + 'C#5 - - - - - - - E5 - - - - - . . '
+      },
+      C: { chords: [['D3', 'm7'], ['E3', 'm7'], ['D3', 'm7'], ['C3', 'M7']], drums: '........k.......' }
     },
     battle: {
-      bpm: 150,
-      chords: [['E2', 'min'], ['C2', 'maj'], ['D2', 'maj'], ['B1', 'maj'], ['E2', 'min'], ['C2', 'maj'], ['A1', 'min'], ['B1', 'dom']],
-      bass: 'RRORRROR', bassStep: 2, arp: '012', arpOct: 3, drums: 'k.hsk.hsk.hsk.ss',
-      lead: 'E5 - - - G5 - - - F#5 - E5 - D5 - B4 - ' + 'C5 - - - E5 - G5 - - - E5 - - - . . ' +
-            'D5 - - - F#5 - A5 - - - F#5 - D5 - - - ' + 'D#5 - - - - - - - F#5 - - - B5 - - - ' +
-            'E5 - - - G5 - - - B5 - A5 - G5 - E5 - ' + 'G5 - - - - - E5 - C5 - - - - - . . ' +
-            'A4 - - - C5 - E5 - A5 - - - G5 - E5 - ' + 'F#5 - - - - - - - D#5 - - - B4 - - - '
+      bpm: 150, bass: 'RRORRROR', bassStep: 2, arp: '012', arpOct: 3, drums: 'k.hsk.hsk.hsk.ss', fill: 'k.hsk.hss.ssssss',
+      form: 'ABAC',
+      A: {
+        chords: [['E2', 'min'], ['C2', 'maj'], ['D2', 'maj'], ['B1', 'maj'], ['E2', 'min'], ['C2', 'maj'], ['A1', 'min'], ['B1', 'dom']],
+        lead: 'E5 - - - G5 - - - F#5 - E5 - D5 - B4 - ' + 'C5 - - - E5 - G5 - - - E5 - - - . . ' +
+              'D5 - - - F#5 - A5 - - - F#5 - D5 - - - ' + 'D#5 - - - - - - - F#5 - - - B5 - - - ' +
+              'E5 - - - G5 - - - B5 - A5 - G5 - E5 - ' + 'G5 - - - - - E5 - C5 - - - - - . . ' +
+              'A4 - - - C5 - E5 - A5 - - - G5 - E5 - ' + 'F#5 - - - - - - - D#5 - - - B4 - - - '
+      },
+      B: {
+        chords: [['A1', 'min'], ['B1', 'min'], ['C2', 'maj'], ['D2', 'maj'], ['A1', 'min'], ['B1', 'min'], ['C2', 'maj'], ['B1', 'dom']],
+        lead: 'A4 - - - C5 - E5 - A5 - - - G5 - E5 - ' + 'F#5 - - - - - D5 - B4 - - - D5 - F#5 - ' +
+              'G5 - - - E5 - C5 - G5 - - - A5 - B5 - ' + 'A5 - - - F#5 - D5 - A5 - - - - - . . ' +
+              'C6 - - - B5 - A5 - E5 - - - A5 - C6 - ' + 'D6 - - - B5 - F#5 - D5 - - - B4 - D5 - ' +
+              'E5 - - - G5 - C6 - B5 - A5 - G5 - E5 - ' + 'D#5 - - - F#5 - - - B5 - - - A5 - F#5 - '
+      },
+      C: {
+        chords: [['E2', 'min'], ['C2', 'maj'], ['D2', 'maj'], ['B1', 'maj'], ['E2', 'min'], ['C2', 'maj'], ['A1', 'min'], ['B1', 'dom']],
+        drums: 'k...s...k.k.s...', arp: '0121'
+      }
     },
     boss: {
-      bpm: 164,
-      chords: [['C2', 'min'], ['Ab1', 'maj'], ['Bb1', 'maj'], ['G1', 'dom'], ['C2', 'min'], ['Ab1', 'maj'], ['F1', 'min'], ['G1', 'dom']],
-      bass: 'RORORORORORORORO', arp: '0120', arpOct: 3, arpWave: 'sawtooth', drums: 'kkhskkhskkhskshs',
-      lead: 'C5 - - Eb5 - - G5 - C6 - - - Bb5 - Ab5 - ' + 'Ab5 - - - G5 - Eb5 - C5 - - - - - . . ' +
-            'Bb4 - - D5 - - F5 - Bb5 - - - Ab5 - G5 - ' + 'G5 - - - - - F5 - D5 - B4 - - - . . ' +
-            'C5 - - Eb5 - - G5 - C6 - - - D6 - Eb6 - ' + 'C6 - - - Ab5 - - - Eb5 - - - - - . . ' +
-            'F5 - - - Ab5 - - - C6 - - - Bb5 - Ab5 - ' + 'G5 - - - - - - - B5 - - - D6 - - - '
+      bpm: 164, bass: 'RORORORORORORORO', arp: '0120', arpOct: 3, arpWave: 'sawtooth', drums: 'kkhskkhskkhskshs', fill: 'kkhskkhsssssssss',
+      form: 'ABAC',
+      A: {
+        chords: [['C2', 'min'], ['Ab1', 'maj'], ['Bb1', 'maj'], ['G1', 'dom'], ['C2', 'min'], ['Ab1', 'maj'], ['F1', 'min'], ['G1', 'dom']],
+        lead: 'C5 - - Eb5 - - G5 - C6 - - - Bb5 - Ab5 - ' + 'Ab5 - - - G5 - Eb5 - C5 - - - - - . . ' +
+              'Bb4 - - D5 - - F5 - Bb5 - - - Ab5 - G5 - ' + 'G5 - - - - - F5 - D5 - B4 - - - . . ' +
+              'C5 - - Eb5 - - G5 - C6 - - - D6 - Eb6 - ' + 'C6 - - - Ab5 - - - Eb5 - - - - - . . ' +
+              'F5 - - - Ab5 - - - C6 - - - Bb5 - Ab5 - ' + 'G5 - - - - - - - B5 - - - D6 - - - '
+      },
+      B: {
+        chords: [['Eb2', 'maj'], ['Bb1', 'maj'], ['Ab1', 'maj'], ['G1', 'dom'], ['F1', 'min'], ['G1', 'dom'], ['Ab1', 'maj'], ['G1', 'dom']],
+        lead: 'Eb5 - - G5 - - Bb5 - Eb6 - - - D6 - Bb5 - ' + 'D5 - - F5 - - Bb5 - D6 - - - C6 - Bb5 - ' +
+              'C6 - - - Ab5 - Eb5 - C5 - Eb5 - Ab5 - C6 - ' + 'B5 - - - G5 - D5 - B4 - - - D5 - G5 - ' +
+              'Ab5 - - - F5 - C5 - Ab4 - C5 - F5 - Ab5 - ' + 'G5 - - - D5 - B4 - G4 - - - B4 - D5 - ' +
+              'Eb5 - - - Ab5 - C6 - Eb6 - - - C6 - Ab5 - ' + 'D6 - - - - - B5 - G5 - - - B5 - D6 - '
+      },
+      C: {
+        chords: [['C2', 'min'], ['Ab1', 'maj'], ['Bb1', 'maj'], ['G1', 'dom'], ['C2', 'min'], ['Ab1', 'maj'], ['F1', 'min'], ['G1', 'dom']],
+        drums: 'k...k...k...k.k.', bass: 'R.R.R.R.R.R.R.RO'
+      }
+    },
+    win: {
+      once: true, bpm: 150, bass: 'R.R.O.R.R.R.O.R.', arp: '0120', arpOct: 3, drums: 'k.s.k.s.k.s.ssss', form: 'AZ',
+      A: {
+        chords: [['C3', 'maj'], ['F2', 'maj'], ['G2', 'dom']],
+        lead: 'C5 - E5 - G5 - C6 - - - G5 - C6 - E6 - ' + 'F6 - - - E6 - D6 - C6 - - - A5 - C6 - ' +
+              'D6 - - - - - B5 - G5 - B5 - D6 - F6 - '
+      },
+      Z: { chords: [['C3', 'maj'], ['C3', 'maj']], lead: 'E6 - - - - - - - - - - - - - - - ' + '- - - - - - - - . . . . . . . . ',
+        drums: 'k...............', bass: 'R...............', arp: '0123' }
+    },
+    lose: {
+      once: true, bpm: 104, bass: 'R.......R.......', arp: '0.1.2.1.', arpOct: 2, arpWave: 'triangle', drums: 'k.......s.......', form: 'A',
+      leadWave: 'square', leadVib: 1,
+      A: {
+        chords: [['A2', 'min'], ['D2', 'min'], ['E2', 'dom'], ['A2', 'min']],
+        lead: 'E5 - - - D5 - C5 - B4 - - - A4 - - - ' + 'C5 - - - B4 - A4 - F4 - - - - - . . ' +
+              'G#4 - - - - - B4 - E4 - - - - - . . ' + 'A4 - - - - - - - - - - - . . . . '
+      }
     }
   };
 
   function compile(song) {
-    var ev = [], bars = song.chords.length;
-    var lead = song.lead ? song.lead.trim().split(/\s+/) : [];
-    for (var bar = 0; bar < bars; bar++) {
-      var root = NOTE(song.chords[bar][0]) + (song.transpose || 0), tones = Q[song.chords[bar][1]];
-      var bs = song.bassStep || 1;
-      for (var s = 0; s < 16; s++) {
-        var st = bar * 16 + s;
-        // bass
-        var b = song.bass[(s / bs | 0) % song.bass.length];
-        if (s % bs === 0 && b !== '.') {
-          var bn = root + (b === 'O' ? 12 : b === 'F' ? 7 : 0);
-          ev.push({ st: st, ch: 'bass', n: bn, len: bs * 0.9 });
+    var ev = [], step0 = 0;
+    song.form.split('').forEach(function (name) {
+      var sec = song[name], bars = sec.chords.length;
+      var bass = sec.bass || song.bass, arpP = sec.arp || song.arp, drums = sec.drums || song.drums;
+      var lead = sec.lead ? sec.lead.trim().split(/\s+/) : [];
+      for (var bar = 0; bar < bars; bar++) {
+        var root = NOTE(sec.chords[bar][0]) + (song.transpose || 0), tones = Q[sec.chords[bar][1]];
+        var bs = song.bassStep || 1;
+        // a drum fill on the last bar of a section
+        var dpat = (bar === bars - 1 && song.fill && !sec.drums) ? song.fill : drums;
+        for (var s = 0; s < 16; s++) {
+          var st = step0 + bar * 16 + s;
+          var b = bass[(s / bs | 0) % bass.length];
+          if (s % bs === 0 && b !== '.') ev.push({ st: st, ch: 'bass', n: root + (b === 'O' ? 12 : b === 'F' ? 7 : 0), len: bs * 0.9 });
+          var a = arpP[s % arpP.length];
+          if (a !== '.') {
+            var k = parseInt(a, 10), tn = tones[k % tones.length] + 12 * Math.floor(k / tones.length);
+            ev.push({ st: st, ch: 'arp', n: root + 12 * song.arpOct + tn, len: 0.8 });
+          }
+          var d = dpat[s % dpat.length];
+          if (d !== '.') ev.push({ st: st, ch: 'drum', d: d });
         }
-        // arpeggio
-        var a = song.arp[s % song.arp.length];
-        if (a !== '.') {
-          var k = parseInt(a, 10), tn = tones[k % tones.length] + 12 * Math.floor(k / tones.length);
-          ev.push({ st: st, ch: 'arp', n: root + 12 * song.arpOct + tn, len: 0.8 });
-        }
-        // drums
-        var d = song.drums[s % song.drums.length];
-        if (d !== '.') ev.push({ st: st, ch: 'drum', d: d });
       }
-    }
-    // lead: hold notes over '-'
-    for (var i = 0; i < lead.length && i < bars * 16; i++) {
-      var tok = lead[i];
-      if (tok === '-' || tok === '.') continue;
-      var len = 1; while (lead[i + len] === '-') len++;
-      ev.push({ st: i, ch: 'lead', n: NOTE(tok) + (song.transpose || 0), len: len });
-    }
+      for (var i = 0; i < lead.length && i < bars * 16; i++) {
+        var tok = lead[i];
+        if (tok === '-' || tok === '.') continue;
+        var len = 1; while (lead[i + len] === '-') len++;
+        ev.push({ st: step0 + i, ch: 'lead', n: NOTE(tok) + (song.transpose || 0), len: len });
+      }
+      step0 += bars * 16;
+    });
     ev.sort(function (x, y) { return x.st - y.st; });
-    return { ev: ev, steps: bars * 16, song: song };
+    return { ev: ev, steps: step0, song: song };
   }
 
   function voice(e, t, stepDur, song) {
@@ -307,22 +443,30 @@
     else if (e.d === 'o') noise({ d: 0.12, v: 0.05, type: 'highpass', f: 6000, at: t, bus: bus });
   }
 
-  var cur = null;          // {name, c: compiled, step, nextT, idx}
+  var cur = null;          // {key, c: compiled, step, nextT, idx}
+  var after = null;        // track waiting for a jingle to finish
   var tempo = 1;
   function startSong(name, transpose) {
     var key = name + ':' + (transpose || 0);
+    // Let a jingle finish; whatever was asked for meanwhile starts after it.
+    if (cur && cur.c.song.once && !(SONGS[name] && SONGS[name].once)) { after = name ? { name: name, tr: transpose } : null; return; }
     if (cur && cur.key === key) return;
-    cur = null;
+    cur = null; after = null;
     if (!name || !SONGS[name]) return;
     var song = Object.assign({}, SONGS[name], { transpose: transpose || 0 });
     cur = { key: key, c: compile(song), step: 0, idx: 0, nextT: ctx.currentTime + 0.08 };
   }
   function pump() {
     if (!cur || !ready()) return;
-    var c = cur.c, stepDur = 60 / (c.song.bpm * tempo) / 4;
+    var c = cur.c, stepDur = 60 / (c.song.bpm * (c.song.once ? 1 : tempo)) / 4;
     var ahead = ctx.currentTime + 0.15;
     if (cur.nextT < ctx.currentTime - 0.5) cur.nextT = ctx.currentTime + 0.05;   // tab was asleep: don't burst
-    while (cur.nextT < ahead) {
+    while (cur && cur.nextT < ahead) {
+      if (c.song.once && cur.step >= c.steps) {
+        // jingle done: wait for its tail to ring out, then start what was asked for
+        if (ctx.currentTime > cur.nextT + 0.3) { var nx = after; cur = null; after = null; if (nx) startSong(nx.name, nx.tr); }
+        return;
+      }
       var st = cur.step % c.steps;
       if (st === 0) cur.idx = 0;
       while (cur.idx < c.ev.length && c.ev[cur.idx].st === st) { voice(c.ev[cur.idx], cur.nextT, stepDur, c.song); cur.idx++; }
@@ -355,19 +499,19 @@
     (p.fxEvents || []).forEach(function (f) {
       if (f._snd) return; f._snd = 1;
       if (f.kind === 'lever') play('lever', Object.assign({ result: f.result }, o));
+      else if (f.kind === 'cast') play(SFX['ab_' + f.id] ? 'ab_' + f.id : 'cast', o);
+      else if (f.kind === 'perk') play('perk_' + f.id, o);
       else if (SFX[f.kind]) play(f.kind, o);
     });
     (p.flash || []).forEach(function (f) {
       if (f._snd) return; f._snd = 1;
-      if (f.text === 'MARKED') play('mark', o);
-      else if (f.text === 'COUNT BROKEN') play('alarm', o);
-      else if (f.text === 'COUNTDOWN!') play('go', o);
+      if (f.text === 'COUNT BROKEN') play('alarm', o);
     });
     var cleared = now.lines - m.lines;
     if (cleared > 0) play(cleared >= 4 ? 'quad' : 'clear', Object.assign({ n: cleared }, o));
     if (now.pid !== m.pid) {
       if (now.hold !== m.hold) { if (human) play('hold', o); }
-      else if (m.y < m.ghost - 1) play('drop', o);
+      else if (m.y < m.ghost - 1) { /* hard drop: the teleport effect has its own sound */ }
       else if (cleared <= 0) play('lock', o);
     } else if (human) {
       if (now.rot !== m.rot) play(now.kick > 0 && !m.kick ? 'kick' : 'rotate', o);
@@ -386,7 +530,7 @@
     if (!bt.over) startSong(bt.cfg.boss ? 'boss' : 'battle', RULE_KEY[bt.rule] || 0);
     // tense: speed the music up a little when a human's stack is tall
     var tall = [bt.a, bt.b].some(function (p) { return !p.isCPU && p.alive && p.stackHeight && p.stackHeight() >= 14; });
-    tempo = tall ? 1.12 : 1;
+    tempo = tall && !bt.over ? 1.12 : 1;
     musicBus && (musicBus.gain.value = mode === 0 ? (bt.paused ? 0.18 : 0.55) : 0);
     // 3-2-1-GO
     var n = bt.countdown > 0 ? Math.ceil(bt.countdown / 800) : 0;
@@ -399,10 +543,10 @@
     } else bm.lt = null;
     if (bt.over && !bm.over) {
       bm.over = true;
-      cur = null;
+      cur = null; after = null;
       var w = bt.winner === 'a' ? bt.a : bt.b;
       var vsHuman = !bt.a.isCPU && !bt.b.isCPU;
-      play(vsHuman || !w.isCPU ? 'win' : 'lose');
+      startSong(vsHuman || !w.isCPU ? 'win' : 'lose');
     }
   }
 
@@ -443,8 +587,7 @@
     else {
       tempo = 1;
       if (musicBus) musicBus.gain.value = mode === 0 ? 0.55 : 0;
-      if (s !== lastScreen && !(name === 'CardResult')) startSong(TRACK_FOR[name]);
-      if (name === 'CardResult' && lastScreen && lastScreen.constructor.name !== 'CardResult') startSong(null);
+      if (s !== lastScreen && name !== 'CardResult') startSong(TRACK_FOR[name]);
       watchMenus(s, name);
     }
     lastScreen = s;

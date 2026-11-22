@@ -107,13 +107,13 @@
   };
   Battle.prototype.tryLaunch = function (p) {
     if (!this.canLaunch(p)) {
-      if (this.rule === 'launch' && !this.over && !this.launch) p.say(this.launchUsed[this.idx(p)] ? 'COUNT SPENT' : 'GET AHEAD FIRST');
+      if (this.rule === 'launch' && !this.over && !this.launch) { p.say(this.launchUsed[this.idx(p)] ? 'COUNT SPENT' : 'GET AHEAD FIRST'); p.perkFx('deny'); }
       return false;
     }
     this.launchUsed[this.idx(p)] = true;
     this.launch = { by: p, t: LAUNCH_MS, linesAt: p.lines };
     p.avoidClears = true;
-    p.say('COUNTDOWN!');
+    p.say('COUNTDOWN!'); p.perkFx('launch');
     return true;
   };
   Battle.prototype.updateLaunch = function (dt) {
@@ -185,6 +185,39 @@
     }
   }
 
+  // Hard drop "teleport": the brick goes white and shakes where it was (fading out) while the landing
+  // spot does the same (fading in to the real colour), plus a few sparks between them.
+  Battle.prototype.drawTeleport = function (p, fx, fy) {
+    var ctx = this._ctx, self = p;
+    p.fxEvents.forEach(function (f) {
+      if (f.kind !== 'teleport') return;
+      var k = f.t / G.TELEPORT_MS;              // 1 -> 0
+      var cells0 = self.cells(f.type, f.rot, f.x, f.y0), cells1 = self.cells(f.type, f.rot, f.x, f.y1);
+      var j = function () { return Math.round((Math.random() * 2 - 1) * 2 * k); };
+      // phase out at the start position
+      ctx.globalAlpha = Math.max(0, k);
+      var ox = j(), oy = j();
+      cells0.forEach(function (c) { if (c[1] >= G.HIDDEN) R(fx + c[0] * C + ox, fy + (c[1] - G.HIDDEN) * C + oy, C, C, '#ffffff'); });
+      // phase in at the landing spot: white flash fading back to the brick colour underneath
+      ctx.globalAlpha = Math.max(0, k * 0.9);
+      var lx = j(), ly = j();
+      cells1.forEach(function (c) {
+        if (c[1] < G.HIDDEN) return;
+        var x = fx + c[0] * C, y = fy + (c[1] - G.HIDDEN) * C;
+        R(x + lx, y + ly, C, C, '#ffffff');
+      });
+      // sparks along the path
+      ctx.globalAlpha = Math.max(0, k);
+      var top = (f.y0 - G.HIDDEN) * C, bot = (f.y1 - G.HIDDEN) * C;
+      for (var s = 0; s < 8; s++) {
+        var cx = cells0[s % cells0.length][0] * C + Math.floor(Math.random() * C);
+        var cy = top + Math.random() * Math.max(1, bot - top + C);
+        if (cy >= 0) G.px(fx + cx, fy + cy, s % 2 ? '#ffffff' : '#9ff3ff');
+      }
+      ctx.globalAlpha = 1;
+    });
+  };
+
   Battle.prototype.drawBoard = function (p, i, ctrl) {
     var fx = FX[i], fy = FY, accent = p.card.color, t = this.time;
     // Deck bezel + recessed field
@@ -208,6 +241,7 @@
         if (c[1] >= G.HIDDEN) G.brick(fx + c[0] * C, fy + (c[1] - G.HIDDEN) * C, C, col);
       });
     }
+    this.drawTeleport(p, fx, fy);
     if (p.effects.dark) {
       for (var dy = 0; dy < 112; dy++) R(fx, fy + dy, FW, 1, dy % 2 ? '#000' : '#07040f');
       T('DARK', fx + 40, fy + 50, PAL.violet, { align: 'center', font: 'small' });

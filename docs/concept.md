@@ -154,6 +154,9 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - Tracks: title, map, exploration, battle (key changes by location), boss; win/lose jingles. Battle music speeds up when your stack is tall.
 - Effects for menus, NPC talk blips (pitch per NPC), door footsteps, every brick action, clears (quad fanfare), garbage warning/landing, top-out, abilities, all house-rule events, 3-2-1-GO.
 - CPU sounds quieter and panned to its side. Title menu Sound option: ALL ON / MUSIC OFF / ALL OFF.
+- Songs built from sections (verse / chorus / breakdown), ~45-60 s loops. Win/lose jingles ~5-6 s; next music waits for them.
+- Every card ability (16) and stage perk has its own sound; buzzer when a perk isn't ready.
+- **Hard drop = teleport (user request):** brick flashes white and shakes at its start while the landing spot does the same; visual only, lock stays instant.
 
 ## CPU difficulty (v0.4, after "fights too hard" playtest)
 - 8 CPU levels. Measured solo 40-line time with no features: L1 ~6:00, L2 ~5:05, L3 ~4:55, L4 ~4:30, L5 ~4:00, L6 ~3:35, L7 ~3:20, L8 ~3:05.
