@@ -9,7 +9,8 @@
   G.COLS = 10;
   G.ROWS = 22;      // 2 hidden rows on top
   G.HIDDEN = 2;
-  G.WIN_LINES = 40;
+  G.WIN_LINES = 40;          // bosses and Versus
+  G.CREW_LINES = 20;         // ordinary crew fights
 
   // Piece shapes in rotation state 0 (y grows downward), inside an n x n box.
   G.PIECES = {
@@ -87,21 +88,23 @@
 
   // Directions -> rank needed (proposal from the concept doc: one fixed role per direction).
   G.DIRS = ['left', 'right', 'down', 'up'];
-  G.DIR_RANK = { left: 2, right: 3, down: 4, up: 5 };
+  // Defense is always the first active to unlock (rank 2) and the cheapest.
+  G.DIR_RANK = { right: 2, left: 3, down: 4, up: 5 };
   G.DIR_ROLE = { left: 'Attack', right: 'Defense', down: 'Timed', up: 'Super' };
 
   // Monster cards. Abilities are placeholders until the full sets are designed.
   G.CARDS = {
     starter: {
       id: 'starter', name: 'Cadet Badge', color: '#c9c2a8', pattern: 'standard',
-      passive: { name: 'None', desc: 'Plain starter card' }, actives: {}
+      passive: { name: 'Fold Drive', desc: 'Hard drop while equipped. Never levels up.' }, actives: {},
+      grants: 'hardDrop', noLevel: true
     },
     cyclops: {
       id: 'cyclops', name: 'Cyclops', color: '#d9a441', pattern: 'standard',
       passive: { name: 'Focus', desc: 'Ghost brick always on', id: 'focus' },
       actives: {
         left: { name: 'Boulder', cost: 5, id: 'boulder', desc: 'Drop a 2x2 rock on foe' },
-        right: { name: 'Stare Down', cost: 4, id: 'staredown', desc: 'Cancel 3 incoming lines' },
+        right: { name: 'Eye Beam', cost: 3, id: 'eyebeam', desc: 'Aim and delete a column 2 bricks wide' },
         down: { name: 'Glare', cost: 6, id: 'glare', desc: 'Foe loses preview 8s' },
         up: { name: 'Rockslide', cost: 10, id: 'rockslide', desc: 'Three boulders' }
       }
@@ -110,8 +113,8 @@
       id: 'skeleton', name: 'Skeleton', color: '#e8e1cf', pattern: 'ribs',
       passive: { name: 'Ribcage', desc: 'Your garbage has rib gaps', id: 'ribs' },
       actives: {
-        left: { name: 'Rattle', cost: 3, id: 'rattle', desc: 'Shake foe brick 1 column' },
-        right: { name: 'Bone Patch', cost: 4, id: 'bonepatch', desc: 'Fill 4 covered holes' },
+        left: { name: 'Rattle', cost: 4, id: 'rattle', desc: 'Shake foe brick 1 column' },
+        right: { name: 'Collapse', cost: 3, id: 'collapse', desc: 'Gravity: every brick falls down' },
         down: { name: 'Shiver', cost: 6, id: 'shiver', desc: 'Foe brick rattles 6s' },
         up: { name: 'Bone Storm', cost: 10, id: 'bonestorm', desc: 'Send 4 lines' }
       }
@@ -121,7 +124,7 @@
       passive: { name: 'Claw Marks', desc: 'Your garbage has slashed gaps', id: 'claw' },
       actives: {
         left: { name: 'Claw', cost: 5, id: 'claw3', desc: 'Send 3 slashed lines' },
-        right: { name: 'Thick Fur', cost: 4, id: 'fur', desc: 'Block next garbage hit' },
+        right: { name: 'Pound', cost: 3, id: 'pound', desc: 'Pound the stack down 3 rows' },
         down: { name: 'Howl', cost: 6, id: 'howl', desc: 'Foe falls 3x faster 6s' },
         up: { name: 'Full Moon', cost: 10, id: 'fullmoon', desc: 'Next 3 bricks are I' }
       }
@@ -131,12 +134,29 @@
       passive: { name: 'Echolocation', desc: '+1 preview brick', id: 'echo' },
       actives: {
         left: { name: 'Nightfall', cost: 4, id: 'nightfall', desc: '1 line + darken foe 5s' },
-        right: { name: 'Roost', cost: 4, id: 'roost', desc: 'Pause your gravity 4s' },
+        right: { name: 'Echo Wall', cost: 3, id: 'echo', desc: 'Bounce incoming garbage back (6s)' },
         down: { name: 'Sonar', cost: 4, id: 'sonar', desc: '5-brick preview 10s' },
         up: { name: 'Swarm', cost: 10, id: 'swarm', desc: '3 lines + darken foe 8s' }
       }
     }
   };
+  // Unique boss cards: one per location, can't be stacked, never level up, and carry that location's
+  // house-rule mechanic + stage perk into any fight (rule = which one).
+  var UNIQUE = [
+    ['launchkey', 'Launch Key', 'launch', '#e8763a', 'Launch Countdown', 'Perk: 10-count while ahead. Still ahead at zero = you win.'],
+    ['phantomreel', 'Phantom Reel', 'holo', '#4fd1c5', 'Holograms', 'A hologram brick every 10 lines. Perk: freeze it to fill holes.'],
+    ['origami', 'Origami Crane', 'fold', '#9ae66e', 'Fold Garbage', 'Your garbage folds over every 8 lines. Perk: early fold.'],
+    ['goldledger', 'Gold Ledger', 'bank', '#f2c94c', 'Interest', 'Your garbage is banked and grows. Perk: withdraw it all.'],
+    ['timecapsule', 'Time Capsule', 'chrono', '#6fa8ff', 'Save States', 'Mark at 10 lines. Perk: tap to mark, hold to jump back.'],
+    ['aceofstars', 'Ace of Stars', 'casino', '#ff5d8f', 'Pull the Lever', 'Perk: a slot spin every 10 lines. Jackpot, cherries or bust.']
+  ];
+  UNIQUE.forEach(function (u) {
+    G.CARDS[u[0]] = { id: u[0], name: u[1], rule: u[2], color: u[3], pattern: 'standard', unique: true, noLevel: true,
+      passive: { name: u[4], desc: u[5] }, actives: {} };
+  });
+  G.UNIQUE_FOR = {};   // location id -> unique card id
+  G.UNIQUE_IDS = UNIQUE.map(function (u) { G.UNIQUE_FOR[u[2] === 'holo' ? 'holo' : u[2]] = u[0]; return u[0]; });
+  G.levels = function (id) { return !(G.CARDS[id] && G.CARDS[id].noLevel); };
   G.MONSTERS = ['cyclops', 'skeleton', 'werewolf', 'bat'];
   // 16x16 card portraits. Palette keys (see G.drawCard): k outline, a card colour,
   // d dark, l light, w bone/white, e eye white, r red, y yellow.
@@ -213,6 +233,114 @@
       '......dddd......',
       '................'
     ],
+    launchkey: [
+      '.......kk.......',
+      '......kllk......',
+      '.....kllllk.....',
+      '.....klaalk.....',
+      '.....klaalk.....',
+      '....kllllllk....',
+      '...kalllllllak..',
+      '...kakllllkak...',
+      '....k.kddk.k....',
+      '......kyyk......',
+      '.....kyrryk.....',
+      '......kyyk......',
+      '.......rr.......',
+      '.......yy.......',
+      '........r.......',
+      '................'
+    ],
+    phantomreel: [
+      '................',
+      '....kkkkkkkk....',
+      '...kaaaaaaaak...',
+      '..kaakkaakkaak..',
+      '..kaakkaakkaak..',
+      '..kaaaaaaaaaak..',
+      '..kakkaawaakkak.',
+      '..kakkawwwakkak.',
+      '..kaaaaawaaaaak.',
+      '..kaakkaakkaak..',
+      '..kaakkaakkaak..',
+      '...kaaaaaaaak...',
+      '....kkkkkkkk....',
+      '...l.l.l.l.l....',
+      '..l.l.l.l.l.....',
+      '................'
+    ],
+    origami: [
+      '................',
+      '.......k........',
+      '......kak.......',
+      '.....kaak.......',
+      'k...kalak.......',
+      'ak.kalllak....k.',
+      'aakallllak...ka.',
+      '.aaallllaaakkaa.',
+      '..aallllaaaaaa..',
+      '...alllldaaaa...',
+      '....alldddaa....',
+      '.....adddda.....',
+      '......adda......',
+      '.......aa.......',
+      '................',
+      '................'
+    ],
+    goldledger: [
+      '................',
+      '....kkkkkkkk....',
+      '..kkyyyyyyyykk..',
+      '.kyyyyllyyyyyyk.',
+      '.kyyykkkkkkyyyk.',
+      '.kyyyklyyyyyyyk.',
+      '.kyyyykkkkyyyyk.',
+      '.kyyyyyyyklyyyk.',
+      '.kyyykkkkkkyyyk.',
+      '.kyyyyyllyyyyyk.',
+      '..kkyyyyyyyykk..',
+      '....kkkkkkkk....',
+      '...kddddddddk...',
+      '...kkkkkkkkkk...',
+      '................',
+      '................'
+    ],
+    timecapsule: [
+      '..kkkkkkkkkkkk..',
+      '..kddddddddddk..',
+      '...kllllllllk...',
+      '....klwwwwlk....',
+      '.....klwwlk.....',
+      '......klwk......',
+      '.......kk.......',
+      '......k.wk......',
+      '.....k..w.k.....',
+      '....k...w..k....',
+      '...k...www..k...',
+      '...k.wwwwwwwk...',
+      '..kddddddddddk..',
+      '..kkkkkkkkkkkk..',
+      '................',
+      '................'
+    ],
+    aceofstars: [
+      '...kkkkkkkkkk...',
+      '...kwwwwwwwwk...',
+      '...kwrwwwwwwk...',
+      '...kwwwwwwwwk...',
+      '...kwwwwrwwwk...',
+      '...kwwwrrrwwk...',
+      '...kwrrrrrrrk...',
+      '...kwwrrrrrwk...',
+      '...kwwrrwrrwk...',
+      '...kwrrwwwrrk...',
+      '...kwwwwwwwwk...',
+      '...kwwwwwwrwk...',
+      '...kwwwwwwwwk...',
+      '...kkkkkkkkkk...',
+      '................',
+      '................'
+    ],
     bat: [
       '................',
       '................',
@@ -232,7 +360,8 @@
       '................'
     ]
   };
-  G.SHORT = { starter: 'CADET', cyclops: 'CYCLOPS', skeleton: 'SKELETON', werewolf: 'WEREWOLF', bat: 'GIANT BAT' };
+  G.SHORT = { starter: 'CADET', cyclops: 'CYCLOPS', skeleton: 'SKELETON', werewolf: 'WEREWOLF', bat: 'GIANT BAT',
+    launchkey: 'LAUNCH', phantomreel: 'PHANTOM', origami: 'ORIGAMI', goldledger: 'LEDGER', timecapsule: 'CAPSULE', aceofstars: 'ACE' };
 
 
   // Six locations. CPU strength is set by your progress (see cpuLevelFor in main.js).
@@ -280,7 +409,7 @@
       npcs: [
         { name: 'Timekeeper Tock', card: 'bat', rank: 3, line: 'You are late. Or early. Battle?' },
         { name: 'Engineer Loop', card: 'skeleton', rank: 3, line: 'I have seen this match before.' },
-        { name: 'Past You', card: 'starter', rank: 1, boss: true, mirror: true, line: 'Remember me?' }
+        { name: 'Past You', card: 'starter', rank: 1, boss: true, mirror: true, line: 'Remember me? I played you last time. I remember how.' }
       ]
     },
     {

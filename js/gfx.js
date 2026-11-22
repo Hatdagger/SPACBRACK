@@ -387,7 +387,7 @@
     var pipY = py + pw + 2, pipW = opts.size === 'lg' ? 8 : 5, gap = opts.size === 'lg' ? 4 : 2;
     var total = 5 * pipW + 4 * gap, ox = x + ((W - total) >> 1);
     for (var i = 0; i < 5; i++) {
-      var on = id !== 'starter' && i < rank;
+      var on = G.levels(id) && i < rank;
       G.bevel(ox + i * (pipW + gap), pipY, pipW, m.pip - 1, on ? G.PAL.amber : '#1a1726', on ? '#fff3c0' : '#2a2638', on ? '#8a5a00' : '#0c0b12');
     }
     if (opts.count > 1) {

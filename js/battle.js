@@ -19,6 +19,14 @@
     if (!p.alive || p.won) return;
     if (p.foldLock > 0) { this.cardMode = false; p.softDrop = false; this.dasDir = 0; return; }   // fold playing: input locked
 
+    // Eye Beam aiming: left/right moves the beam, A / B / hard drop / card button fires it.
+    if (p.aim) {
+      if (s.pressed('left')) p.aimMove(-1);
+      if (s.pressed('right')) p.aimMove(1);
+      if (['rotCW', 'rotCCW', 'hard', 'card', 'ok'].some(function (a) { return s.pressed(a); })) p.aimFire();
+      p.softDrop = false;
+      return;
+    }
     // Card ability: hold button, pick direction, release to fire.
     if (s.pressed('card')) { this.cardMode = true; this.cardDir = null; }
     if (this.cardMode) {
@@ -34,7 +42,7 @@
       if (this.cardMode) return; // d-pad picks abilities while the card button is held
     }
 
-    if (s.pressed('perk') && p.battle && p.battle.rule === 'launch') p.battle.tryLaunch(p);
+    if (s.pressed('perk') && p.battle && p.battle.hasLaunch(p)) p.battle.tryLaunch(p);
     if (s.pressed('perk') && p.foldOn) p.earlyFold();
     if (s.pressed('perk') && p.bankOn) p.withdraw();
     if (s.pressed('perk') && p.leverOn) p.pullLever();
@@ -81,11 +89,13 @@
     [this.a, this.b].forEach(function (p) { p.battle = self; });
     // House rule. 'launch' = Launch Complex: garbage off, time limit, Launch Countdown perk.
     this.rule = cfg.rule || null;
+    this.winLines = cfg.winLines || G.WIN_LINES;
+    this.a.winLines = this.b.winLines = this.winLines;
+    this.launch = null;                // active Launch Countdown: {by, t, linesAt}
+    this.launchUsed = [false, false];
     if (this.rule === 'launch') {
       this.a.noGarbage = this.b.noGarbage = true;
       this.limit = cfg.timeLimit || 360000;
-      this.launch = null;              // active count: {by, t, linesAt}
-      this.launchUsed = [false, false];
     }
     if (this.rule === 'chrono') this.a.chronoOn = this.b.chronoOn = true;
     if (this.rule === 'fold') this.a.foldOn = this.b.foldOn = true;
@@ -103,13 +113,15 @@
   // ---------- Launch Complex: Launch Countdown perk ----------
   var LAUNCH_MS = 10000;
   Battle.prototype.idx = function (p) { return p === this.a ? 0 : 1; };
+  // Launch Countdown: everyone at Launch Complex, or whoever holds the Launch Key card.
+  Battle.prototype.hasLaunch = function (p) { return this.rule === 'launch' || p.card.rule === 'launch'; };
   Battle.prototype.canLaunch = function (p) {
-    return this.rule === 'launch' && !this.over && !this.launch && this.countdown <= 0 &&
+    return this.hasLaunch(p) && !this.over && !this.launch && this.countdown <= 0 &&
       !this.launchUsed[this.idx(p)] && p.alive && p.lines > p.opponent.lines;
   };
   Battle.prototype.tryLaunch = function (p) {
     if (!this.canLaunch(p)) {
-      if (this.rule === 'launch' && !this.over && !this.launch) { p.say(this.launchUsed[this.idx(p)] ? 'COUNT SPENT' : 'GET AHEAD FIRST'); p.perkFx('deny'); }
+      if (this.hasLaunch(p) && !this.over && !this.launch) { p.say(this.launchUsed[this.idx(p)] ? 'COUNT SPENT' : 'GET AHEAD FIRST'); p.perkFx('deny'); }
       return false;
     }
     this.launchUsed[this.idx(p)] = true;
@@ -134,7 +146,7 @@
     }
     if (this.brokenMsg && (this.brokenMsg.t -= dt) <= 0) this.brokenMsg = null;
     // Time limit: more lines wins. A tie goes to sudden death (next line wins).
-    if (!this.forced && this.time >= this.limit) {
+    if (!this.forced && this.limit && this.time >= this.limit) {
       if (this.a.lines !== this.b.lines) { this.forced = this.a.lines > this.b.lines ? 'a' : 'b'; this.endWhy = 'time'; }
       else this.sudden = true;
     }
@@ -164,7 +176,7 @@
     this.time += dt;
     this.ctrl.forEach(function (c) { c.update(dt); });
     this.a.update(dt); this.b.update(dt);
-    if (this.rule === 'launch') this.updateLaunch(dt);
+    if (this.rule === 'launch' || this.launch || this.brokenMsg) this.updateLaunch(dt);
     var r = this.result();
     if (r) { this.over = true; this.winner = r; this.endT = 0; }
   };
@@ -291,13 +303,31 @@
       var cw = Math.ceil(30 * p.cooldown / G.ABILITY_COOLDOWN);
       R(fx + 28, by + 8, 30, 3, '#1a1726'); R(fx + 28, by + 8, cw, 3, PAL.grey);
     } else T(Object.keys(p.card.actives).length ? 'CARD READY' : p.card.name, fx - 6, by + 7, p.cardId === 'starter' ? PAL.grey : accent, { font: 'small' });
-    G.led(('0' + Math.min(p.lines, G.WIN_LINES)).slice(-2) + '/' + G.WIN_LINES, fx + FW + 6, by, PAL.amber, 'right');
+    G.led(('0' + Math.min(p.lines, p.winLines)).slice(-2) + '/' + p.winLines, fx + FW + 6, by, PAL.amber, 'right');
     if (p.cooldown) this._ctx.globalAlpha = 0.4;
     G.vu(fx - 6, by + 15, 10, p.meter, 8, 4);
     this._ctx.globalAlpha = 1;
 
+    // Eye Beam aim: two columns outlined, blinking
+    if (p.aim) {
+      var ax = fx + p.aim.x * C, on = Math.floor(t / 120) % 2;
+      this._ctx.globalAlpha = 0.25; R(ax, fy, 2 * C, FH, PAL.yellow); this._ctx.globalAlpha = 1;
+      if (on) { R(ax, fy, 1, FH, PAL.yellow); R(ax + 2 * C - 1, fy, 1, FH, PAL.yellow); }
+      T('AIM', fx + 40, fy + 20, PAL.yellow, { align: 'center', shadow: '#000' });
+      T('LEFT/RIGHT  A: FIRE', fx + 40, fy + 30, PAL.white, { align: 'center', font: 'small', shadow: '#000' });
+    }
     // Ability effects on this board
+    var ctx2 = this._ctx;
     p.fxEvents.forEach(function (f) {
+      if (f.kind === 'defense') {
+        var k = f.t / 400;
+        ctx2.globalAlpha = k * 0.7;
+        if (f.id === 'eyebeam') R(fx + f.x * C, fy, 2 * C, FH, '#fff3a0');
+        else if (f.id === 'pound') R(fx, fy + FH - 3 * C, FW, 3 * C, '#ff8a1e');
+        else if (f.id === 'echo') { R(fx, fy, FW, 3, '#b18cff'); R(fx, fy + FH - 3, FW, 3, '#b18cff'); R(fx, fy, 3, FH, '#b18cff'); R(fx + FW - 3, fy, 3, FH, '#b18cff'); }
+        else R(fx, fy, FW, FH, '#efe6cc');
+        ctx2.globalAlpha = 1;
+      }
       if (f.kind === 'boulder') {
         var bx = fx + f.x * C - 2, byy = fy + (f.y - G.HIDDEN) * C - 2, S = 2 * C + 4;
         if (Math.floor(f.t / 60) % 2) { R(bx, byy, S, 1, PAL.yellow); R(bx, byy + S - 1, S, 1, PAL.yellow); R(bx, byy, 1, S, PAL.yellow); R(bx + S - 1, byy, 1, S, PAL.yellow); }
@@ -306,6 +336,7 @@
     });
     var stat = [];
     if (p.effects.fur) stat.push(['FUR', PAL.orange]);
+    if (p.effects.echo) stat.push(['ECHO', PAL.violet]);
     if (p.effects.roost) stat.push(['ROOST', PAL.violet]);
     if (p.effects.sonar) stat.push(['SONAR', PAL.cyan]);
     if (p.effects.howl) stat.push(['HOWL', PAL.red]);
@@ -524,7 +555,7 @@
       // Perk hint for human players
       var self = this;
       [this.a, this.b].forEach(function (p, k) {
-        if (!(self.ctrl[k] instanceof Human)) return;
+        if (!(self.ctrl[k] instanceof Human) || !self.hasLaunch(p)) return;
         var used = self.launchUsed[k], ready = self.canLaunch(p);
         var txt = used ? 'COUNT SPENT' : ready ? 'PERK: LAUNCH!' : 'PERK WHEN AHEAD';
         var c = used ? '#4a4660' : ready ? (Math.floor(now / 300) % 2 ? PAL.yellow : PAL.amber) : '#6c6880';
@@ -542,7 +573,7 @@
   Battle.prototype.whyText = function (win) {
     if (this.endWhy === 'launch') return win.name + ' WON THE LAUNCH COUNTDOWN';
     if (this.endWhy === 'time') return 'TIME UP - ' + win.name + ' HAD MORE LINES';
-    return win.name + ' CLEARED ' + G.WIN_LINES + ' LINES FIRST';
+    return win.name + ' CLEARED ' + this.winLines + ' LINES FIRST';
   };
 
   Battle.prototype.draw = function (ctx) {
@@ -572,6 +603,10 @@
       T(this.sudden ? 'SUDDEN' : 'GARBAGE', 160, 118, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
       T(this.sudden ? 'DEATH' : 'OFF', 160, 125, this.sudden ? PAL.red : PAL.grey, { align: 'center', font: 'small' });
       this.drawLaunch(now);
+    } else if (this.hasLaunch(this.a) || this.hasLaunch(this.b)) {
+      T('FIRST', 160, 118, PAL.grey, { align: 'center', font: 'small' });
+      T('TO ' + this.winLines, 160, 125, PAL.grey, { align: 'center', font: 'small' });
+      this.drawLaunch(now);
     } else if (this.rule === 'casino') {
       T(this.bet ? 'CARD BET' : 'LEVER', 160, 118, PAL.pink, { align: 'center', font: 'small' });
       T(this.bet ? 'WIN BOTH' : '1 PER 10L', 160, 125, PAL.pink, { align: 'center', font: 'small' });
@@ -583,7 +618,7 @@
       T(G.FOLD_EVERY + ' LINES', 160, 125, PAL.green, { align: 'center', font: 'small' });
     } else {
       T('FIRST', 160, 118, PAL.grey, { align: 'center', font: 'small' });
-      T('TO ' + G.WIN_LINES, 160, 125, PAL.grey, { align: 'center', font: 'small' });
+      T('TO ' + this.winLines, 160, 125, PAL.grey, { align: 'center', font: 'small' });
     }
 
     if (this.countdown > 0) {

@@ -11,7 +11,7 @@ Demo-disc entry: over-the-shoulder exploration RPG (was top-down grid) where eve
 - **Each location has its own house rules** for battles fought there, and **every stage has an active perk on the stage perk button.**
 - Battles are **mutual**: talk to an NPC, agree to fight. Any NPC can be re-fought unlimited times.
 - Area boss is gated on first encounter: must beat the location's lower NPCs first.
-- Standard win rule: first to clear **40 lines** (or opponent tops out).
+- Standard win rule: first to clear **20 lines vs crew, 40 vs bosses** (or opponent tops out).
 - **No money and no shop.** Cards are the inventory and the loot players chase.
 - **Single-player adventure only — split-screen co-op dropped.** Multiplayer is versus mode.
 - Base randomizer before the casino token: pure random bricks.
@@ -133,9 +133,9 @@ Options that were considered:
 - Playtest: farmed lines count toward the next 10 (snowball).
 - One mark at a time (a new mark replaces the old one).
 
-### Chrono Station boss: Past You
-- Uses a snapshot of the player from their previous visit: card, rank, and only the features they had then.
-- Encountered again on revisits (snapshot refreshes) and can be rechallenged.
+### Chrono Station boss: Terminal / Past You (updated v0.12)
+- First fight: a terminal on a desk with your loadout from the last boss you faced.
+- Later fights: Past You at the terminal with your loadout from your last fight there.
 
 ### Note on Hologram Hall references
 Keep game references as parody / nods rather than actual copyrighted characters.
@@ -157,6 +157,15 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - Launch Countdown as decided: 10 s, only while ahead, once per match, breaks on own clear or opponent catching up.
 - CPU uses it: needs a 3-line lead at levels 1-3, 2 lines above; at least 8 lines cleared; while counting it builds without clearing.
 - Card abilities that send garbage are blanked by the rule (decided; other ability effects still work).
+
+## v0.12 changes (user design, in the build)
+- **Race length (decided):** crew 20 lines, bosses 40, Versus 40.
+- **Cadet Badge (decided):** hard drop while equipped; no abilities; no leveling.
+- **Defense first (decided):** defense (right) unlocks at rank 2 and is the cheapest active (3). Order now R2 defense, R3 attack, R4 timed, R5 super.
+- **Defense = recovery moves (decided),** like Tetris Battle Gaiden level-1 powers. User's examples: delete a 2-wide column (aimed), align all bricks left/right, gravity pull-down, attack/garbage reflector, pound down (bottom 3 rows removed). In the build: Cyclops Eye Beam (aimed 2-wide column), Skeleton Collapse (gravity), Werewolf Pound (bottom 3 rows), Giant Bat Echo Wall (reflect incoming + 6 s). "Align left/right" saved for a future monster. Lines removed/cleared by defense moves don't count or send.
+- **Unique boss cards (decided):** each boss drops a unique, non-stackable card with that location's house mechanic + perk built in, no leveling. In the build: bosses also fight with their own card; drop only if you don't own it (else a random card). Names: Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars. Card rules work per player (fold/bank/hologram/save states/lever/launch countdown).
+- **Chrono Station boss (decided):** first fight = a computer terminal on a desk with your stats/abilities from the last boss you faced. Later fights and rematches = someone (Past You) at the computer with your stats from your last fight there. First win = token, no card. (Build: later wins drop the Time Capsule.)
+- **Ending (decided):** a short congratulations scene once all six tokens are won.
 
 ## Lock delay (decided, v0.11)
 - **Hard drop locks instantly; normal and soft drops keep the 0.5 s lock delay** so bricks can be slid and T-spins are possible. (A shorter player delay was tried and dropped.)

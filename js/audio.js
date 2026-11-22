@@ -226,6 +226,13 @@
       noise({ d: 0.9, v: 0.07 * o.v, type: 'bandpass', f: 3000, q: 2, pan: o.pan });
     },
 
+    // ----- defense moves -----
+    ab_eyebeam: function (o) { tone({ f: 900, to: 1400, d: 0.2, v: 0.08 * o.v, type: 'sawtooth', pan: o.pan }); },   // aim starts (players) / CPU fires
+    defense_eyebeam: function (o) { tone({ f: 2200, to: 200, d: 0.5, v: 0.14 * o.v, type: 'sawtooth', pan: o.pan }); noise({ d: 0.5, v: 0.14 * o.v, type: 'bandpass', f: 3000, to: 400, q: 3, pan: o.pan }); },
+    ab_collapse: function (o) { for (var i = 0; i < 8; i++) noise({ d: 0.05, v: 0.15 * o.v, type: 'bandpass', f: 1400 - i * 120, q: 5, pan: o.pan, at: ctx.currentTime + i * 0.04 }); tone({ f: 300, to: 60, d: 0.4, v: 0.15 * o.v, type: 'triangle', pan: o.pan }); },
+    ab_pound: function (o) { for (var i = 0; i < 3; i++) { tone({ f: 110, to: 35, d: 0.18, v: 0.3 * o.v, type: 'triangle', pan: o.pan, at: ctx.currentTime + i * 0.14 }); noise({ d: 0.12, v: 0.2 * o.v, f: 500, pan: o.pan, at: ctx.currentTime + i * 0.14 }); } },
+    ab_echo: function (o) { for (var i = 0; i < 4; i++) tone({ f: 1200, to: 2400, d: 0.15, v: 0.1 * o.v * Math.pow(0.6, i), type: 'square', pan: o.pan, at: ctx.currentTime + i * 0.12 }); },
+
     // ----- Hologram Hall -----
     holo: function (o) {   // a hologram brick materializes
       arp(['C6', 'G6', 'C7', 'G7'], 0.05, { type: 'sine', d: 0.3, v: 0.07 * o.v, pan: o.pan, vib: 1 });
@@ -516,6 +523,7 @@
       else if (f.kind === 'cast') play(SFX['ab_' + f.id] ? 'ab_' + f.id : 'cast', o);
       else if (f.kind === 'perk') play('perk_' + f.id, o);
       else if (f.kind === 'holoSet') { if (!f.frozen) play('holoSet', o); }
+      else if (f.kind === 'defense' && f.id === 'eyebeam') play('defense_eyebeam', o);
       else if (SFX[f.kind]) play(f.kind, o);
     });
     (p.flash || []).forEach(function (f) {
@@ -593,7 +601,7 @@
     else if (I.any('pressed', 'back')) play('back');
   }
 
-  var TRACK_FOR = { Title: 'title', Controls: 'title', VersusSetup: 'title', MapScreen: 'map', Explore: 'explore', Inventory: 'explore', CardResult: 'map' };
+  var TRACK_FOR = { Title: 'title', Controls: 'title', VersusSetup: 'title', MapScreen: 'map', Explore: 'explore', Inventory: 'explore', CardResult: 'map', Ending: 'title' };
 
   function tick(dt, s) {
     if (!ctx) return;

@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.11
+# SPACBRACK — prototype v0.12
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,20 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.12 (cards, bosses, Past You, ending)
+
+- **Race length:** crew fights are to **20 lines**, bosses to **40** (Versus stays 40). Launch Complex time limits scale to match.
+- **Cadet Badge** (starter): gives you **hard drop** while equipped. No abilities, never levels up, can't be lost.
+- **Defense first:** the defense move (right) now unlocks first at rank 2 and is the cheapest (3). Attack moves to rank 3. Defense moves are field fixes like Tetris Battle Gaiden's level-1 powers; lines they clear don't count and don't send:
+  - Cyclops **Eye Beam:** aim a 2-wide column with left/right, press A (or wait 4 s) to delete it.
+  - Skeleton **Collapse:** gravity; every brick falls straight down.
+  - Werewolf **Pound:** the bottom 3 rows are pounded away and the stack drops.
+  - Giant Bat **Echo Wall:** bounces incoming garbage back, and anything sent for the next 6 s.
+- **Unique boss cards:** every boss fights with its own card and drops it when you win (if you don't have it). They can't stack, never level, and carry that location's rule + perk into any fight: Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars. Losing with one equipped destroys it; beat the boss again to win it back. They're also in Versus.
+- **Chrono Station boss:** your first fight is against a **computer terminal on a desk**, running your card, rank and tokens from the last boss you faced. After that, **Past You** sits at the terminal with your loadout from your last fight there. The first win gives the token but no card; later wins drop the Time Capsule.
+- **Ending:** winning the sixth token plays a short "Mission Complete" scene once.
+- Fix: garbage from card abilities and the lever's jackpot now lands on players under Fold Lab rules (it used to be skipped).
 
 ## New in v0.11 (Hologram Hall)
 

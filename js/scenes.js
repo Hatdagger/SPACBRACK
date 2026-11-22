@@ -174,7 +174,40 @@
       hat: (h >>> 12) % 3 === 0 && !n.mirror, glasses: (h >>> 14) % 4 === 0
     };
   };
+  // Chrono Station boss: a computer terminal on a desk (first fight), then Past You sitting at it.
+  function deskSprite(n, loc, frame) {
+    return cached('desk' + n.name + frame, function () {
+      var W = 96, H = 112, r = new Raster(W, H), c = loc.color;
+      // desk
+      r.rect(4, 78, 91, 84, '#5a4030'); r.rect(4, 78, 91, 78, '#8a6448'); r.rect(8, 85, 13, 111, '#3a2818'); r.rect(82, 85, 87, 111, '#3a2818');
+      r.rect(14, 85, 81, 96, '#4a3424');
+      if (n.terminal) {
+        // CRT facing us, with a little face on the green screen
+        r.rect(26, 40, 69, 77, '#c8c0a8'); r.rect(28, 42, 67, 75, '#8c8670');
+        r.rect(31, 45, 64, 70, '#06200e');
+        for (var y = 45; y <= 70; y += 2) r.rect(31, y, 64, y, '#0a3016');
+        r.rect(38, 51, 42, 55, '#5cff8a'); r.rect(53, 51, 57, 55, '#5cff8a');
+        if (frame) { r.rect(40, 62, 55, 63, '#5cff8a'); } else { r.rect(39, 61, 41, 62, '#5cff8a'); r.rect(42, 63, 53, 64, '#5cff8a'); r.rect(54, 61, 56, 62, '#5cff8a'); }
+        r.rect(40, 76, 55, 77, '#6c6650');
+        r.rect(30, 80, 65, 83, '#2a2a30');                                         // keyboard
+      } else {
+        // Past You sitting behind the desk, the terminal turned toward them
+        var L = G.npcLook(n, loc), b = frame ? 1 : 0;
+        r.rect(30, 50 + b, 65, 78, L.main); r.rect(30, 50 + b, 34, 78, S(L.main, -0.3));
+        r.rect(44, 44 + b, 51, 52 + b, L.skin[0]);
+        r.ell(38, 22 + b, 57, 46 + b, L.skin[0]); r.ell(40, 23 + b, 56, 44 + b, L.skin[1]);
+        r.ell(37, 19 + b, 58, 32 + b, L.hair);
+        r.rect(43, 34 + b, 44, 35 + b, '#07060b'); r.rect(51, 34 + b, 52, 35 + b, '#07060b');
+        r.rect(48, 52 + b, 49, 60 + b, L.trim);
+        r.rect(6, 48, 28, 77, '#a8a088'); r.rect(8, 50, 26, 74, '#7c7660');     // monitor, side-on
+        r.rect(26, 52, 28, 70, '#5cff8a');                                       // screen glow at its edge
+        r.rect(34, 80, 64, 83, '#2a2a30');
+      }
+      return r.done();
+    });
+  }
   G.npcSprite = function (n, loc, frame) {
+    if (n.mirror) return deskSprite(n, loc, frame);
     return cached('npc' + n.name + frame, function () {
       var L = G.npcLook(n, loc), W = n.boss ? 64 : 48, H = n.boss ? 128 : 112, r = new Raster(W, H), cx = W >> 1;
       var b = frame ? 1 : 0, m = [S(L.main, -0.6), S(L.main, -0.3), L.main, S(L.main, 0.25), S(L.main, 0.5)];
@@ -203,6 +236,17 @@
 
   // ---------- talk close-up (320 x 176) ----------
   G.closeup = function (n, loc, mouth, blink) {
+    if (n.terminal) {
+      // full-screen CRT: green scanline face, the mouth moves while it "talks"
+      G.rect(0, 16, 320, 176, '#c8c0a8'); G.rect(12, 24, 296, 160, '#06200e');
+      for (var y = 24; y < 184; y += 3) G.rect(12, y, 296, 1, '#0a3016');
+      var g = '#5cff8a';
+      if (!blink) { G.rect(110, 70, 24, 24, g); G.rect(186, 70, 24, 24, g); } else { G.rect(110, 84, 24, 4, g); G.rect(186, 84, 24, 4, g); }
+      if (mouth === 0) G.rect(124, 130, 72, 6, g);
+      else { G.rect(120, 124, 80, mouth === 1 ? 10 : 20, g); G.rect(126, 128, 68, mouth === 1 ? 2 : 12, '#06200e'); }
+      G.rect(24, 32, 40, 6, g); G.rect(24, 32, 6, 6, g);
+      return;
+    }
     var base = cached('face' + n.name, function () {
       var L = G.npcLook(n, loc), r = new Raster(320, 176), c = loc.color;
       for (var y = 0; y < 176; y++) r.rect(0, y, 319, y, S(c, -0.85 + 0.5 * Math.min(1, y / 176)));

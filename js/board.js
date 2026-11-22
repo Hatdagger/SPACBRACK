@@ -26,6 +26,12 @@
     this.features = Object.assign(G.noFeatures(), opts.features || {});
     this.cardId = opts.cardId || 'starter';
     this.card = G.CARDS[this.cardId];
+    this.winLines = opts.winLines || G.WIN_LINES;
+    // Some cards grant a feature while equipped (Cadet Badge = hard drop).
+    if (this.card.grants) this.features[this.card.grants] = true;
+    // Unique boss cards carry their location's mechanic + perk into any fight.
+    var RULE_FLAG = { holo: 'holoOn', fold: 'foldOn', bank: 'bankOn', chrono: 'chronoOn', casino: 'leverOn' };
+    if (this.card.rule && RULE_FLAG[this.card.rule]) this[RULE_FLAG[this.card.rule]] = true;
     this.rank = opts.rank || 1;
     this.rng = opts.rng || Math.random;
     this.isCPU = !!opts.isCPU;
@@ -235,6 +241,7 @@
     this.flash = this.flash.filter(function (f) { f.t -= dt; return f.t > 0; });
     this.fxEvents = this.fxEvents.filter(function (f) { f.t -= dt; return f.t > 0; });
     if (this.cooldown) this.cooldown = Math.max(0, this.cooldown - dt);
+    if (this.aim && (this.aim.t -= dt) <= 0) this.aimFire();   // aiming too long fires where it points
     if (this.bankOn) this.updateBank(dt);
     if (this.leverOn) this.updateLever(dt);
     if (this.foldLock > 0) { this.foldLock -= dt; this.gravTimer = 0; return; }   // fold playing: everything waits
@@ -280,11 +287,11 @@
     if (cleared > 0) {
       this.scoreClear(cleared);
       if (this.won) return;
-    } else if (!this.foldOn) {
+    } else {
       this.applyGarbage();
     }
-    // Fold Lab: folded garbage lands at the next placement, cleared or not.
-    if (this.foldOn && this.foldIn.length) { this.applyFold(); if (this.won) return; }
+    // Fold Lab: folded garbage lands at the next placement, cleared or not (even if you don't fold yourself).
+    if (this.foldIn.length) { this.applyFold(); if (this.won) return; }
     if (above && cleared === 0) { this.alive = false; return; }
     if (!this.alive) return;
     this.holdUsed = false;
@@ -300,14 +307,14 @@
     var out = LINE_GARBAGE[Math.min(4, cleared)];
     // Outgoing garbage cancels incoming first.
     out = cancelFrom(this.pending, out);
+    // Space Bank: your clears eat into the opponent's bank first (whether or not you bank yourself).
+    if (this.opponent && this.opponent.bank > 0 && out > 0) {
+      var eat = Math.min(out, this.opponent.bank);
+      this.opponent.bank -= eat; out -= eat;
+      this.opponent.fxEvents.push({ kind: 'bankHit', t: 400 });
+      if (!this.opponent.bank) this.opponent.interestT = 0;
+    }
     if (this.bankOn) {
-      // Space Bank: eat into the opponent's bank, then deposit the rest in yours.
-      if (this.opponent && this.opponent.bank > 0 && out > 0) {
-        var eat = Math.min(out, this.opponent.bank);
-        this.opponent.bank -= eat; out -= eat;
-        this.opponent.fxEvents.push({ kind: 'bankHit', t: 400 });
-        if (!this.opponent.bank) this.opponent.interestT = 0;
-      }
       if (out > 0) this.deposit(out);
     } else if (this.foldOn) {
       // Fold Lab: cancel what's folding in to you, then what the opponent is holding; keep the rest.
@@ -316,7 +323,7 @@
       if (out > 0) this.foldHeld.push({ rows: out, pattern: this.card.pattern, h: this.lastClearH, gap: Math.floor(this.rng() * COLS) });
     } else if (out > 0 && this.opponent) this.opponent.receive(out, this.card.pattern);
     if (cleared >= 4) this.say('QUAD!');
-    if (this.lines >= G.WIN_LINES) { this.won = true; return; }
+    if (this.lines >= this.winLines) { this.won = true; return; }
     if (this.foldOn && Math.floor(prev / FOLD_EVERY) < Math.floor(this.lines / FOLD_EVERY)) this.sendFold(false);
   };
 
@@ -508,8 +515,10 @@
     return n;
   };
 
-  P.receive = function (rows, pattern) {
+  P.receive = function (rows, pattern, bounced) {
     if (this.noGarbage) return;   // Launch Complex house rule: garbage off
+    // Echo Wall: bounce it back (garbage that was already bounced once isn't bounced again).
+    if (this.effects.echo && !bounced && this.opponent) { this.say('ECHO!'); this.opponent.receive(rows, pattern, true); return; }
     if (this.effects.fur) { delete this.effects.fur; this.say('BLOCKED'); return; }
     this.pending.push({ rows: rows, pattern: pattern || 'standard', gap: Math.floor(this.rng() * COLS) });
   };
@@ -568,7 +577,11 @@
       case 'staredown': this.cancelPending(3); break;
       case 'glare': foe && (foe.effects.glare = 8000); break;
       case 'rattle': foe && foe.move(foe.rng() < 0.5 ? -1 : 1) || (foe && foe.move(1)) || (foe && foe.move(-1)); break;
-      case 'bonepatch': this.bonePatch(4); break;
+      case 'bonepatch': this.bonePatch(); break;
+      case 'eyebeam': if (this.isCPU) this.eyeBeam(this.bestBeamX()); else this.aim = { x: this.beamStart(), t: AIM_MS }; break;
+      case 'collapse': this.collapse(); break;
+      case 'pound': this.pound(3); break;
+      case 'echo': this.echoWall(); break;
       case 'shiver': foe && (foe.effects.shiver = 6000); break;
       case 'bonestorm': foe && foe.receive(4, this.card.pattern); break;
       case 'claw3': foe && foe.receive(3, 'claw'); break;
@@ -613,19 +626,73 @@
     if (this.pc(p.type, p.rot, p.x, p.y)) this.alive = false;
   };
 
-  P.bonePatch = function (n) {
-    var filled = 0;
-    for (var y = ROWS - 1; y > 0 && filled < n; y--) {
-      for (var x = 0; x < COLS && filled < n; x++) {
-        if (!this.grid[y][x]) {
-          var covered = false;
-          for (var yy = y - 1; yy >= 0; yy--) if (this.grid[yy][x]) { covered = true; break; }
-          if (covered) { this.grid[y][x] = 'B'; filled++; }
-        }
-      }
-    }
+  // ---------- defense moves (Tetris Battle Gaiden level-1 style field fixes) ----------
+  // Lines these remove or complete don't count toward the win and don't send garbage.
+  P.fieldChanged = function () {
+    this.fieldVersion = (this.fieldVersion || 0) + 1;
+    var p = this.piece, tries = 0;
+    while (this.pc(p.type, p.rot, p.x, p.y) && tries < 4) { p.y--; tries++; }
+  };
+  P.silentClear = function () {
     var c = this.clearLines();
-    if (c) { this.lines += c; if (this.lines >= G.WIN_LINES) this.won = true; }
+    if (c) this.say('+' + c + ' NOT COUNTED');
+    return c;
+  };
+  // Skeleton: fill every covered hole in your stack.
+  P.bonePatch = function () {
+    for (var y = ROWS - 1; y > 0; y--) for (var x = 0; x < COLS; x++) {
+      if (this.grid[y][x]) continue;
+      for (var yy = y - 1; yy >= 0; yy--) if (this.grid[yy][x]) { this.grid[y][x] = 'B'; break; }
+    }
+    this.fxEvents.push({ kind: 'defense', id: 'bonepatch', t: 400 });
+    this.silentClear(); this.fieldChanged();
+  };
+  // Cyclops: delete a column 2 bricks wide. Players aim it (left/right, then fire); CPUs pick.
+  var AIM_MS = 4000;
+  G.AIM_MS = AIM_MS;
+  P.beamStart = function () {
+    var p = this.piece, xs = this.cells(p.type, p.rot, p.x, p.y).map(function (c) { return c[0]; });
+    return Math.max(0, Math.min(COLS - 2, Math.min.apply(null, xs)));
+  };
+  P.aimMove = function (d) { if (this.aim) this.aim.x = Math.max(0, Math.min(COLS - 2, this.aim.x + d)); };
+  P.aimFire = function () { if (!this.aim) return; var x = this.aim.x; this.aim = null; this.eyeBeam(x); };
+  P.bestBeamX = function () {
+    var best = 0, bs = -1;
+    for (var x = 0; x <= COLS - 2; x++) {
+      var sc = 0;
+      for (var y = 0; y < ROWS; y++) { if (this.grid[y][x]) sc++; if (this.grid[y][x + 1]) sc++; }
+      if (sc > bs) { bs = sc; best = x; }
+    }
+    return best;
+  };
+  P.eyeBeam = function (x0) {
+    for (var y = 0; y < ROWS; y++) { this.grid[y][x0] = null; this.grid[y][x0 + 1] = null; }
+    this.fxEvents.push({ kind: 'defense', id: 'eyebeam', x: x0, t: 400 });
+    this.fieldChanged();
+  };
+  // Skeleton: gravity. Every brick falls straight down its column; full rows clear (not counted).
+  P.collapse = function () {
+    for (var x = 0; x < COLS; x++) {
+      var col = [];
+      for (var y = ROWS - 1; y >= 0; y--) if (this.grid[y][x]) col.push(this.grid[y][x]);
+      for (var y2 = ROWS - 1, k = 0; y2 >= 0; y2--, k++) this.grid[y2][x] = k < col.length ? col[k] : null;
+    }
+    this.fxEvents.push({ kind: 'defense', id: 'collapse', t: 400 });
+    this.silentClear(); this.fieldChanged();
+  };
+  // Werewolf: pound the stack down. The bottom n rows are removed and everything drops.
+  P.pound = function (n) {
+    for (var i = 0; i < n; i++) { this.grid.pop(); this.grid.unshift(new Array(COLS).fill(null)); }
+    this.fxEvents.push({ kind: 'defense', id: 'pound', t: 400 });
+    this.fieldChanged();
+  };
+  // Giant Bat: bounce everything waiting to hit you back at the opponent, and keep bouncing for 6 s.
+  P.echoWall = function () {
+    var o = this.opponent, back = this.pending;
+    this.pending = [];
+    if (o) back.forEach(function (b) { o.receive(b.rows, b.pattern, true); });
+    this.effects.echo = 6000;
+    this.fxEvents.push({ kind: 'defense', id: 'echo', t: 400 });
   };
 
   G.Player = Player;

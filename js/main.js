@@ -45,9 +45,10 @@
   function equippedCard() {
     var id = save.equipped;
     if (id !== 'starter' && save.inventory.indexOf(id) < 0) { save.equipped = id = 'starter'; }
-    return { id: id, rank: id === 'starter' ? 1 : G.rankForXp(save.xp[id] || 0) };
+    return { id: id, rank: rankOf(id) };
   }
-  function rankOf(id) { return id === 'starter' ? 1 : G.rankForXp(save.xp[id] || 0); }
+  // Cards that don't level (Cadet Badge, unique boss cards) are always rank 1.
+  function rankOf(id) { return G.levels(id) ? G.rankForXp(save.xp[id] || 0) : 1; }
   function countOf(id) { return save.inventory.filter(function (x) { return x === id; }).length; }
   function stackIds() { // unique monster types in the order they were first found
     var seen = []; save.inventory.forEach(function (id) { if (seen.indexOf(id) < 0) seen.push(id); }); return seen;
@@ -55,7 +56,7 @@
   // Adds a won card. Returns 'ok', 'full' (stack already at max) or 'toss' (no free slot).
   function addCard(id) {
     var n = countOf(id);
-    if (n >= G.STACK_MAX) return 'full';
+    if (n >= (G.CARDS[id].unique ? 1 : G.STACK_MAX)) return 'full';   // unique boss cards can't stack
     if (n === 0 && stackIds().length >= G.INVENTORY_CAP) return 'toss';
     save.inventory.push(id); return 'ok';
   }
@@ -141,7 +142,7 @@
     G.deck(20, 182, 290, 34);
     T('HIGH GRADE', 28, 188, PAL.white, { font: 'small' });
     if (G.Audio && G.Audio.locked() && Math.floor(now / 500) % 2) T('TAP OR PRESS A KEY FOR SOUND', 165, 188, PAL.yellow, { font: 'small', align: 'center' });
-    T('PROTOTYPE V0.11', 302, 188, PAL.grey, { font: 'small', align: 'right' });
+    T('PROTOTYPE V0.12', 302, 188, PAL.grey, { font: 'small', align: 'right' });
     T(G.padCount ? G.padCount + ' CONTROLLER(S) READY' : 'PRESS A BUTTON ON A CONTROLLER TO CONNECT IT', 165, 198, PAL.amber, { font: 'small', align: 'center' });
     T('KEYBOARD: ARROWS + X / Z, ENTER', 165, 206, PAL.grey, { font: 'small', align: 'center' });
     drawToasts(dt);
@@ -231,7 +232,13 @@
     this.mode = 'arrive'; this.modeT = 0; this.talk = null; this.target = null;
   }
   Explore.prototype.spots = function () { return G.SCENES[this.scene].spots; };
-  Explore.prototype.npcFor = function (sp) { return this.loc.npcs[sp.idx]; };
+  // Chrono Station boss: just a terminal on a desk until you've fought it once; then Past You sits at it.
+  var TERMINAL = { name: 'Terminal', boss: true, mirror: true, terminal: true, card: 'starter', rank: 1,
+    line: '> HELLO. I KEPT A COPY OF YOU FROM YOUR LAST BOSS FIGHT. RUN MATCH?' };
+  Explore.prototype.npcFor = function (sp) {
+    var n = this.loc.npcs[sp.idx];
+    return n.mirror && !save.pastFought ? TERMINAL : n;
+  };
   Explore.prototype.focus = function () { // hotspot nearest the middle of the view
     var c = this.cam + 200, best = null, bd = 70;
     this.spots().forEach(function (sp) { var d = Math.abs(sp.x - c); if (d < bd) { bd = d; best = sp; } });
@@ -292,32 +299,47 @@
     var base = n.boss ? 3 : idx + 1;
     return Math.min(G.CPU_MAX_LEVEL, base + tokenCount());
   }
+  // Your loadout right now (used for the Chrono Station boss).
+  function snapshot() { var me = equippedCard(); return { cardId: me.id, rank: me.rank, features: playerFeatures() }; }
   Explore.prototype.startBattle = function (sp) {
     var self = this, loc = this.loc, n = this.npcFor(sp), me = equippedCard();
-    var foeCard = n.mirror ? me.id : n.card, foeRank = n.mirror ? me.rank : n.rank;
-    // Crew have no features. Each boss has only the one feature its token unlocks (and uses it sparingly).
-    // Past You is the exception: it carries whatever features you have.
-    var foeFeat = n.mirror ? playerFeatures() : G.noFeatures();
-    if (n.boss && !n.mirror) foeFeat[loc.feature] = true;
+    var foeCard = n.card, foeRank = n.rank, foeFeat = G.noFeatures();
+    if (n.mirror) {
+      // Chrono Station boss. First fight: a terminal running your loadout from the last boss you faced.
+      // Later: Past You, at the terminal, with your loadout from your last fight here.
+      var snap = (n.terminal ? save.lastBoss : save.lastPast) || snapshot();
+      foeCard = snap.cardId; foeRank = snap.rank; foeFeat = Object.assign(G.noFeatures(), snap.features);
+      save.lastPast = snapshot(); save.pastFought = true;
+    } else if (n.boss) {
+      // Bosses fight with their own unique card and only the one feature their token unlocks.
+      foeCard = G.UNIQUE_FOR[loc.id]; foeRank = 1;
+      foeFeat[loc.feature] = true;
+      save.lastBoss = snapshot();
+    }
+    persist();
+    var lines = n.boss ? G.WIN_LINES : G.CREW_LINES, level = cpuLevelFor(n, sp.idx);
     I.setSinglePlayer(true);
     this.mode = 'arrive'; this.modeT = 0;
     go(new G.Battle({
       title: loc.name, subtitle: 'HOUSE RULE: ' + loc.rule,
-      rule: loc.ruleId, timeLimit: G.launchTimeLimit(cpuLevelFor(n, sp.idx)),
+      rule: loc.ruleId, winLines: lines,
+      // Launch Complex time limit scales with the race length (1.5x the CPU's time for these lines).
+      timeLimit: Math.max(60000, Math.round(G.launchTimeLimit(level) * lines / G.WIN_LINES / 30000) * 30000),
       bet: loc.ruleId === 'casino' ? { mine: me.id, theirs: foeCard } : null,
       color: loc.color, boss: !!n.boss,
       a: { name: 'YOU', features: playerFeatures(), cardId: me.id, rank: me.rank, slot: 0 },
-      b: { name: n.name, features: foeFeat, cardId: foeCard, rank: foeRank, cpu: cpuLevelFor(n, sp.idx) },
+      b: { name: n.name, features: foeFeat, cardId: foeCard, rank: foeRank, cpu: level },
       onQuit: function () { go(self); },
-      onEnd: function (winner, battle) { self.afterBattle(sp.idx, winner === 'a', battle); }
+      onEnd: function (winner, battle) { self.afterBattle(sp.idx, winner === 'a', battle, n); }
     }));
   };
-  Explore.prototype.afterBattle = function (idx, won, battle) {
-    var loc = this.loc, n = loc.npcs[idx], me = equippedCard(), self = this;
+  Explore.prototype.afterBattle = function (idx, won, battle, n) {
+    var loc = this.loc, me = equippedCard(), self = this, firstToken = false;
+    n = n || loc.npcs[idx];
     var info = { won: won, toppedOut: !battle.a.alive, me: me.id, lines: [] };
     if (won) {
       save.beaten[loc.id][idx] = true;
-      if (me.id !== 'starter') {
+      if (G.levels(me.id)) {
         var before = rankOf(me.id);
         save.xp[me.id] += battle.a.score;
         var after = rankOf(me.id);
@@ -328,23 +350,37 @@
         save.tokens[loc.feature] = true;
         var f = G.FEATURES.filter(function (x) { return x.key === loc.feature; })[0];
         info.lines.push(['TOKEN: ' + f.name + ' - ' + f.desc + ' unlocked!', PAL.amber]);
+        firstToken = true;
       }
       // Space Casino card bet: the winner takes both cards, so the prize is the opponent's staked card.
       if (battle.bet && G.CARDS[battle.bet.theirs] && battle.bet.theirs !== 'starter') {
         info.prize = battle.bet.theirs;
         info.lines.push(['CARD BET WON - THEIR ' + G.CARDS[info.prize].name + ' IS YOURS', PAL.pink]);
+      } else if (n.mirror && firstToken) {
+        info.prize = null;   // first win over yourself: the token only, no card
+        info.tokenOnly = loc.feature;
+      } else if (n.boss && !countOf(G.UNIQUE_FOR[loc.id])) {
+        info.prize = G.UNIQUE_FOR[loc.id];   // each boss drops its unique card
+        info.lines.push(['UNIQUE CARD - ' + G.CARDS[info.prize].passive.name.toUpperCase() + ' IN ANY FIGHT', PAL.cyan]);
       } else info.prize = G.MONSTERS[Math.floor(Math.random() * G.MONSTERS.length)];
-      info.isNew = countOf(info.prize) === 0;
-      info.add = addCard(info.prize);
-      info.count = countOf(info.prize);
+      if (info.prize) {
+        info.isNew = countOf(info.prize) === 0;
+        info.add = addCard(info.prize);
+        info.count = countOf(info.prize);
+      }
     } else if (me.id !== 'starter') {
+      // (the Cadet Badge can't be lost)
       removeOne(me.id);
       info.destroyed = me.id;
       info.left = countOf(me.id);
     }
+    // All six tokens: the ending plays once, after this result.
+    var ending = won && tokenCount() === 6 && !save.ended;
+    if (ending) save.ended = true;
     persist();
     go(new CardResult(info, function () {
-      if (info.add === 'toss') go(new Inventory(self, info.prize)); else go(self);
+      var back = ending ? new Ending(self) : self;
+      if (info.add === 'toss') go(new Inventory(back, info.prize)); else go(back);
     }));
   };
 
@@ -354,6 +390,37 @@
     this.t += dt;
     if (this.t > 900 && (I.any('pressed', 'ok') || I.any('pressed', 'back'))) this.next();
   };
+  // ---------- ending: plays once when the sixth token is won ----------
+  function Ending(next) { this.next = next; this.t = 0; }
+  Ending.prototype.update = function (dt) {
+    this.t += dt;
+    if (this.t > 2500 && (I.any('pressed', 'ok') || I.any('pressed', 'pause'))) go(this.next);
+  };
+  Ending.prototype.draw = function (dt) {
+    var t = this.t;
+    R(0, 0, 320, 224, PAL.black);
+    G.starfield(now);
+    // the station's rocket lifts off
+    var ry = Math.max(-80, 150 - Math.max(0, t - 800) * 0.05);
+    R(150, ry, 20, 40, '#e8e1cf'); R(150, ry, 20, 3, PAL.red); R(155, ry - 8, 10, 8, PAL.red);
+    R(146, ry + 30, 6, 10, PAL.red); R(168, ry + 30, 6, 10, PAL.red);
+    if (t > 800) for (var f = 0; f < 6; f++) R(153 + (f % 3) * 5, ry + 40 + Math.floor(Math.random() * 10), 3, 4 + Math.floor(Math.random() * 8), f % 2 ? PAL.yellow : PAL.orange);
+    G.stripes(0, 196, 320, 4, G.STRIPES, 0.8);
+    G.chrome('MISSION COMPLETE', 160, 10, 2, 'center');
+    if (t > 600) T('ALL SIX TOKENS RECOVERED', 160, 40, PAL.cyan, { align: 'center' });
+    G.FEATURES.forEach(function (f, k) {
+      if (t < 900 + k * 250) return;
+      var x = k < 3 ? 24 : 196, y = 60 + (k % 3) * 16;
+      T(f.name.toUpperCase(), x, y, PAL.amber, { font: 'small' });
+      T(f.desc.toUpperCase(), x, y + 6, PAL.grey, { font: 'small' });
+    });
+    if (t > 2500) {
+      T('THANKS FOR PLAYING THE SPACBRACK DEMO', 160, 172, PAL.white, { align: 'center', font: 'small' });
+      T('THE STATION STAYS OPEN - KEEP BATTLING FOR CARDS', 160, 181, PAL.grey, { align: 'center', font: 'small' });
+      if (blink()) T('PRESS A', 160, 210, PAL.white, { align: 'center' });
+    }
+  };
+
   function cardBack(x, y, size) {
     var m = G.cardSize(size);
     R(x + 2, y + 2, m.w, m.h, '#000');
@@ -364,14 +431,23 @@
   }
   CardResult.prototype.draw = function (dt) {
     var info = this.info, t = this.t, m = G.cardSize('lg');
-    var id = info.won ? info.prize : (info.destroyed || info.me);
+    var id = info.won ? (info.prize || info.me) : (info.destroyed || info.me);
     vhsBackdrop(G.CARDS[id].color);
     var red = ['#fff8ec', '#ff8a8a', '#ff3b47', '#c0203a', '#7a0a2a'];
-    if (info.won) G.chrome('CARD GET!', 160, 8, 3, 'center');
+    if (info.tokenOnly) G.chrome('TOKEN GET!', 160, 8, 3, 'center');
+    else if (info.won) G.chrome('CARD GET!', 160, 8, 3, 'center');
     else G.chrome(info.toppedOut ? 'BRICKED UP!' : 'OUTRACED!', 160, 8, 3, 'center', red);
 
     var cx = 160, x = cx - (m.w >> 1), y = 40;
-    if (info.won) {
+    if (info.tokenOnly) {
+      var tf = G.FEATURES.filter(function (f) { return f.key === info.tokenOnly; })[0];
+      var pulse = Math.floor(t / 200) % 2;
+      G.bevel(cx - 40, 56, 80, 80, PAL.amber, '#fff3c0', '#8a5a00', '#000');
+      R(cx - 34, 62, 68, 68, '#120f1c');
+      T(tf.name.toUpperCase(), cx, 86, PAL.amber, { align: 'center' });
+      T(tf.desc.toUpperCase(), cx, 100, pulse ? PAL.white : PAL.amber, { align: 'center', font: 'small' });
+      T('YOU BEAT YOURSELF. NO CARD THIS TIME.', cx, 148, PAL.grey, { align: 'center', font: 'small' });
+    } else if (info.won) {
       // flip in: card back, squash to an edge, then the face
       var ph = Math.min(1, t / 600), sx = ph < 0.5 ? 1 - ph * 2 : ph * 2 - 1;
       ctx.save(); ctx.translate(cx, 0); ctx.scale(Math.max(0.04, sx), 1); ctx.translate(-cx, 0);
@@ -380,7 +456,7 @@
       ctx.restore();
       if (t > 600) {
         var tag = info.add === 'full' ? 'STACK FULL - CARD RETURNED' : info.add === 'toss' ? 'NO FREE SLOT - TOSS ONE NEXT' : info.isNew ? 'NEW CARD!' : 'NOW X' + info.count + ' IN YOUR STACK';
-        T(G.CARDS[id].name + ' R' + rankOf(id), cx, y + m.h + 8, PAL.white, { align: 'center', shadow: '#000' });
+        T(G.CARDS[id].name + (G.levels(id) ? ' R' + rankOf(id) : ''), cx, y + m.h + 8, PAL.white, { align: 'center', shadow: '#000' });
         T(tag, cx, y + m.h + 19, info.isNew ? PAL.pink : PAL.amber, { align: 'center', font: 'small' });
       }
     } else if (info.destroyed) {
@@ -388,7 +464,7 @@
       G.drawCard(x + shake, y, id, rankOf(id), { size: 'lg', dead: t > 700 });
       if (t > 700) {
         T('YOUR ' + G.CARDS[id].name + ' CARD WAS DESTROYED', cx, y + m.h + 8, PAL.red, { align: 'center', font: 'small' });
-        T(info.left ? info.left + ' LEFT IN YOUR STACK' : 'XP IS KEPT FOR THIS MONSTER', cx, y + m.h + 18, PAL.grey, { align: 'center', font: 'small' });
+        T(info.left ? info.left + ' LEFT IN YOUR STACK' : G.CARDS[id].unique ? 'BEAT THE BOSS AGAIN TO WIN IT BACK' : 'XP IS KEPT FOR THIS MONSTER', cx, y + m.h + 18, PAL.grey, { align: 'center', font: 'small' });
       }
     } else {
       G.drawCard(x, y, 'starter', 1, { size: 'lg' });
@@ -522,7 +598,8 @@
     G.label(166, 8, 148, 182, c.color);
     T(c.name, 174, 18, PAL.beigeInk);
     if (e.count) T('X' + e.count, 306, 18, PAL.red, { align: 'right' });
-    if (e.id !== 'starter') {
+    if (!G.levels(e.id)) T(c.unique ? 'UNIQUE - NO LEVELS' : 'NEVER LEVELS UP', 174, 32, PAL.grey, { font: 'small' });
+    else {
       var xp = save.xp[e.id] || 0, nxt = G.RANK_XP[Math.min(5, rank + 1)];
       G.inset(174, 29, 132, 11);
       T('RANK', 177, 32, PAL.grey, { font: 'small' });
@@ -548,7 +625,7 @@
   };
 
   // ---------- versus setup ----------
-  var CARD_CHOICES = ['starter'].concat(G.MONSTERS);
+  var CARD_CHOICES = ['starter'].concat(G.MONSTERS, G.UNIQUE_IDS);
   var vs = { mode: 0, rule: 0, level: 4, feat: G.allFeatures(), c1: 1, r1: 3, c2: 2, r2: 3 };
   function VersusSetup() { this.sel = 0; }
   VersusSetup.prototype.rows = function () {
@@ -643,7 +720,7 @@
 
   G.go = go;
   G.currentScreen = function () { return screen; };
-  G.debug = { save: function () { return save; }, screens: { CardResult: CardResult, Title: Title, MapScreen: MapScreen, Explore: Explore, Inventory: Inventory, VersusSetup: VersusSetup, Controls: Controls } };
+  G.debug = { save: function () { return save; }, screens: { Ending: Ending, CardResult: CardResult, Title: Title, MapScreen: MapScreen, Explore: Explore, Inventory: Inventory, VersusSetup: VersusSetup, Controls: Controls } };
   go(new Title());
   requestAnimationFrame(frame);
 })(globalThis.G = globalThis.G || {});
