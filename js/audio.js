@@ -25,10 +25,38 @@
     for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     applyMode();
   }
-  function unlock() { init(); if (ctx && ctx.state !== 'running') ctx.resume(); }
-  ['keydown', 'pointerdown', 'touchstart', 'mousedown'].forEach(function (ev) {
+  // iPhone/iPad: Web Audio is muted by the ring/silent switch unless an <audio> element is playing,
+  // so a silent looping clip is started on the first tap to put the page in "media playback" mode.
+  var silentEl = null;
+  function silentWav() {
+    var n = 800, buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);
+    function str(o, s) { for (var i = 0; i < s.length; i++) buf[o + i] = s.charCodeAt(i); }
+    str(0, 'RIFF'); dv.setUint32(4, 36 + n, true); str(8, 'WAVEfmt ');
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+    str(36, 'data'); dv.setUint32(40, n, true);
+    for (var i = 0; i < n; i++) buf[44 + i] = 128;
+    var s = ''; for (var j = 0; j < buf.length; j++) s += String.fromCharCode(buf[j]);
+    return 'data:audio/wav;base64,' + btoa(s);
+  }
+  function unlock() {
+    init();
+    if (!ctx) return;
+    if (ctx.state !== 'running') ctx.resume().catch(function () { });
+    // a tiny blip through the context also helps older mobile browsers wake it
+    try { var b = ctx.createBufferSource(); b.buffer = ctx.createBuffer(1, 1, 22050); b.connect(ctx.destination); b.start(0); } catch (e) { }
+    if (!silentEl) {
+      try { silentEl = new Audio(silentWav()); silentEl.loop = true; silentEl.setAttribute('playsinline', ''); } catch (e) { silentEl = false; }
+    }
+    if (silentEl && silentEl.paused) { var pr = silentEl.play(); if (pr && pr.catch) pr.catch(function () { }); }
+  }
+  // Browsers only count some events as a real "user gesture": on phones it's when the finger
+  // lifts (touchend / pointerup / click), not when it lands.
+  ['keydown', 'keyup', 'mousedown', 'pointerup', 'touchend', 'click'].forEach(function (ev) {
     window.addEventListener(ev, unlock, { passive: true });
   });
+  // Coming back to the tab can leave the context suspended.
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume().catch(function () { }); });
   function applyMode() {
     if (!ctx) return;
     musicBus.gain.value = mode === 0 ? 0.55 : 0;
