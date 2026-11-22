@@ -112,6 +112,7 @@
       { label: 'Adventure', fn: function () { go(new MapScreen()); } },
       { label: 'Versus', fn: function () { go(new VersusSetup()); } },
       { label: 'Controls', fn: function () { go(new Controls(self)); } },
+      { label: function () { return 'Sound: ' + (G.Audio ? G.Audio.modeName() : 'N/A'); }, fn: function () { if (G.Audio) G.Audio.cycleMode(); } },
       { label: 'Reset save', fn: function () { save = freshSave(); persist(); toast('Save data cleared'); } }
     ]);
   }
@@ -134,12 +135,13 @@
     }
     // cassette label holding the menu
     G.label(104, 104, 126, 66, PAL.red);
-    for (var l = 0; l < 4; l++) R(118, 118 + l * 11, 104, 1, '#c4b694');
+    for (var l = 0; l < 5; l++) R(118, 118 + l * 11, 104, 1, '#c4b694');
     this.menu.draw(120, 111);
     // footer: tape specs
     G.deck(20, 182, 290, 34);
     T('HIGH GRADE', 28, 188, PAL.white, { font: 'small' });
-    T('PROTOTYPE V0.9', 302, 188, PAL.grey, { font: 'small', align: 'right' });
+    if (G.Audio && G.Audio.locked() && Math.floor(now / 500) % 2) T('TAP OR PRESS A KEY FOR SOUND', 165, 188, PAL.yellow, { font: 'small', align: 'center' });
+    T('PROTOTYPE V0.10', 302, 188, PAL.grey, { font: 'small', align: 'right' });
     T(G.padCount ? G.padCount + ' CONTROLLER(S) READY' : 'PRESS A BUTTON ON A CONTROLLER TO CONNECT IT', 165, 198, PAL.amber, { font: 'small', align: 'center' });
     T('KEYBOARD: ARROWS + X / Z, ENTER', 165, 206, PAL.grey, { font: 'small', align: 'center' });
     drawToasts(dt);
@@ -303,7 +305,7 @@
       title: loc.name, subtitle: 'HOUSE RULE: ' + loc.rule,
       rule: loc.ruleId, timeLimit: G.launchTimeLimit(cpuLevelFor(n, sp.idx)),
       bet: loc.ruleId === 'casino' ? { mine: me.id, theirs: foeCard } : null,
-      color: loc.color,
+      color: loc.color, boss: !!n.boss,
       a: { name: 'YOU', features: playerFeatures(), cardId: me.id, rank: me.rank, slot: 0 },
       b: { name: n.name, features: foeFeat, cardId: foeCard, rank: foeRank, cpu: cpuLevelFor(n, sp.idx) },
       onQuit: function () { go(self); },
@@ -634,6 +636,7 @@
     var dt = Math.min(50, t - last); last = t; now = t;
     I.poll(dt);
     screen.update(dt);
+    if (G.Audio) G.Audio.tick(dt, screen);
     if (screen instanceof G.Battle) { screen.draw(ctx); drawToasts(dt); } else screen.draw(dt);
     requestAnimationFrame(frame);
   }

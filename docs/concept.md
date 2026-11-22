@@ -149,6 +149,12 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - CPU uses it: needs a 3-line lead at levels 1-3, 2 lines above; at least 8 lines cleared; while counting it builds without clearing.
 - Card abilities that send garbage are blanked by the rule (decided; other ability effects still work).
 
+## Sound and music (v0.10, placeholders)
+- All synthesized in code (chiptune: square/triangle/noise), no sound files; each sound and track is a replaceable entry.
+- Tracks: title, map, exploration, battle (key changes by location), boss; win/lose jingles. Battle music speeds up when your stack is tall.
+- Effects for menus, NPC talk blips (pitch per NPC), door footsteps, every brick action, clears (quad fanfare), garbage warning/landing, top-out, abilities, all house-rule events, 3-2-1-GO.
+- CPU sounds quieter and panned to its side. Title menu Sound option: ALL ON / MUSIC OFF / ALL OFF.
+
 ## CPU difficulty (v0.4, after "fights too hard" playtest)
 - 8 CPU levels. Measured solo 40-line time with no features: L1 ~6:00, L2 ~5:05, L3 ~4:55, L4 ~4:30, L5 ~4:00, L6 ~3:35, L7 ~3:20, L8 ~3:05.
 - **Adventure level follows progress (proposal, in the build):** crew 1 = 1, crew 2 = 2, boss = 3, +1 per token held, max 8. First location visited is always the easiest; the last boss is level 8.
@@ -213,7 +219,7 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 ## Prototype
 - **v0.1 pushed to GitHub: Hatdagger/spacbrack** (renamed from SPACtris) (browser build: open index.html; Windows/Linux/Android, keyboard + controller).
 - In: map + 6 walkable locations, NPC battles, boss gating, tokens/features, 4 placeholder cards (Cyclops, Skeleton, Werewolf, Giant Bat) with ranks/XP/meter/card loss/toss screen, CPU levels 1-8 (was 1-5), Versus vs CPU or local 2P.
-- Not in: house rules, stage perks, online, Past You snapshot, final ability sets.
+- Not in: Hologram Hall rule, online, Past You snapshot, final ability sets, final art/audio.
 - **Name (decided): SPACBRACK**, all caps. Dropped SPACtris because "-tris" names have drawn Tetris Holding takedowns (Setris, Playtris, Apotris).
 - Losing a battle shows "YOU GOT BRICKED UP!"
 

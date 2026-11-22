@@ -1,4 +1,4 @@
-# SPACBRACK — prototype v0.9
+# SPACBRACK — prototype v0.10
 
 A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
 
@@ -13,6 +13,16 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 - To get a link you can open on your phone: in the GitHub repo go to **Settings → Pages**, set the source to the `main` branch, and open the URL it gives you.
 - Plug in or pair a controller, then press any button on it so the browser sees it.
 - Double-click (or double-tap) the screen for fullscreen.
+
+## New in v0.10 (placeholder sound and music)
+
+- All sound is made in code (Web Audio chiptune synth), so there are no sound files yet. Real samples and tracks can replace each entry later.
+- **Music:** title theme, station map theme, a moody exploration theme, a fast battle theme (it changes key by location) and a heavier boss theme. Win and lose jingles at the end of a fight.
+- The battle music speeds up a little when your stack gets tall.
+- **Sound effects:** menu blips, typing blips when NPCs talk (each NPC has its own pitch), footsteps through doors, move/rotate/wall kick, lock, hard drop, hold, line clears (a bigger fanfare for 4 lines), incoming-garbage warning and garbage landing, top-out, card abilities, and every house rule (save state mark/jump, fold, interest/withdraw, slot reels and result, launch countdown ticks), plus the 3-2-1-GO start.
+- The CPU's sounds are quieter and panned to its side.
+- **Title menu → Sound:** ALL ON / MUSIC OFF / ALL OFF (remembered).
+- Browsers only allow sound after a tap or key press, so the title screen asks for one. A controller button alone doesn't count.
 
 ## New in v0.9 (Space Casino: all six house rules are in)
 
@@ -136,7 +146,7 @@ No build step and nothing to install. Open `index.html` in Chrome, Edge or Firef
 
 - Hologram Hall house rule and perk (being rethought).
 - Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
-- Online versus, sound, and art beyond the placeholder look.
+- Online versus, real sound/music (placeholders are in), and art beyond the placeholder look.
 - Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.
 
 ## Controls
