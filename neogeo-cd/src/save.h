@@ -15,7 +15,12 @@ typedef struct {
     BYTE sonic;                         /* soft drop goes straight down */
     BYTE btn[ACT_N];                    /* 0..3 = A B C D, 4 = none */
     BYTE up_drop;                       /* Up also hard drops */
+    BYTE card;                          /* card button: CARD_A..CARD_START */
 } PadCfg;
+
+/* where the card button can be: A-D (same numbers as btn[]), Select, Start.
+ * With the card on Start, pause is on Select, and the other way round. */
+enum { CARD_A, CARD_B, CARD_C, CARD_D, CARD_SELECT, CARD_START, CARD_N };
 
 extern char  mar_name[REC_N][4];        /* Marathon: score table */
 extern DWORD mar_score[REC_N];
@@ -25,6 +30,7 @@ extern char  srv_name[REC_N][4];        /* Survival: CPUs knocked out */
 extern DWORD srv_kos[REC_N];
 extern PadCfg pad_cfg[2];
 extern BYTE  opt_ghost, opt_clear, opt_music;
+extern BYTE  opt_cards;                 /* cards in Versus and Survival */
 extern BYTE  save_answer;               /* last BIOS answer: 0 fine, 0x80+ error */
 
 void save_defaults_pad(PadCfg *c);

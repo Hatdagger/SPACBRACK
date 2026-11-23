@@ -32,11 +32,13 @@ Note: the falling blocks are called **bricks** everywhere in this game.
 | Up | Hard drop (can be turned off) |
 | A / B | Rotate left / right |
 | C | Hold |
-| D | Hard drop |
+| D | Card (Versus and Survival; the cards are being added) |
 | Start | Pause / join / retry |
 | Select | Pause; while paused, quit to the title |
 
-**Options** (opened by the player who picks it, so each player has their own): DAS, ARR (0 = instant), soft drop speed, which button does rotate left, rotate right, hold and hard drop (a button already in use swaps), and whether Up hard drops. Shared: ghost on/off, line clear delay, music on/off. Records and options are saved in the console's backup memory.
+The card button can also go on Select or Start: then the other one pauses.
+
+**Options** (opened by the player who picks it, so each player has their own): DAS, ARR (0 = instant), soft drop speed, which button does rotate left, rotate right, hold and hard drop (a button already in use swaps), whether Up hard drops, and the card button (A-D, Select or Start). Shared: ghost on/off, line clear delay, music on/off, cards on/off in Versus and Survival. Options saved by an older version still load; a pad that used D for hard drop with Up hard drop on moves to the new layout. Records and options are saved in the console's backup memory.
 
 ## Build and test
 

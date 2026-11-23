@@ -111,6 +111,8 @@ typedef struct {
     BYTE    ask_sel;
     /* input */
     BYTE    prev, das_dir, das_t, arr_t;
+    BYTE    card_hit, card_down;     /* card button pressed this frame / held */
+    WORD    card_n;                  /* card presses (the harness checks them) */
     /* effects */
     char    call1[13], call2[13];
     WORD    call_t;
@@ -1277,6 +1279,7 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
 {
     tt_board *b = &s->b;
     (void)edge;
+    if (s->card_hit) s->card_n++;
     if (mode == M_VS && s->cpu_on && start && s->state != S_OFF) {
         /* 2P takes the CPU's place: a new Versus match */
         sfx(s, SND_MENU);
@@ -1372,22 +1375,49 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
     }
 }
 
-static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps)
+/* a player at the controls of a board (their card button is live) */
+static BYTE at_controls(const Side *s)
+{
+    return (BYTE)(!s->cpu_on && (s->state == S_PLAY || s->state == S_COUNT));
+}
+
+/*
+ * The card button: A-D, or Select or Start.  While its player is at the
+ * controls, a card on Start doesn't pause (Select does) and a card on
+ * Select doesn't pause (Start does).
+ */
+static void card_input(Side *s, BYTE cur, BYTE edge, BYTE ps, BYTE psc, BYTE *start, BYTE *select)
+{
+    BYTE c = pad_cfg[s->i].card;
+    BYTE sb = (BYTE)(s->i ? P2_SELECT : P1_SELECT), tb = (BYTE)(s->i ? P2_START : P1_START);
+    BYTE bit = c < 4 ? (BYTE)(JOY_A << c) : 0, sys = c == CARD_SELECT ? sb : c == CARD_START ? tb : 0;
+    s->card_hit = s->card_down = 0;
+    if (!at_controls(s)) return;
+    s->card_hit = (BYTE)((edge & bit) || (ps & sys));
+    s->card_down = (BYTE)((cur & bit) || (psc & sys));
+    if (c == CARD_START) *start = 0;
+    if (c == CARD_SELECT) *select = 0;
+}
+
+static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
 {
     int k;
-    BYTE start[2];
+    BYTE start[2], select[2];
     start[0] = (BYTE)(ps & P1_START);
     start[1] = (BYTE)(ps & P2_START);
+    select[0] = (BYTE)(ps & P1_SELECT);
+    select[1] = (BYTE)(ps & P2_SELECT);
+    if (!paused) for (k = 0; k < 2; k++) card_input(&side[k], cur[k], edge[k], ps, psc, &start[k], &select[k]);
     if (paused) {
         if (start[0] || start[1]) { paused = 0; side[0].prev = cur[0]; side[1].prev = cur[1]; }
         else if (ps & (P1_SELECT | P2_SELECT)) { to_title(); return; }
     } else {
-        if ((ps & (P1_SELECT | P2_SELECT)) &&
+        if ((select[0] || select[1]) &&
             side[0].state != S_PLAY && side[1].state != S_PLAY && side[0].state != S_COUNT && side[1].state != S_COUNT) {
             to_title();
             return;
         }
-        if (ps & (P1_SELECT | P2_SELECT)) paused = 1;
+        if (select[0] || select[1]) { paused = 1; side[0].card_hit = side[1].card_hit = 0; }
         for (k = 0; k < 2 && !paused; k++) {
             side[k].b.ev = 0;
             side_play(&side[k], cur[k], edge[k], start[k]);
@@ -1506,22 +1536,33 @@ static void records_frame(const BYTE *edge, BYTE ps)
 }
 
 /* ---------- options: speed and buttons per player, shared settings ---------- */
-enum { O_DAS, O_ARR, O_SOFT, O_ROTL, O_ROTR, O_HOLD, O_HARD, O_UP, O_GHOST, O_CLEAR, O_MUSIC, O_DEFAULTS, O_EXIT, O_N };
+enum { O_DAS, O_ARR, O_SOFT, O_ROTL, O_ROTR, O_HOLD, O_HARD, O_UP, O_CARD, O_GHOST, O_CLEAR, O_MUSIC, O_CARDS, O_DEFAULTS, O_EXIT, O_N };
 
 static void opt_button(PadCfg *c, int act, int d)
 {
     BYTE old = c->btn[act], nw = (BYTE)((old + 5 + d) % 5);
     int k;
-    /* a button does one thing: whoever had it gets this action's old button */
+    /* a button does one thing: whoever had it gets this action's old button
+     * (the card button can't be left without one: it goes to Select) */
     if (nw < 4) for (k = 0; k < ACT_N; k++) if (k != act && c->btn[k] == nw) c->btn[k] = old;
+    if (nw < 4 && c->card == nw) c->card = (BYTE)(old < 4 ? old : CARD_SELECT);
     c->btn[act] = nw;
+}
+
+static void opt_card(PadCfg *c, int d)
+{
+    BYTE old = c->card, nw = (BYTE)((old + CARD_N + d) % CARD_N);
+    int k;
+    if (nw < 4) for (k = 0; k < ACT_N; k++) if (c->btn[k] == nw) c->btn[k] = (BYTE)(old < 4 ? old : 4);
+    c->card = nw;
 }
 
 static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
 {
     static const char *LABEL[O_N] = { "DAS (FRAMES)", "ARR (FRAMES)", "SOFT DROP", "ROTATE LEFT", "ROTATE RIGHT",
-                                      "HOLD", "HARD DROP", "UP HARD DROPS", "GHOST", "LINE CLEAR",
-                                      "MUSIC", "DEFAULTS", "SAVE AND EXIT" };
+                                      "HOLD", "HARD DROP", "UP HARD DROPS", "CARD", "GHOST", "LINE CLEAR",
+                                      "MUSIC", "CARDS VS/SURV", "DEFAULTS", "SAVE AND EXIT" };
+    static const char *CARD_BTN[CARD_N] = { "A", "B", "C", "D", "SELECT", "START" };
     static const char *BTN = "ABCD-";
     PadCfg *c = &pad_cfg[opt_player];
     BYTE r = rp[opt_player], e = edge[opt_player];
@@ -1540,6 +1581,8 @@ static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
         case O_HOLD:  opt_button(c, ACT_HOLD, d); break;
         case O_HARD:  opt_button(c, ACT_HARD, d); break;
         case O_UP:    c->up_drop ^= 1; break;
+        case O_CARD:  opt_card(c, d); break;
+        case O_CARDS: opt_cards ^= 1; break;
         case O_GHOST: opt_ghost ^= 1; break;
         case O_CLEAR: opt_clear = (BYTE)(opt_clear + d * 4 < 0 ? 0 : opt_clear + d * 4 > 20 ? 20 : opt_clear + d * 4); break;
         case O_MUSIC: opt_music ^= 1; if (!opt_music) music(0); else { track_on = 0; music(2); } break;
@@ -1547,7 +1590,7 @@ static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
         }
     }
     if ((e & JOY_A) || (ps & (opt_player ? P2_START : P1_START))) {
-        if (opt_sel == O_DEFAULTS) { save_defaults_pad(c); opt_ghost = 1; opt_clear = 8; sfx(0, SND_MENU); }
+        if (opt_sel == O_DEFAULTS) { save_defaults_pad(c); opt_ghost = 1; opt_clear = 8; opt_cards = 1; sfx(0, SND_MENU); }
         else if (opt_sel == O_EXIT) { save_opt_due = 1; sfx(0, SND_MENU); to_title(); return; }
     }
     if (e & JOY_B) { save_opt_due = 1; sfx(0, SND_MENU); to_title(); return; }
@@ -1567,11 +1610,13 @@ static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
         else if (k == O_UP) txt(24, y, PAL_AMBER, c->up_drop ? "ON" : "OFF");
         else if (k == O_GHOST) txt(24, y, PAL_AMBER, opt_ghost ? "ON" : "OFF");
         else if (k == O_MUSIC) txt(24, y, PAL_AMBER, opt_music ? "ON" : "OFF");
+        else if (k == O_CARDS) txt(24, y, PAL_AMBER, opt_cards ? "ON" : "OFF");
+        else if (k == O_CARD) txt(24, y, PAL_AMBER, CARD_BTN[c->card]);
         else if (k == O_ARR && !c->arr) txt(24, y, PAL_AMBER, " 0 INSTANT");
         else if (v[0]) txt(24, y, PAL_AMBER, v);
     }
     txt(6, 3, PAL_CYAN, "THIS PLAYER");
-    txt(6, 12, PAL_CYAN, "EVERYONE");
+    txt(6, 13, PAL_CYAN, "EVERYONE");
     txt_c(0, 40, 25, PAL_STEEL, "LEFT/RIGHT: CHANGE   B: SAVE AND EXIT");
     txt_c(0, 40, 26, PAL_STEEL, "BUTTONS SWAP IF ALREADY USED");
 }
@@ -1629,7 +1674,7 @@ int main(void)
 
         switch (screen) {
         case SCR_TITLE:   title_frame(edge, rp, ps); break;
-        case SCR_GAME:    game_frame(cur, edge, ps); break;
+        case SCR_GAME:    game_frame(cur, edge, ps, psc); break;
         case SCR_RECORDS: records_frame(edge, ps); break;
         default:          options_frame(edge, rp, ps); break;
         }

@@ -21,6 +21,11 @@
  *                     frames, then fail): OFF ASK COUNT PLAY DONE NAME
  *   state P STATE     fail unless player P's board is in STATE
  *   lines P N         set player P's line count (to reach a goal quickly)
+ *   cards P N         fail unless player P has pressed the card button N times
+ *   paused N          fail unless the game is paused (1) or not (0)
+ *   pad P WHAT N      fail unless player P's options have WHAT (card, hard, up) = N
+ *   oldsave HARD UP   put options in the old "SB02" form (A B C rotate L/R,
+ *                     hold; HARD hard drop 0-4; UP up-drop) and load them
  *   dump NAME         snapshot to OUTDIR/NAME.txt
  *   sounds NAME...    fail unless each named effect (or "cdda", "save") played
  *   end
@@ -293,6 +298,32 @@ void waitVBlank(void)
                         side[pl].cpu_on ? "a CPU" : "a player", cmd);
                 exit(4);
             }
+        } else if (!strcmp(cmd, "cards")) {
+            pl = atoi(a1) - 1;
+            if (side[pl].card_n != atoi(a2)) {
+                fprintf(stderr, "frame %ld: player %d pressed the card button %d times, expected %s\n", frame, pl + 1, side[pl].card_n, a2);
+                exit(4);
+            }
+        } else if (!strcmp(cmd, "paused")) {
+            if (paused != atoi(a1)) { fprintf(stderr, "frame %ld: paused is %d, expected %s\n", frame, paused, a1); exit(4); }
+        } else if (!strcmp(cmd, "pad")) {
+            PadCfg *c = &pad_cfg[atoi(a1) - 1];
+            int v = !strcmp(a2, "card") ? c->card : !strcmp(a2, "hard") ? c->btn[ACT_HARD] : !strcmp(a2, "up") ? c->up_drop : -1;
+            if (v != atoi(a3)) { fprintf(stderr, "frame %ld: player %s's %s is %d, expected %s\n", frame, a1, a2, v, a3); exit(4); }
+        } else if (!strcmp(cmd, "oldsave")) {
+            BYTE *m = card_mem[3], s = 0;
+            memset(m, 0, 64);
+            m[0] = 'S'; m[1] = 'B'; m[2] = '0'; m[3] = '2';
+            for (pl = 0; pl < 2; pl++) {
+                BYTE *q = m + 4 + pl * 8;
+                q[0] = 10; q[1] = 2; q[2] = 0; q[3] = 0; q[4] = 1; q[5] = 2;
+                q[6] = (BYTE)atoi(a1); q[7] = (BYTE)atoi(a2);
+            }
+            m[20] = 1; m[21] = 8; m[22] = 1;
+            for (pl = 0; pl < 63; pl++) s = (BYTE)(s + m[pl]);
+            m[63] = s;
+            card_has[3] = 1;
+            save_load();
         } else if (!strcmp(cmd, "lines")) side[atoi(a1) - 1].b.lines = (tt_u16)atoi(a2);
         else if (!strcmp(cmd, "sounds")) {
             char *w;

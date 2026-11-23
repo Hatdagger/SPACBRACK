@@ -9,8 +9,10 @@
  *
  *   save 2 "SB01" records:  5 x Marathon (name 2 bytes, score 3 bytes)
  *                           5 x Sprint   (name 2 bytes, frames 3 bytes)
- *   save 3 "SB02" options:  per player DAS, ARR, sonic, 4 buttons, up-drop;
- *                           ghost, line-clear delay, music
+ *   save 3 "SB04" options:  per player DAS, ARR, sonic, 4 buttons, up-drop,
+ *                           card button; ghost, line-clear delay, music, cards
+ *                           (the older "SB02" options, without the card
+ *                           button or cards, still load: see old_card)
  *   save 4 "SB03" survival: 5 x (name 2 bytes, CPUs knocked out 2 bytes)
  *
  * Names are 3 letters of 5 bits each ("A"-"Z", space, ".", "!").
@@ -68,6 +70,7 @@ char  srv_name[REC_N][4];
 DWORD srv_kos[REC_N];
 PadCfg pad_cfg[2];
 BYTE  opt_ghost, opt_clear, opt_music;
+BYTE  opt_cards;
 BYTE  save_answer;
 
 static BYTE buf[SAVE_SIZE];
@@ -81,8 +84,10 @@ static const char NAME_CH[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ .!";
 void save_defaults_pad(PadCfg *c)
 {
     c->das = 10; c->arr = 2; c->sonic = 0;
-    c->btn[ACT_ROT_L] = 0; c->btn[ACT_ROT_R] = 1; c->btn[ACT_HOLD] = 2; c->btn[ACT_HARD] = 3;
+    /* A rotate left, B rotate right, C hold, D card, Up hard drop */
+    c->btn[ACT_ROT_L] = 0; c->btn[ACT_ROT_R] = 1; c->btn[ACT_HOLD] = 2; c->btn[ACT_HARD] = 4;
     c->up_drop = 1;
+    c->card = CARD_D;
 }
 
 static void defaults_rec(void)
@@ -101,7 +106,7 @@ static void defaults_opt(void)
 {
     save_defaults_pad(&pad_cfg[0]);
     save_defaults_pad(&pad_cfg[1]);
-    opt_ghost = 1; opt_clear = 8; opt_music = 1;
+    opt_ghost = 1; opt_clear = 8; opt_music = 1; opt_cards = 1;
 }
 
 static BYTE checksum(void)
@@ -167,6 +172,21 @@ static int clamp(int v, int lo, int hi, int def)
     return v < lo || v > hi ? def : v;
 }
 
+/*
+ * Options saved before the card button existed: give it D when that is
+ * free, or when D was hard drop and Up hard drops too (the old default,
+ * which becomes the new one); else the first free face button; else Select.
+ */
+static void old_card(PadCfg *c)
+{
+    int j, b;
+    BYTE used[5] = { 0, 0, 0, 0, 0 };
+    for (j = 0; j < ACT_N; j++) used[c->btn[j]] = 1;
+    if (!used[3] || (c->btn[ACT_HARD] == 3 && c->up_drop)) { c->card = CARD_D; return; }
+    for (b = 0; b < 4; b++) if (!used[b]) { c->card = (BYTE)b; return; }
+    c->card = CARD_SELECT;
+}
+
 void save_load(void)
 {
     int k, j;
@@ -183,7 +203,9 @@ void save_load(void)
         p = buf + 4;
         for (k = 0; k < REC_N; k++) { p = get_name(p, srv_name[k]); srv_kos[k] = ((DWORD)p[0] << 8) | p[1]; p += 2; }
     }
-    if (SAVE_CARD(CARD_LOAD, SUB_OPT, buf) == 0 && tag_ok('2')) {
+    if (SAVE_CARD(CARD_LOAD, SUB_OPT, buf) == 0) {
+        int fresh = tag_ok('4'), old = !fresh && tag_ok('2'), w = fresh ? 9 : 8;
+        if (!fresh && !old) return;
         p = buf + 4;
         for (k = 0; k < 2; k++) {
             PadCfg *c = &pad_cfg[k];
@@ -192,11 +214,16 @@ void save_load(void)
             c->sonic = (BYTE)(p[2] ? 1 : 0);
             for (j = 0; j < ACT_N; j++) c->btn[j] = (BYTE)clamp(p[3 + j], 0, 4, j);
             c->up_drop = (BYTE)(p[7] ? 1 : 0);
-            p += 8;
+            if (fresh) c->card = (BYTE)clamp(p[8], 0, CARD_N - 1, CARD_D);
+            else old_card(c);
+            /* a button does one thing */
+            if (c->card < 4) for (j = 0; j < ACT_N; j++) if (c->btn[j] == c->card) c->btn[j] = 4;
+            p += w;
         }
         opt_ghost = (BYTE)(p[0] ? 1 : 0);
         opt_clear = (BYTE)clamp(p[1], 0, 20, 8);
         opt_music = (BYTE)(p[2] ? 1 : 0);
+        if (fresh) opt_cards = (BYTE)(p[3] ? 1 : 0);
     }
 }
 
@@ -225,16 +252,17 @@ void save_options(void)
 {
     int k, j;
     BYTE *p;
-    tag('2');
+    tag('4');
     p = buf + 4;
     for (k = 0; k < 2; k++) {
         PadCfg *c = &pad_cfg[k];
         p[0] = c->das; p[1] = c->arr; p[2] = c->sonic;
         for (j = 0; j < ACT_N; j++) p[3 + j] = c->btn[j];
         p[7] = c->up_drop;
-        p += 8;
+        p[8] = c->card;
+        p += 9;
     }
-    p[0] = opt_ghost; p[1] = opt_clear; p[2] = opt_music;
+    p[0] = opt_ghost; p[1] = opt_clear; p[2] = opt_music; p[3] = opt_cards;
     buf[SAVE_SIZE - 1] = checksum();
     save_answer = SAVE_CARD(CARD_SAVE, SUB_OPT, buf);
 }

@@ -150,4 +150,79 @@ p1 A
 wait 40
 dump 16_records
 sounds save
+# the card button (the cards themselves come later): D by default, Start pauses
+p1 A
+wait 10
+p1 U
+p1 U
+p1 U
+p1 U
+p1 A
+until 1 PLAY 300
+p1 D2
+wait 2
+cards 1 1
+paused 0
+p1 START
+wait 2
+paused 1
+p1 START
+wait 2
+paused 0
+# card on Start: Start uses the card, Select pauses
+p1 SELECT
+wait 2
+paused 1
+p1 SELECT
+wait 30
+p1 D
+p1 D
+p1 D
+p1 D
+p1 D
+p1 A
+wait 10
+p1 D
+p1 D
+p1 D
+p1 D
+p1 D
+p1 D
+p1 D
+p1 D
+p1 R
+p1 R
+wait 4
+dump 17_options_card_start
+pad 1 card 5
+p1 B
+wait 30
+p1 U
+p1 U
+p1 U
+p1 U
+p1 U
+p1 A
+until 1 PLAY 300
+p1 START
+wait 2
+cards 1 2
+paused 0
+p1 SELECT
+wait 2
+paused 1
+p1 START
+wait 2
+paused 0
+# options saved before the card button load: the old default becomes the new one
+oldsave 3 1
+pad 1 card 3
+pad 1 hard 4
+pad 2 card 3
+oldsave 3 0
+pad 1 card 4
+pad 1 hard 3
+oldsave 4 1
+pad 1 card 3
+pad 1 hard 4
 end
