@@ -65,6 +65,12 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_EV_TOPOUT   0x0400
 #define TT_EV_DONE     0x0800  /* goal reached (150 / 40 lines) */
 #define TT_EV_LAND     0x1000  /* a falling brick touched down */
+#define TT_EV_HOLO     0x2000  /* a hologram brick came in */
+#define TT_EV_FREEZE   0x4000  /* a hologram was frozen in place */
+#define TT_EV_HOLOSET  0x8000  /* a hologram fell to the floor and set there */
+
+#define TT_HOLO_LINES  10      /* Phantom Reel: one hologram per 10 lines... */
+#define TT_HOLO_MAX    3       /* ...at most 3 */
 
 enum { TT_SPIN_NONE, TT_SPIN_MINI, TT_SPIN_FULL };
 
@@ -119,6 +125,12 @@ typedef struct {
     tt_u16 fx[TT_FX_N];        /* timed effects, frames left */
     tt_u8  shiver_t;
 
+    /* Phantom Reel (holograms) */
+    tt_u8  holo_on;            /* this board deals holograms (set by the front end) */
+    tt_u8  holo;               /* the falling brick is a hologram */
+    tt_u8  holo_used;          /* holograms dealt since holo_from */
+    tt_u16 holo_from;          /* lines when the count started (Survival: per opponent) */
+
     /* last frame's events */
     tt_u16 ev;
     tt_u8  last_lines, last_spin, last_b2b, last_pc, last_attack;
@@ -168,5 +180,16 @@ void tt_pound(tt_board *b, int n);          /* the bottom n rows go, the stack d
 void tt_rattle(tt_board *b);                /* the falling brick slips a column */
 void tt_full_moon(tt_board *b);             /* the next 3 bricks are I */
 void tt_fx_on(tt_board *b, int fx, tt_u16 frames);
+
+/*
+ * Phantom Reel: with holo_on, one hologram every 10 lines (at most 3) is
+ * dealt as the next brick.  It passes through bricks (only the walls and
+ * the floor stop it), can't be held, and fills only the empty cells it
+ * covers.  Freezing sets it where it is; unfrozen it falls to the floor.
+ */
+int  tt_holo_ready(const tt_board *b);      /* holograms earned and not dealt yet */
+int  tt_holo_fills(const tt_board *b);      /* empty cells the hologram would fill now */
+int  tt_holo_freeze(tt_board *b);           /* 1 if there was a hologram to freeze */
+void tt_holo_restart(tt_board *b);          /* a fresh count of 3 from the lines now */
 
 #endif

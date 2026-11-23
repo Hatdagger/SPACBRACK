@@ -52,7 +52,9 @@ The card button can also go on Select or Start: then the other one pauses.
 Lines your own abilities clear don't count, score or fill the meter. With cards on you see 3 next bricks (the web game's number), 4 with the Giant Bat. Effects on a board show as a word under its NEXT column (GLAR, SONR, HOWL, SHVR, DARK, ECHO). CPUs fire an ability they can afford now and then, more often at higher levels. **Boss cards**: a tap of the card button runs the card's perk.
 - **Launch Key** (Launch Countdown): while you have more lines than the other board, tap to start a 10-count, once a match (in Survival, once per opponent). Clear a line yourself or let them catch up and the count breaks; still ahead at zero and you win (LIFT OFF!; in Survival it's a K.O.). The bar in your right bezel is the count: grey until you're ahead, flashing when you can start it, draining while it runs, empty once used. The centre console shows whose count it is. A CPU with the key starts it when well ahead and then builds without clearing lines.
 
-The other five boss cards (Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) are still being added.
+- **Phantom Reel** (Holograms): every 10 lines (at most 3 a match; in Survival, 3 per opponent) your next brick comes in as a hologram. It passes through bricks (only the walls and the floor stop it), can't be held, and fills only the empty cells it covers, holes included. Tap to freeze it where it is; left alone it falls to the floor and fills the gaps there. The brick that will become a hologram shows white in NEXT, the right bezel bar fills over the 10 lines to the next one (flashing while one is next or falling), and HOLO shows under NEXT. A CPU with the reel steers its hologram into holes and freezes it.
+
+The other four boss cards (Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) are still being added.
 
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 

@@ -25,7 +25,8 @@
  *   check P WHAT N    fail unless player P's WHAT is N (meter, aim, card,
  *                     alive, fx0..fx5 on/off) or at least N (cool, rocks,
  *                     pending, fired = abilities fired); launch (1 = this
- *                     player's Launch Countdown runs), result (R_ code), wins
+ *                     player's Launch Countdown runs), result (R_ code), wins,
+ *                     holo (a hologram is falling), holos (holograms dealt, at least)
  *   setcard P N       give player P card N (0 Cyclops .. 3 Giant Bat, 4 Launch
  *                     Key ..) and a fresh Launch Countdown
  *   garbage P N       send player P N rows of garbage
@@ -352,6 +353,8 @@ void waitVBlank(void)
             else if (!strcmp(a2, "launch")) v = launch_by == cs->i;
             else if (!strcmp(a2, "result")) v = cs->result;
             else if (!strcmp(a2, "wins")) v = cs->wins;
+            else if (!strcmp(a2, "holo")) v = cs->b.holo;
+            else if (!strcmp(a2, "holos")) { v = cs->b.holo_used; ge = 1; }
             else { fprintf(stderr, "unknown check %s\n", a2); exit(2); }
             if (ge ? v < want : v != want) {
                 fprintf(stderr, "frame %ld: player %s %s is %ld, expected %s%ld\n", frame, a1, a2, v, ge ? ">= " : "", want);

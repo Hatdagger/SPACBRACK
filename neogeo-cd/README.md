@@ -44,5 +44,5 @@ For `mak dist:iso`, also copy `assets\cdda\*.wav` into `..\build\SPACBRACK\asset
 
 ## Next
 1. Test the disc on the MiSTer / real hardware (saving, sprite and fix timing).
-2. Cards: the boss cards' house rules and perks, one at a time (monster abilities and Launch Key are in; next Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars).
+2. Cards: the boss cards' house rules and perks, one at a time (monster abilities, Launch Key and Phantom Reel are in; next Origami Crane, Gold Ledger, Time Capsule, Ace of Stars).
 3. Your own songs.

@@ -32,7 +32,7 @@ ASSETS = os.path.join(SRC, 'assets')
 
 SFX = ['move', 'rotate', 'kick', 'lock', 'hard', 'hold', 'clear1', 'clear2', 'clear3', 'clear4',
        'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go',
-       'cast', 'boulder', 'beam', 'echo', 'deny']
+       'cast', 'boulder', 'beam', 'echo', 'deny', 'holo', 'freeze', 'holoset']
 # (file, song, semitones)
 TRACKS = [('track02_title', 'title', 0), ('track03_marathon', 'battle', 0), ('track04_sprint', 'boss', 0),
           ('track05_versus', 'battle', 3), ('track06_survival', 'boss', -2)]
@@ -231,6 +231,16 @@ def render_sfx(name):
         for i in range(4): b.tone(1200, to=2400, d=.15, v=.1 * .6 ** i, at=i * .12)
     elif name == 'deny':
         b.tone(150, d=.07, v=.1, typ='triangle'); b.tone(110, d=.1, v=.1, typ='triangle', at=.09)
+    # Phantom Reel (js/audio.js holo, perk_freeze, holoSet)
+    elif name == 'holo':                     # a hologram brick materializes
+        b.arp(['C6', 'G6', 'C7', 'G7'], .05, d=.3, v=.07, typ='sine', vib=True)
+        b.noise(d=.4, v=.06, typ='bandpass', f=5000, q=6)
+    elif name == 'freeze':                   # frozen in place: crystal "shing"
+        b.tone(3000, to=900, d=.15, v=.08, typ='sawtooth')
+        for k, n in enumerate(['E7', 'B6', 'G#6']): b.tone(mtof(note(n)), d=.5, v=.06, typ='sine', at=.05 + k * .04)
+        b.noise(d=.25, v=.1, typ='highpass', f=6000)
+    elif name == 'holoset':                  # set on the floor without being frozen
+        b.tone(1200, to=300, d=.2, v=.08, typ='sine')
     x = b.buf * 4.5
     x = filt(x, 'lowpass', 6000, SFX_RATE)
     pk = np.abs(x).max()

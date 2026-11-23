@@ -420,4 +420,66 @@ lines 2 20
 wait 1500
 check 2 fired 1
 dump 31_cpu_launch
+bot 1 0
+# ---- Phantom Reel: a hologram every 10 lines that passes through bricks; a tap freezes it ----
+p1 SELECT
+wait 3
+p1 SELECT
+wait 60
+p1 A
+wait 20
+p1 A
+until 1 PLAY 300
+setcard 1 5
+setcard 2 0
+bot 1 6
+wait 400
+bot 1 0
+wait 30
+# some garbage with holes to fill
+garbage 1 5
+wait 70
+p1 U
+wait 20
+# no hologram yet: a tap is refused
+p1 D2
+wait 2
+check 1 holo 0
+check 1 fired 0
+# 10 lines: the next brick is a hologram (shown white in NEXT)
+lines 1 10
+wait 2
+dump 32_holo_next
+p1 U
+wait 4
+check 1 holo 1
+check 1 holos 1
+# it can't be held
+p1 C
+wait 2
+check 1 holo 1
+# stand it up over the garbage's hole column and soft drop it in: it passes through bricks
+p1 B
+p1 L
+p1 L
+p1 L
+p1 L
+p1 L
+hold 1 D 30
+dump 33_holo_inside
+p1 D2
+wait 2
+check 1 holo 0
+check 1 fired 1
+dump 34_holo_frozen
+sounds holo freeze deny
+# the CPU with Phantom Reel steers its hologram into holes and freezes it
+setcard 2 5
+garbage 2 4
+wait 200
+lines 2 10
+wait 900
+check 2 holos 1
+check 2 holo 0
+dump 35_cpu_holo
 end

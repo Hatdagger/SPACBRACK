@@ -102,9 +102,23 @@ int tt_collides(const tt_board *b, int type, int rot, int x, int y)
     return 0;
 }
 
+/* what stops the falling brick: a hologram passes through bricks, so only
+   the walls and the floor stop it */
+static int hits(const tt_board *b, int type, int rot, int x, int y)
+{
+    int k, cx, cy;
+    if (!b->holo) return tt_collides(b, type, rot, x, y);
+    for (k = 0; k < 4; k++) {
+        cx = x + TT_SHAPE[type][rot][k][0];
+        cy = y + TT_SHAPE[type][rot][k][1];
+        if (cx < 0 || cx >= TT_COLS || cy >= TT_ROWS) return 1;
+    }
+    return 0;
+}
+
 static int on_ground(const tt_board *b)
 {
-    return tt_collides(b, b->type, b->rot, b->x, b->y + 1);
+    return hits(b, b->type, b->rot, b->x, b->y + 1);
 }
 
 static void top_out(tt_board *b)
@@ -118,11 +132,18 @@ static void top_out(tt_board *b)
 static void spawn(tt_board *b, tt_u8 type)
 {
     int k;
+    b->holo = 0;
     if (!type) {
         type = b->queue[0];
         for (k = 1; k < b->qlen; k++) b->queue[k - 1] = b->queue[k];
         b->qlen--;
         fill_queue(b);
+        /* Phantom Reel: an earned hologram comes in as the next brick from the queue */
+        if (tt_holo_ready(b) > 0) {
+            b->holo = 1;
+            b->holo_used++;
+            b->ev |= TT_EV_HOLO;
+        }
     }
     b->type = type;
     b->rot = 0;
@@ -133,9 +154,9 @@ static void spawn(tt_board *b, tt_u8 type)
     b->resets = 0;
     b->last_rot = 0;
     b->last_kick = 0;
-    if (tt_collides(b, type, 0, b->x, 0)) { top_out(b); return; }
+    if (hits(b, type, 0, b->x, 0)) { top_out(b); return; }
     /* drop one row at once, so the brick shows straight away */
-    if (!tt_collides(b, type, 0, b->x, 1)) b->y = 1;
+    if (!hits(b, type, 0, b->x, 1)) b->y = 1;
     b->low_y = b->y;
     b->active = 1;
 }
@@ -170,7 +191,7 @@ static void moved(tt_board *b)
 
 int tt_move(tt_board *b, int dx)
 {
-    if (!b->active || tt_collides(b, b->type, b->rot, b->x + dx, b->y)) return 0;
+    if (!b->active || hits(b, b->type, b->rot, b->x + dx, b->y)) return 0;
     b->x = (tt_s8)(b->x + dx);
     b->last_rot = 0;
     b->ev |= TT_EV_MOVE;
@@ -189,7 +210,7 @@ int tt_rotate(tt_board *b, int dir)
     for (k = 0; k < 5; k++) {
         nx = b->x + kicks[idx][k][0];
         ny = b->y + kicks[idx][k][1];
-        if (!tt_collides(b, b->type, to, nx, ny)) {
+        if (!hits(b, b->type, to, nx, ny)) {
             b->x = (tt_s8)nx;
             b->y = (tt_s8)ny;
             b->rot = (tt_u8)to;
@@ -207,14 +228,14 @@ int tt_rotate(tt_board *b, int dir)
 int tt_ghost_y(const tt_board *b)
 {
     int y = b->y;
-    while (!tt_collides(b, b->type, b->rot, b->x, y + 1)) y++;
+    while (!hits(b, b->type, b->rot, b->x, y + 1)) y++;
     return y;
 }
 
 int tt_hold(tt_board *b)
 {
     tt_u8 cur;
-    if (!b->active || b->hold_used) return 0;
+    if (!b->active || b->hold_used || b->holo) return 0;   /* a hologram can't be held */
     cur = b->type;
     b->hold_used = 1;
     b->ev |= TT_EV_HOLD;
@@ -367,16 +388,19 @@ static void lock(tt_board *b)
     int k, x, y, n = 0, spin, hidden = 1, pc = 1, attack = 0, difficult;
     tt_u32 pts, mask = 0;
 
-    spin = spin_kind(b);
+    spin = b->holo ? TT_SPIN_NONE : spin_kind(b);
+    if (b->holo && !(b->ev & TT_EV_FREEZE)) b->ev |= TT_EV_HOLOSET;
     for (k = 0; k < 4; k++) {
         x = b->x + TT_SHAPE[b->type][b->rot][k][0];
         y = b->y + TT_SHAPE[b->type][b->rot][k][1];
-        if (y >= 0) { b->grid[y][x] = b->type; b->grid_rows |= 1UL << y; }
+        /* a hologram only fills the empty cells it covers: bricks already there stay */
+        if (y >= 0 && !(b->holo && b->grid[y][x])) { b->grid[y][x] = b->type; b->grid_rows |= 1UL << y; }
         if (y >= TT_HIDDEN) hidden = 0;
         b->lock_cells[k][0] = (tt_u8)x;
         b->lock_cells[k][1] = (tt_u8)(y < 0 ? 0 : y);
     }
     b->active = 0;
+    b->holo = 0;
     b->pieces++;
     b->hold_used = 0;
     b->ev |= TT_EV_LOCK;
@@ -541,8 +565,8 @@ static void nudge(tt_board *b)
 {
     int t = 0;
     if (!b->active) return;
-    while (t < 4 && tt_collides(b, b->type, b->rot, b->x, b->y)) { b->y--; t++; }
-    if (tt_collides(b, b->type, b->rot, b->x, b->y)) top_out(b);
+    while (t < 4 && hits(b, b->type, b->rot, b->x, b->y)) { b->y--; t++; }
+    if (hits(b, b->type, b->rot, b->x, b->y)) top_out(b);
 }
 
 /* full rows go without counting */
@@ -656,4 +680,44 @@ void tt_rattle(tt_board *b)
 void tt_full_moon(tt_board *b)
 {
     b->queue[0] = b->queue[1] = b->queue[2] = TT_I;
+}
+
+/* ======================================================================
+ * Phantom Reel: holograms
+ * ==================================================================== */
+
+int tt_holo_ready(const tt_board *b)
+{
+    int n;
+    if (!b->holo_on || b->lines < b->holo_from) return 0;
+    n = (b->lines - b->holo_from) / TT_HOLO_LINES;
+    if (n > TT_HOLO_MAX) n = TT_HOLO_MAX;
+    n -= b->holo_used;
+    return n > 0 ? n : 0;
+}
+
+int tt_holo_fills(const tt_board *b)
+{
+    int k, x, y, n = 0;
+    if (!b->active || !b->holo) return 0;
+    for (k = 0; k < 4; k++) {
+        x = b->x + TT_SHAPE[b->type][b->rot][k][0];
+        y = b->y + TT_SHAPE[b->type][b->rot][k][1];
+        if (y >= 0 && !b->grid[y][x]) n++;
+    }
+    return n;
+}
+
+int tt_holo_freeze(tt_board *b)
+{
+    if (!b->active || !b->holo) return 0;
+    b->ev |= TT_EV_FREEZE;
+    lock(b);
+    return 1;
+}
+
+void tt_holo_restart(tt_board *b)
+{
+    b->holo_from = b->lines;
+    b->holo_used = 0;
 }

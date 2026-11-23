@@ -5,6 +5,10 @@
  * prototype's board heuristic, then steers there like a player: a pause to
  * "think", one move or turn every few frames, and the odd slip on low levels.
  * The search is spread over several frames so the 68000 never stalls.
+ *
+ * A hologram (Phantom Reel) passes through bricks, so the CPU looks at every
+ * height it can still reach, steers over the best, soft drops to that row
+ * and freezes it (js/ai.js holoPlacements), with a quicker score made for it.
  */
 #ifndef TT_CPU_H
 #define TT_CPU_H
@@ -34,6 +38,9 @@ typedef struct {
     /* plan */
     tt_u8  use_hold, trot;
     tt_s8  tx;
+    /* Phantom Reel: a hologram is steered to a height and frozen there */
+    tt_u8  hy[8];                 /* heights of the best few (hologram search) */
+    tt_s8  ty, hy0;               /* planned height; lowest row the search starts at */
 } tt_cpu;
 
 void cpu_init(tt_cpu *c, tt_u8 level, tt_u32 seed);

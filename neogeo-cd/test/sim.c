@@ -296,6 +296,63 @@ static void test_effects(void)
     CHECK(!tt_take_pending(&b, &r, &p) && !tt_pending(&b), "...until none wait");
 }
 
+/* Phantom Reel: holograms pass through bricks and fill only empty cells */
+static void test_holo(void)
+{
+    static const char *pic[3] = { "####.#####", "#.##.#####", "#.##.#####" };
+    tt_board b;
+    int n;
+
+    tt_init(&b, 5, 1, 0, 0, 1);
+    b.holo_on = 1;
+    CHECK(tt_holo_ready(&b) == 0, "no hologram before 10 lines");
+    b.lines = 10;
+    CHECK(tt_holo_ready(&b) == 1, "a hologram at 10 lines");
+    b.ev = 0;
+    tt_hard_drop(&b);
+    CHECK(b.active && b.holo && (b.ev & TT_EV_HOLO), "it comes in as the next brick");
+    CHECK(tt_holo_ready(&b) == 0 && b.holo_used == 1, "...and is used up");
+    CHECK(!tt_hold(&b), "a hologram can't be held");
+
+    /* freeze it in a column with a brick in the middle: the holes fill, the brick stays */
+    field(&b, pic, 3);
+    set_piece(&b, TT_I, 1, -1, TT_ROWS - 4);     /* vertical I in column 1, rows 18..21 */
+    b.holo = 1;
+    CHECK(tt_holo_fills(&b) == 3, "3 of its 4 cells are empty");
+    n = filled(&b);
+    b.ev = 0;
+    CHECK(tt_holo_freeze(&b), "freeze");
+    CHECK(filled(&b) == n + 3, "it filled the 3 empty cells");
+    CHECK(b.grid[TT_ROWS - 3][1] == TT_GARBAGE, "the brick it covered is still there");
+    CHECK(b.grid[TT_ROWS - 1][1] == TT_I && b.grid[TT_ROWS - 2][1] == TT_I, "the holes under it are filled");
+    CHECK((b.ev & TT_EV_FREEZE) && !(b.ev & TT_EV_HOLOSET), "frozen, not set");
+    CHECK(!b.holo, "the next brick is normal");
+    CHECK(!tt_holo_freeze(&b), "nothing to freeze now");
+
+    /* the next one moves through bricks and, unfrozen, falls to the floor */
+    b.lines = 20;
+    b.ev = 0;
+    tt_hard_drop(&b);
+    CHECK(b.holo, "a second hologram at 20 lines");
+    set_piece(&b, TT_I, 0, 2, 5);
+    b.holo = 1;
+    CHECK(tt_ghost_y(&b) == TT_ROWS - 2, "a hologram's drop goes to the floor");
+    tt_hard_drop(&b);
+    CHECK(b.ev & TT_EV_HOLOSET, "unfrozen, it sets on the floor");
+    CHECK(b.grid[TT_ROWS - 1][4] == TT_I && b.grid[TT_ROWS - 1][2] == TT_GARBAGE, "...filling only the gaps of the bottom row");
+    CHECK(b.last_lines == 1 && b.lines == 21, "a line it completes counts");
+
+    /* at most 3, and Survival starts a fresh count per opponent */
+    b.lines = 200;
+    CHECK(tt_holo_ready(&b) == 1, "3 at most");
+    tt_holo_restart(&b);
+    CHECK(tt_holo_ready(&b) == 0, "a fresh count starts empty");
+    b.lines = 210;
+    CHECK(tt_holo_ready(&b) == 1, "...and gives one 10 lines later");
+    b.holo_on = 0;
+    CHECK(tt_holo_ready(&b) == 0, "none without the card");
+}
+
 /* the CPU plays solo; returns lines cleared before topping out or the goal */
 static int cpu_solo(int level, tt_u32 seed, tt_u16 goal, long *frames)
 {
@@ -321,6 +378,59 @@ static void test_cpu(void)
         l = cpu_solo(lv, 100 + lv, 40, &f);
         printf("  CPU level %d: %d lines in %ld:%02ld\n", lv, l, f / 3600, (f / 60) % 60);
         CHECK(l >= 40, "CPU clears 40 lines");
+    }
+}
+
+/* the CPU with Phantom Reel freezes its holograms into holes (garbage keeps making them) */
+static int holo_run(int lv, int on, int *frozen, int *set)
+{
+    tt_board b;
+    tt_cpu c;
+    long f;
+    tt_init(&b, 300 + lv, 1, 60, 0, 0);
+    b.holo_on = (tt_u8)on;
+    cpu_init(&c, (tt_u8)lv, 7 + lv);
+    *frozen = *set = 0;
+    for (f = 0; f < 60L * 60 * 20 && b.alive && !b.done; f++) {
+        b.ev = 0;
+        cpu_frame(&c, &b);
+        tt_tick(&b);
+        if (b.ev & TT_EV_FREEZE) (*frozen)++;
+        if (b.ev & TT_EV_HOLOSET) (*set)++;
+        if (f % 600 == 300 && b.alive) tt_receive(&b, 1);
+    }
+    return b.lines;
+}
+
+static void test_cpu_holo(void)
+{
+    static const char *pic[4] = { "##.#######", "#.########", "#.########", "#.########" };
+    tt_board b;
+    tt_cpu c;
+    long f;
+    int lv, l, l0, frozen, set, f0, s0, fz = 0;
+
+    /* a covered well: the hologram goes down column 1 through the brick on top and fills it */
+    tt_init(&b, 9, 1, 0, 0, 0);
+    field(&b, pic, 4);
+    set_piece(&b, TT_I, 0, 3, 0);
+    b.holo = 1;
+    cpu_init(&c, 8, 5);
+    for (f = 0; f < 600 && b.lines == 0; f++) {
+        b.ev = 0;
+        cpu_frame(&c, &b);
+        tt_tick(&b);
+        if (b.ev & TT_EV_FREEZE) fz++;
+    }
+    CHECK(fz == 1 && b.lines == 3, "the CPU freezes a hologram into a covered well for 3 lines");
+
+    for (lv = 2; lv <= CPU_MAX_LEVEL; lv += 3) {
+        l = holo_run(lv, 1, &frozen, &set);
+        l0 = holo_run(lv, 0, &f0, &s0);
+        printf("  CPU level %d with holograms: %d lines (%d without), %d frozen, %d set on the floor\n", lv, l, l0, frozen, set);
+        CHECK(l + 4 >= l0 && (lv < 5 || l >= 60), "holograms don't hurt the CPU");
+        CHECK(frozen + set == (l >= 30 ? 3 : l / 10), "one hologram per 10 lines, 3 at most");
+        CHECK(frozen >= set, "it freezes most of them");
     }
 }
 
@@ -354,6 +464,7 @@ static void test_fuzz(void)
     int k, games = 0;
     tt_u32 r = 99;
     tt_init(&b, 42, 1, 0, 1, 1);
+    b.holo_on = 1;
     for (f = 0; f < 400000L; f++) {
         r = r * 1103515245UL + 12345UL;
         k = (int)((r >> 16) & 31);
@@ -371,9 +482,12 @@ static void test_fuzz(void)
         else if (k == 12 && (r & 0xf00000) == 0x300000) tt_pound(&b, 3);
         else if (k == 12 && (r & 0xf00000) == 0x400000) tt_eye_beam(&b, (int)((r >> 8) % 9));
         else if (k == 12 && (r & 0xf00000) == 0x500000) tt_fx_on(&b, (int)((r >> 8) % TT_FX_N), 300);
+        else if (k == 12 && (r & 0xf00000) == 0x600000) b.lines = (tt_u16)(b.lines + 10);
+        else if (k == 13 && (r & 0x300000) == 0x100000) tt_holo_freeze(&b);
         tt_tick(&b);
-        if (b.active) CHECK(!tt_collides(&b, b.type, b.rot, b.x, b.y), "falling brick never overlaps");
-        if (!b.alive) { games++; tt_init(&b, (tt_u32)f + 1, 1 + games % 15, 0, 1, 1); }
+        if (b.active && !b.holo) CHECK(!tt_collides(&b, b.type, b.rot, b.x, b.y), "falling brick never overlaps");
+        if (b.holo) CHECK(!tt_hold(&b), "a hologram is never held");
+        if (!b.alive) { games++; tt_init(&b, (tt_u32)f + 1, 1 + games % 15, 0, 1, 1); b.holo_on = (tt_u8)(games & 1); }
         if (fails) return;
     }
     printf("  fuzz: %d games\n", games);
@@ -390,8 +504,10 @@ int main(void)
     test_patterns();
     test_effects();
     test_lock_delay();
+    test_holo();
     test_fuzz();
     test_cpu();
+    test_cpu_holo();
     test_versus();
     if (fails) { printf("%d check(s) failed\n", fails); return 1; }
     printf("all rules checks passed\n");

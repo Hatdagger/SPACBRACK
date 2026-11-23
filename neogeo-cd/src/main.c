@@ -702,7 +702,10 @@ static void side_input(Side *s, BYTE cur, BYTE live)
     int dir;
     s->prev = cur;
     if (live) {
-        if (edge & btn_bit(c->btn[ACT_HOLD])) tt_hold(b);
+        if (edge & btn_bit(c->btn[ACT_HOLD])) {
+            if (b->holo) { say(s, "CAN'T HOLD", "A HOLOGRAM"); sfx(s, SND_DENY); }
+            else tt_hold(b);
+        }
         if (edge & btn_bit(c->btn[ACT_ROT_L])) tt_rotate(b, -1);
         if (edge & btn_bit(c->btn[ACT_ROT_R])) tt_rotate(b, 1);
     }
@@ -770,6 +773,10 @@ static void side_events(Side *s)
     if (ev & TT_EV_LEVEL) { say(s, "LEVEL UP", num(b->level, 2, '0')); sfx(s, SND_LEVEL); }
     if (ev & TT_EV_GARBAGE) sfx(s, SND_GARBAGE);
     if (ev & TT_EV_TOPOUT) sfx(s, SND_TOPOUT);
+    /* Phantom Reel */
+    if (ev & TT_EV_HOLO) { say(s, "HOLOGRAM!", s->cpu_on ? "PHANTOM REEL" : "CARD: FREEZE"); sfx(s, SND_HOLO); }
+    if (ev & TT_EV_FREEZE) { if (s->cpu_on) say(s, "FREEZE!", "PHANTOM REEL"); sfx(s, SND_FREEZE); }
+    if (ev & TT_EV_HOLOSET) sfx(s, SND_HOLOSET);
 }
 
 /* ---------- results ---------- */
@@ -896,7 +903,8 @@ static void draw_field(Side *s)
           ((DWORD)b->type << 11) | ((DWORD)b->active << 14) | ((DWORD)play << 15) |
           ((DWORD)ghost << 16) | ((DWORD)(s->flash_t != 0) << 17) |
           ((DWORD)TRAIL_LEN[s->trail_t] << 18) |
-          ((DWORD)(b->clear_t ? 1 + (b->clear_t >> 1 & 1) : 0) << 20);   /* what shows, not the timers */
+          ((DWORD)(b->clear_t ? 1 + (b->clear_t >> 1 & 1) : 0) << 20) |  /* what shows, not the timers */
+          ((DWORD)b->holo << 22) | ((DWORD)(b->holo && (frames >> 3 & 1)) << 23);
     full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go ||
            aimk != s->fd_aim || dark != s->fd_dark;
     if (!full && sig == s->fd_sig && !b->grid_rows) return;
@@ -984,7 +992,12 @@ static void draw_field(Side *s)
         for (k = 0; k < 4; k++) {
             cx = b->x + TT_SHAPE[b->type][b->rot][k][0];
             cy = b->y + TT_SHAPE[b->type][b->rot][k][1];
-            if (cy >= TT_HIDDEN) fx_put(fc + cx, FIELD_ROW + cy - TT_HIDDEN, tw(PAL_OF(b->type), T_BRICK));
+            if (cy < TT_HIDDEN) continue;
+            /* a hologram: scanlines over empty cells (what a freeze fills), dim over bricks */
+            if (b->holo)
+                fx_put(fc + cx, FIELD_ROW + cy - TT_HIDDEN, b->grid[cy][cx] ? tw(PAL_CYAN, T_HOLO_IN) :
+                       tw(PAL_CYAN, (WORD)(T_HOLO + (frames >> 3 & 1))));
+            else fx_put(fc + cx, FIELD_ROW + cy - TT_HIDDEN, tw(PAL_OF(b->type), T_BRICK));
         }
 }
 
@@ -1054,17 +1067,20 @@ static void draw_fx(Side *s, BYTE show)
     static const char *FX_TAG[TT_FX_N] = { "GLAR", "SONR", "HOWL", "SHVR", "DARK", "ECHO" };
     static const BYTE FX_PAL[TT_FX_N] = { PAL_YELLOW, PAL_CYAN, PAL_RED, PAL_WHITE, PAL_VIOLET, PAL_VIOLET };
     int k, n = 0, pick = -1, which;
+    BYTE holo = (BYTE)(show && (s->b.holo || tt_holo_ready(&s->b) > 0));   /* Phantom Reel: HOLO */
     WORD key;
     for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k]) n++;
-    if (show && n) {
-        which = (int)((frames / 40) % n);
+    if (show && n + holo) {
+        which = (int)((frames / 40) % (n + holo));
+        pick = TT_FX_N;
         for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k] && which-- == 0) { pick = k; break; }
     }
     key = (WORD)(pick < 0 ? 0 : 0x100 | pick);
     if (key == s->fx_key) return;
     s->fx_key = key;
     fill(PANEL_COL[s->i], FX_ROW, 4, 1, BLANK);
-    if (pick >= 0) txt(PANEL_COL[s->i], FX_ROW, FX_PAL[pick], FX_TAG[pick]);
+    if (pick == TT_FX_N) txt(PANEL_COL[s->i], FX_ROW, PAL_CYAN, "HOLO");
+    else if (pick >= 0) txt(PANEL_COL[s->i], FX_ROW, FX_PAL[pick], FX_TAG[pick]);
 }
 
 /*
@@ -1082,6 +1098,14 @@ static void draw_meter(Side *s)
         if (launch_by == s->i) { n = (launch_t + 59) / 60; col = (BYTE)(n <= 3 ? PAL_RED : PAL_AMBER); }
         else if (s->launch_used) n = 0;
         else { n = TT_METER_MAX; col = (BYTE)(can_launch(s) ? ((frames >> 3) & 1 ? PAL_YELLOW : PAL_AMBER) : PAL_GREY); }
+    }
+    /* Phantom Reel: the bar fills over 10 lines to the next hologram; full and
+       flashing while one is next or in play; empty once all 3 are used */
+    if (on && s->card == CARD_REEL) {
+        tt_board *b = &s->b;
+        if (b->holo || tt_holo_ready(b) > 0) { n = TT_METER_MAX; col = (BYTE)((frames >> 3) & 1 ? PAL_CYAN : PAL_WHITE); }
+        else if (b->holo_used >= TT_HOLO_MAX) n = 0;
+        else { n = b->lines < b->holo_from ? 0 : (b->lines - b->holo_from) % TT_HOLO_LINES; col = PAL_CYAN; }
     }
     key = (WORD)(0x8000 | (on << 14) | (col << 8) | n);
     if (key == s->meter_key) return;
@@ -1279,11 +1303,14 @@ static void draw_side(Side *s)
     key[0] = (BYTE)(show ? 1 + b->hold_used : 0);
     key[1] = (BYTE)(show ? b->hold : 0);
     for (k = 0; k < TT_NEXT; k++) key[2 + k] = (BYTE)(show && k < np ? b->queue[k] : 0);
+    if (key[2] && !b->holo && tt_holo_ready(b) > 0) key[2] |= 0x80;     /* Phantom Reel: the next one is a hologram */
     for (k = 0; k < 2 + TT_NEXT; k++) if (key[k] != s->mini_key[k]) { s->mini_key[k] = key[k]; changed = 1; }
     if (changed) {
         if (show) {
             draw_mini(pc, HOLD_ROW, b->hold, b->hold_used ? PAL_STEEL : PAL_OF(b->hold));
-            for (k = 0; k < TT_NEXT; k++) draw_mini(pc, NEXT_ROW + k * 3, key[2 + k], key[2 + k] ? PAL_OF(key[2 + k]) : PAL_WHITE);
+            for (k = 0; k < TT_NEXT; k++)
+                draw_mini(pc, NEXT_ROW + k * 3, (BYTE)(key[2 + k] & 0x7f),
+                          key[2 + k] & 0x80 ? PAL_WHITE : key[2 + k] ? PAL_OF(key[2 + k]) : PAL_WHITE);
         } else {
             fill(pc, HOLD_ROW, 4, 2, tw(PAL_WHITE, T_INSET));
             fill(pc, NEXT_ROW, 4, 15, tw(PAL_WHITE, T_INSET));
@@ -1475,6 +1502,7 @@ static void surv_next(Side *s)
     s->card = s->cpu_on ? random_card() : pick_card[s->i];
     begin_side(s, fresh_seed(), SURV_READY);
     o->launch_used = 0;                        /* a new opponent: a new Launch Countdown */
+    tt_holo_restart(&o->b);                    /* ...and a fresh 3 holograms */
     s->ready = 1;
     s->b.level = o->b.level < 1 ? 1 : o->b.level;
     s->b.gravity = tt_gravity_for(s->b.level);
@@ -1663,6 +1691,34 @@ static void launch_tick(void)
     } else if (launch_t % 60 == 0) sfx(0, SND_BEEP);
 }
 
+/* ---------- Phantom Reel: freeze the hologram where it is ---------- */
+static void reel_freeze(Side *s)
+{
+    tt_board *b = &s->b;
+    WORD n;
+    const char *p;
+    char c[13];
+    if (!b->holo) {
+        if (tt_holo_ready(b) > 0) say(s, "PHANTOM REEL", "HOLO NEXT");
+        else if (b->holo_used >= TT_HOLO_MAX) say(s, "PHANTOM REEL", "NO MORE");
+        else {
+            n = (WORD)(b->holo_from + (b->holo_used + 1) * TT_HOLO_LINES);    /* lines for the next one */
+            p = num(n, 4, ' ');
+            while (*p == ' ') p++;
+            str_cpy(c, "AT ");
+            str_cpy(c + 3, p);
+            str_cpy(c + 3 + slen(p), " LINES");
+            say(s, "PHANTOM REEL", c);
+        }
+        sfx(s, SND_DENY);
+        return;
+    }
+    n = (WORD)tt_holo_fills(b);
+    tt_holo_freeze(b);
+    s->fired++;
+    say(s, "FREEZE!", n == 1 ? "FILLS 1" : n == 2 ? "FILLS 2" : n == 3 ? "FILLS 3" : n == 4 ? "FILLS 4" : "FILLS 0");
+}
+
 /*
  * A player's card button during play.  Returns 1 when it took this frame's
  * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
@@ -1682,6 +1738,7 @@ static BYTE card_ctl(Side *s, BYTE cur)
         if (!cards_on()) return 0;
         if (s->card >= CARD_MONSTERS) {          /* boss cards: a tap runs the perk */
             if (s->card_hit && s->card == CARD_LAUNCH) try_launch(s);
+            if (s->card_hit && s->card == CARD_REEL) reel_freeze(s);
             return 0;
         }
         if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
@@ -1761,6 +1818,7 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         if (s->go_t) s->go_t--;
         if (start && !s->cpu_on) { paused = 1; sfx(0, SND_MENU); return; }
         if (start && mode == M_SURV && !s->join) surv_claim(s);
+        b->holo_on = has_card(s, CARD_REEL);
         if (s->cpu_on || HARNESS_BOT(s)) { cpu_frame(&s->cpu, b); if (s->cpu_on) cpu_card(s); }
         else if (!card_ctl(s, cur)) side_input(s, cur, 1);
         tt_tick(b);

@@ -105,6 +105,8 @@ T_BLACK = 150
 T_STEEL = 151
 T_METER = 152       # right bezel with the card meter: track top/bottom, lit top/bottom (152..155)
 T_ROCK = 156        # a Cyclops boulder cell (drawn in the amber palette)
+T_HOLO = 157        # Phantom Reel hologram over an empty cell: scanlines (two frames: 157, 158)
+T_HOLO_IN = 159     # ...and over a brick it passes through: dim, dotted edge (cyan palette)
 T_BIG = 160         # big letters on the fix layer, 2x2 tiles each (TL TR BL BR)
 BIGCHARS = '321GOPAUSEDK.!WINREY'
 
@@ -239,6 +241,24 @@ def make_fix():
     for y, row in enumerate(ROCK):
         for x, c in enumerate(row):
             put(T_ROCK, x, y, 11 if c == '.' else int(c))
+    # hologram (web drawHoloPiece): see-through scanlines with a bright top/left
+    # edge over empty space; over a brick, a dim brick with a dotted outline
+    for k in range(2):
+        n = T_HOLO + k
+        fill(n, 11)
+        for y in range(8):
+            for x in range(8):
+                if (y + k) % 2 == 0: put(n, x, y, 4 if 0 < x < 7 else 1)
+                elif x in (0, 7): put(n, x, y, 3)
+        for x in range(8): put(n, x, 0, 5)
+        for y in range(8): put(n, 0, y, 2 if y else 5)
+    fill(T_HOLO_IN, 3)
+    for y in range(1, 7):
+        for x in range(1, 7):
+            if (x + y) % 2 == 0: put(T_HOLO_IN, x, y, 4)
+    for y in range(8):
+        for x in range(8):
+            if (x in (0, 7) or y in (0, 7)): put(T_HOLO_IN, x, y, 5 if (x + y) % 2 == 0 else 13)
     # big letters (countdown, PAUSED, K.O.!): the 5x7 font at 2x with a black
     # outline over the field colour, shaded top to bottom in the brick roles
     for k, ch in enumerate(BIGCHARS):
@@ -377,6 +397,7 @@ def write_header():
                       ('T_INSET', T_INSET), ('T_HALF_L', T_HALF_L), ('T_HALF_R', T_HALF_R),
                       ('T_HALF_LR', T_HALF_LR), ('T_TRAIL', T_TRAIL), ('T_BEZ', T_BEZ),
                       ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BEZ_PLAIN', T_BEZ_PLAIN), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL), ('T_METER', T_METER), ('T_ROCK', T_ROCK),
+                      ('T_HOLO', T_HOLO), ('T_HOLO_IN', T_HOLO_IN),
                       ('T_BIG', T_BIG)]:
         out.append('#define %-12s %d' % (name, val))
     out += ['', '/* role colours painted in fix/tiles.png (index = role) */',
