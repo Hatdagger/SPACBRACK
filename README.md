@@ -1,209 +1,49 @@
-# SPACBRACK — prototype v0.12
+# SPACBRACK: brick race (Neo Geo CD)
 
-A retro-futurism / NASA-punk RPG where every fight is a falling-block versus match. One entry on the "New Games Ideas" demo disc. The full design is in [`docs/concept.md`](docs/concept.md).
+This branch (`tetris`) is only the falling-brick game from SPACBRACK, made for the **Neo Geo CD**. The story, exploration, station map and house rules are not here (they stay on `main`). It keeps SPACBRACK's look: VHS-box colours, the chunky 5x7 pixel font, cassette-deck bezels, LED counters, the starfield and the scrolling perspective floor.
 
 Note: the falling blocks are called **bricks** everywhere in this game.
 
-**Look:** blank-VHS-box art and cassette futurism, drawn in big chunky pixels at the Neo Geo's native 320x224 with a hand-made pixel font and CRT scanlines. Racing-stripe bands, chrome logo lettering, beige cassette labels, dark tape-deck panels, amber/green LED counters, and a VU meter for the ability meter.
+## Modes
 
-## Run it
+| Mode | Goal |
+|---|---|
+| **Marathon** | 150 lines. The level (and drop speed) goes up every 10 lines, up to level 15. High score. |
+| **Sprint** | 40 lines as fast as you can. Best time. |
+| **Versus** | Against the CPU (level 1-8, chosen on the title menu with left/right) or a 2nd player. Garbage, last one standing wins. The drop speed rises every minute. |
+| **Survival** | Against a line of CPUs. When a CPU tops out, its board is wiped and a new, tougher CPU comes in while your board keeps going. Score = CPUs knocked out (KOs). |
 
-No build step and nothing to install. Open `index.html` in Chrome, Edge or Firefox. That works on Windows, Linux and Android.
+**Two players:** whoever presses A or Start on the title menu plays, on their own side of the screen. In Marathon or Sprint the other player can press **Start** at any time and choose **SOLO** (their own game on the other board, the first player's game keeps running) or **VERSUS** (both boards switch to a fresh Versus match). In Versus or Survival against the CPU, 2P pressing Start takes the CPU's place in a new Versus match.
 
-- **Download:** grab the zip from the [Releases page](https://github.com/Hatdagger/SPACBRACK/releases), unzip it and open `index.html`.
-- **Play in the browser (GitHub Pages):** one-time setup: in the repo go to **Settings → Pages** and set **Source** to **GitHub Actions**. After that every push to `main` updates the demo at https://hatdagger.github.io/SPACBRACK/
-- **New release:** change the number in `VERSION` (e.g. `v0.13`) and push; a release with a zip is made automatically.
-- Plug in or pair a controller, then press any button on it so the browser sees it.
-- Double-click (or double-tap) the screen for fullscreen.
+## Rules (modern)
 
-## New in v0.12 (cards, bosses, Past You, ending)
+- 7-bag randomizer, 5 next bricks, hold, ghost brick, hard drop, soft drop
+- SRS rotation with wall kicks (both directions)
+- Lock delay of 0.5 s, refreshed by up to 15 moves or turns on the floor (reaching a new lowest row refills it)
+- T-spins (3-corner rule, with minis), back-to-back, combos, all clears
+- Versus garbage: 2/3/4 lines send 1/2/4, T-spins send 2 per line, +1 back-to-back, combo bonus, +10 for an all clear. Your clears cancel waiting garbage first. Incoming garbage waits 1 s (amber bar in the left bezel) before it can land (flashing red bar).
 
-- **Race length:** crew fights are to **20 lines**, bosses to **40** (Versus stays 40). Launch Complex time limits scale to match.
-- **Cadet Badge** (starter): gives you **hard drop** while equipped. No abilities, never levels up, can't be lost.
-- **Defense first:** the defense move (right) now unlocks first at rank 2 and is the cheapest (3). Attack moves to rank 3. Defense moves are field fixes like Tetris Battle Gaiden's level-1 powers; lines they clear don't count and don't send:
-  - Cyclops **Eye Beam:** aim a 2-wide column with left/right, press A (or wait 4 s) to delete it.
-  - Skeleton **Collapse:** gravity; every brick falls straight down.
-  - Werewolf **Pound:** the bottom 3 rows are pounded away and the stack drops.
-  - Giant Bat **Echo Wall:** bounces incoming garbage back, and anything sent for the next 6 s.
-- **Unique boss cards:** every boss fights with its own card and drops it when you win (if you don't have it). They can't stack, never level, and carry that location's rule + perk into any fight: Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars. Losing with one equipped destroys it; beat the boss again to win it back. They're also in Versus.
-- **Chrono Station boss:** your first fight is against a **computer terminal on a desk**, running your card, rank and tokens from the last boss you faced. After that, **Past You** sits at the terminal with your loadout from your last fight there. The first win gives the token but no card; later wins drop the Time Capsule.
-- **Separate buttons:** a unique card's perk is on the **card button** (RT/RB, keyboard A), since those cards have no directional moves. The **stage perk button** (LT/LB, keyboard S) only runs the location's house rule. Hints on screen say CARD or PERK. Save states on a card: tap the card button to mark, hold it to jump.
-- **Ending:** winning the sixth token plays a short "Mission Complete" scene once.
-- Fix: garbage from card abilities and the lever's jackpot now lands on players under Fold Lab rules (it used to be skipped).
+## Controls (Neo Geo pad, remappable)
 
-## New in v0.11 (Hologram Hall)
+| Button | Action |
+|---|---|
+| Left / Right | Move (DAS/ARR speed in Options) |
+| Down | Soft drop (fast, or instant in Options) |
+| Up | Hard drop (can be turned off) |
+| A / B | Rotate left / right |
+| C | Hold |
+| D | Hard drop |
+| Start | Pause / join / retry |
+| Select | Pause; while paused, quit to the title |
 
-- **Hologram bricks (Hologram Hall):** every 10 lines (10, 20, 30) your next brick is a hologram. It's see-through cyan and phases through every other brick.
-  - **Perk button = Freeze:** it sets right where it is and fills the empty cells it covers, holes included. Bricks already there stay put. Full rows clear as usual.
-  - If you don't freeze it, it falls to the floor and fills the gaps there the same way.
-  - The top of the board shows how many cells a freeze would fill right now. A hologram can't be held; hard drop sends it straight to the floor.
-  - CPUs use holograms too. Versus "House rule" option now has Holograms. All six locations now have their rule.
-- **Lock delay:** hard drop locks instantly; bricks that fall normally or by soft drop keep the 0.5 s delay so you can slide them and do T-spins.
+**Options** (opened by the player who picks it, so each player has their own): DAS, ARR (0 = instant), soft drop speed, which button does rotate left, rotate right, hold and hard drop (a button already in use swaps), and whether Up hard drops. Shared: ghost on/off, line clear delay, music on/off. Records and options are saved in the console's backup memory.
 
-## New in v0.10 (placeholder sound and music, hard drop teleport)
+## Build and test
 
-- All sound is made in code (Web Audio chiptune synth), so there are no sound files yet. Real samples and tracks can replace each entry later.
-- **Music:** title theme, station map theme, a moody exploration theme, a fast battle theme (it changes key by location) and a heavier boss theme. Win and lose jingles at the end of a fight.
-- The battle music speeds up a little when your stack gets tall.
-- **Sound effects:** menu blips, typing blips when NPCs talk (each NPC has its own pitch), footsteps through doors, move/rotate/wall kick, lock, hard drop, hold, line clears (a bigger fanfare for 4 lines), incoming-garbage warning and garbage landing, top-out, card abilities, and every house rule (save state mark/jump, fold, interest/withdraw, slot reels and result, launch countdown ticks), plus the 3-2-1-GO start.
-- The CPU's sounds are quieter and panned to its side.
-- **Hard drop teleport:** the brick flashes white and shakes where it was while its landing spot does the same, with a zap sound. It's only a look; the brick still locks instantly.
-- Every card ability has its own sound (16), and every stage perk has one (mark, withdraw ka-ching, early fold warp, lever clunk and reels, launch ignition), plus a buzzer when a perk isn't ready.
-- Songs are longer (about 45-60 s before they loop, with verse, chorus and a breakdown). Win and lose are now short tunes (about 5-6 s), and the next screen's music waits for them to finish.
-- **Title menu → Sound:** ALL ON / MUSIC OFF / ALL OFF (remembered).
-- Browsers only allow sound after a tap or key press, so the title screen asks for one. A controller button alone doesn't count.
+Everything is in [`neogeo-cd/`](neogeo-cd/) and builds on every push (GitHub Actions, *Neo Geo CD build*):
 
-## New in v0.9 (Space Casino: all six house rules are in)
+- **SPACBRACK-BINCUE**: raw BIN/CUE for burning, the MiSTer or SD loaders
+- **SPACBRACK-NeoGeoCD**: NeoCore's ISO/WAV/CUE and a CHD for MAME
+- **SPACBRACK-screenshots**: screenshots of a scripted play-through on the PC test harness
 
-- **Card bet (Adventure):** at Space Casino you stake your equipped card against the opponent's. The NPC tells you the stakes before the fight. Win and your prize is their card instead of a random one; lose and your card is destroyed as usual.
-- **Pull the Lever perk** (perk button): spins a three-reel slot over your field. One spin per 10 lines, stackable.
-  - 7 7 7 **Jackpot** (30%): 3 garbage rows to the opponent.
-  - Cherries **Cherries** (45%): your bottom row is cleared (doesn't count toward 40).
-  - Skulls **Bust** (25%): 2 garbage rows to you (your clears can cancel them).
-- CPUs pull the lever when a spin is ready, more often when their stack is tall.
-- Versus "House rule" option now also has Pull the Lever (no card loss in Versus, so no bet).
-
-## New in v0.8 (Space Bank interest)
-
-- **Interest:** the garbage your clears make goes into your vault instead of being sent. The vault earns 1 row every 10 s, up to 10 rows.
-- The opponent's clears eat into your vault first, so a big balance can be lost.
-- **Withdraw perk** (perk button): sends your whole vault to the opponent as normal garbage. Free whenever the vault isn't empty.
-- Over each board: "VAULT n" with a bar filling toward the next interest row. It flashes white on a payout and red when the opponent eats into it.
-- CPUs withdraw around 5 rows (stronger ones wait for 6-7), at the cap, or early when your stack is tall.
-- Card-ability garbage is sent instantly, as usual.
-- Versus "House rule" option now also has Interest.
-
-## New in v0.7 (Fold Lab fold garbage)
-
-- **Fold garbage:** the garbage your clears make is held, not sent. Every 8 lines you clear (8, 16, 24, 32) it all folds over to the opponent and lands on their next brick placement.
-- Each clear is its own chunk and remembers the height it was cleared at. Inside the opponent's stack it overwrites those rows; above their stack it drops onto the top. Card garbage patterns keep their shape.
-- Folded rows can complete lines for the receiver. Those clear normally (they count and send garbage).
-- The receiver's controls lock for 0.7 s while the fold plays (rows flash green).
-- Your clears cancel garbage folding in to you first, then what the opponent is holding.
-- **Early Fold perk** (perk button): send your held garbage now. One charge per 10 lines, stackable. Not while a fold is already on its way. It does not reset the 8-line counter.
-- Over each board: "FOLD IN n  HELD n". Markers on the right edge show where incoming chunks will land (dim = still held by the opponent, blinking red = landing next placement).
-- CPUs use Early Fold when they've banked a few rows or your stack is tall.
-- Versus "House rule" option now also has Fold Garbage.
-
-## New in v0.6 (Chrono Station save states)
-
-- **Save states:** at 10 lines you can start marking your field. Tap the perk button to mark (a new mark replaces the old one), hold it to jump back to the mark. Each mark is one use: it disappears after the jump.
-- Jumps are earned at 10, 20 and 30 lines (so the first 10 lines give you both marking and a jump), and unused jumps stack.
-- A jump brings the field back exactly as it was when marked and wipes all garbage waiting to come in. The brick in hand, the held brick and your line count stay, so farming lines is allowed.
-- The marked field shows as a faint "photo" in the corner of your board, and the line above the board shows your jumps.
-- CPUs use it: they mark a clean, low field and jump back when their stack gets tall or messy.
-- Versus "House rule" option now also has Save States.
-
-## New in v0.5 (Launch Complex house rule + perk)
-
-- **Countdown race, garbage off:** no garbage is sent in Launch Complex fights. There's a time limit of 1.5x the time the CPU needs to clear 40 lines (about 9 min vs the weakest crew, 4.5 min vs the strongest). When time runs out, more lines wins; a tie goes to sudden death (next line wins).
-- **Launch Countdown perk** (perk button: LT/LB, keyboard S): only while you're ahead, once per match. A 10-count starts; if you're still ahead when it ends, you win. It breaks if you clear a line or the opponent catches up.
-- The clock counts down in the centre, the count shows as "LAUNCH IN 9...", and a hint above your board tells you when the perk is ready.
-- CPUs use the countdown too. Weak CPUs wait for a 3-line lead and are slow to use it; strong ones go at 2 lines.
-- Versus has a new "House rule" option to play with Launch Countdown.
-- Card abilities that send garbage do nothing under this rule; their other effects still work.
-
-## New in v0.4 (CPU difficulty)
-
-- CPU opponents now have 8 levels instead of 5, and the low ones are much gentler: they think longer, move slower and pause before dropping.
-- CPU mistakes are now small slips, and CPUs stop making them once their stack gets tall, so weak opponents no longer bury themselves.
-- Adventure strength follows your progress, not the location. Crew 1 is level 1, crew 2 is level 2 and the boss is level 3, plus 1 for every token you hold (top level 8). So whichever location you visit first is the easy one.
-- Measured solo time to clear 40 lines (no features): level 1 about 6 minutes, level 4 about 4.5, level 8 about 3.
-- Versus lets you pick CPU level 1 to 8 (default 4).
-
-## New in v0.3 (new exploration)
-
-- Over-the-shoulder exploration: the hero stands in the foreground with his back to you (flight jacket). Left/Right scrolls a wide panorama of the room.
-- Each location has two scenes: a Hall (two crew and the exit) and an Inner Room (the boss). A cue floats over whoever or whatever you're facing; press A to talk or go through a door. Going through a door plays a walk-forward animation.
-- Talking cuts to a full-screen face close-up with a typed line and a moving mouth, then Battle! / Not now.
-- The sector map is now a station cutaway with a cursor that moves between the six rooms.
-- All art is placeholder, sized to the Art Asset Guide (`art-tests/templates/`) so the pixel artist's files drop straight in.
-
-## New in v0.2 (playtest fixes)
-
-- Soft drop no longer jumps the brick to the floor (it was spending stored gravity time all at once).
-- Card abilities: 8-second shared recharge after any ability, and higher meter costs (supers cost the full meter).
-- "YOU GOT BRICKED UP!" only shows when your stack tops out. Losing the race shows "OUTRACED!".
-- Cards have pixel-art portraits and rank pips. They show beside each board, pop up over the field when an ability fires, and fill the Cards screen.
-- After a win, a "CARD GET!" screen flips over the card you won. After a top-out loss, the equipped card cracks.
-- Duplicate cards stack (up to 9) and show xN. The 6 slots count monster types. Losing destroys one copy.
-
-## What's in v0.1
-
-**Adventure**
-- A sector map with the 6 locations. Each one is a small walkable room with 2 crew NPCs and a boss.
-- Talk to an NPC (face them, press A) and agree to battle. Rematches are unlimited.
-- Each boss only fights you after both crew members have been beaten.
-- Beating a boss gives that location's token, and the token turns on its battle feature:
-
-| Location | Token | Feature |
-|---|---|---|
-| Launch Complex | Thrusters | Wall kicks |
-| Hologram Hall | Hologram | Ghost brick |
-| Fold Lab | Fold Drive | Hard drop |
-| Space Bank | Vault | Hold |
-| Chrono Station | Chrono Lens | Next-brick preview |
-| Space Casino | Lucky Seven | 7-bag randomizer, shown as a slot-reel HUD |
-
-- You start with none of the features: pure random bricks, rotation without kicks, no hard drop, no hold, no preview.
-- Crew opponents have none of the features. Each boss has only the one feature its token unlocks (e.g. the Fold Lab boss can hard drop, on about 1 brick in 4). The exception is Past You (Chrono Station boss), which carries whatever features you have.
-- Cards:
-  - Every win gives a random monster card, and your win score becomes XP for the equipped card.
-  - XP raises the card's rank, and each rank unlocks one more ability.
-  - Losing an Adventure fight destroys the equipped card. Its XP is kept for that monster.
-  - The Cadet Badge starter card can't be lost.
-  - Duplicates stack (up to 9 copies). The inventory holds 6 different monsters; a 7th means tossing a stack.
-- "Past You" (Chrono Station boss) currently mirrors your current card and features. The "previous visit" snapshot isn't in yet.
-- Progress saves in the browser.
-
-**Battles**
-- Two boards. First to 40 lines wins, or the other player tops out.
-- Garbage: 2/3/4 lines send 1/2/4. Your clears cancel incoming garbage first. The red bar beside the board shows what's incoming.
-- Each card's garbage has its own look: standard, rib gaps, claw slashes or stairs.
-- Card abilities:
-  - Hold the card button, hold a direction, then release the card button to fire.
-  - Other buttons cancel.
-  - Line clears fill the meter, and abilities spend it.
-- Direction roles follow the open proposal: left = attack (R2), right = defense (R3), down = timed (R4), up = super (R5).
-- CPU opponents have 8 difficulty levels and use their card abilities too.
-
-**Versus**
-- Vs CPU or local 2P. Every feature can be switched on or off, and you pick each player's card and rank.
-- Cards are never lost in Versus.
-
-## Not in yet (next steps)
-
-- Full ability sets per monster. The four cards here (Cyclops, Skeleton, Werewolf, Giant Bat) use placeholder sets built from the concept's idea list.
-- Online versus, real sound/music (placeholders are in), and art beyond the placeholder look.
-- Ports: Original Xbox (nxdk) and Neo Geo need a C rewrite of `board.js` and `ai.js`. Those two files have no browser code, so they can serve as the reference version.
-
-## Controls
-
-| Action | Controller | Keyboard P1 | Keyboard P2 |
-|---|---|---|---|
-| Move / soft drop | D-pad / left stick | Arrows | J L K |
-| Rotate CW / CCW | A / B | X / Z | O / U |
-| Hard drop | X | Space | N |
-| Hold | Y | C / Shift | M |
-| Card ability (unique card: its perk) | RT (or RB) | A | P |
-| Stage perk | LT (or LB) | S | ; |
-| Pause / cards menu | Start | Esc | \ |
-| Menu OK / back | A / B | Enter / Backspace | |
-| Explore: look around / talk or enter / map | Left-Right / A / B | Arrows / Enter / Backspace | |
-
-In local 2P, controller 1 plays P1 and controller 2 plays P2.
-
-## Code layout
-
-```
-index.html      canvas + script tags
-js/gfx.js       pixel renderer: fonts, bricks, panels, LEDs, sprites
-js/scenes.js    placeholder explore art: panoramas, hero, NPCs, close-ups, station map
-js/data.js      bricks, kicks, cards, locations, game title
-js/board.js     one player's board rules (no browser code)
-js/ai.js        CPU opponent (no browser code)
-js/input.js     keyboard + gamepad mapping
-js/battle.js    match flow + battle drawing
-js/main.js      screens, save data, main loop
-docs/concept.md design doc
-```
+See [`neogeo-cd/README.md`](neogeo-cd/README.md) for the code layout, art, audio and how to build on your own PC.

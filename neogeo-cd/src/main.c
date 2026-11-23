@@ -1,0 +1,1315 @@
+/*
+ * SPACBRACK - brick race for the Neo Geo CD.
+ *
+ * Only the falling-brick game from the SPACBRACK prototype: no story, no
+ * exploration.  Modes:
+ *   Marathon  150 lines, levels speed up every 10, high score
+ *   Sprint    40 lines as fast as you can, best time
+ *   Versus    vs CPU (levels 1-8) or vs 2P, garbage, last one standing
+ *   Survival  vs a line of CPUs: each one you top out is replaced by a
+ *             tougher one while your board keeps going; score = KOs
+ *
+ * Two boards side by side like Calm Combo.  In Marathon or Sprint a second
+ * player can press Start at any time and choose PLAY SOLO (their own game on
+ * the other board) or CHALLENGE (both boards switch to a fresh Versus).  In
+ * Versus or Survival against the CPU, 2P's Start takes the CPU's place in a
+ * new Versus match.
+ *
+ * Drawing: the boards, panels and all text are on the fix layer (8x8 tiles:
+ * one brick = one tile, recoloured per palette), written through a shadow
+ * copy so only changed tiles go out (fx_put / fx_flush).  The backdrop is
+ * one sprite picture whose floor grid scrolls by palette cycling, and the
+ * big chrome letters (logo, countdown, PAUSED) are sprites.
+ *
+ * Strict C89: gcc 2.95, no // comments, declarations at the top of blocks.
+ */
+#include <neocore.h>
+#include <DATlib.h>
+#include <input.h>
+#include "externs.h"
+#include "rules.h"
+#include "cpu.h"
+#include "sound.h"
+#include "save.h"
+#include "art_keys.h"
+
+/* the PC harness can let a CPU play a human's board (test/frontend.c) */
+#ifndef HARNESS_BOT
+#define HARNESS_BOT(s) 0
+#endif
+
+/* ---------- layout (fix columns / screen rows; fix row = screen row + 2) ---------- */
+#define FIX_COLS   40
+#define FIX_ROWS   28
+#define FIELD_ROW  4                 /* field rows 4..23 (pixel y 32..191) */
+static const BYTE FIELD_COL[2] = { 6, 24 };
+static const BYTE PANEL_COL[2] = { 1, 35 };
+#define CENTER_COL 17                /* centre console, 6 columns */
+#define HOLD_ROW   4
+#define NEXT_ROW   8
+#define STAT_ROW   25
+
+/* fix palettes */
+#define PAL_GARB   9
+#define PAL_GREY   9
+#define PAL_WHITE  10
+#define PAL_AMBER  11
+#define PAL_GREEN  12
+#define PAL_BEIGE  13
+#define PAL_STEEL  14
+#define PAL_BLUE   15
+#define PAL_RED    8
+#define PAL_YELLOW 4
+#define PAL_CYAN   3
+#define PAL_PINK   2
+#define PAL_ORANGE 5
+#define PAL_LIME   7
+#define PAL_VIOLET 6
+#define PAL_OF(t)  ((BYTE)((t) + 1))  /* brick type -> palette (I=2 .. Z=8, garbage=9) */
+
+#define FIXBANK    0x300
+#define BLANK      ((WORD)(FIXBANK | ' '))
+
+/* sprite palettes and numbers */
+#define SPR_PAL_BG    16
+#define SPR_PAL_GLYPH 24
+#define SPR_BG        1              /* 20 sprites */
+#define SPR_G0        64             /* chrome letters: 2 sprites each */
+#define G_SLOTS       40             /* sprites in the chrome pool */
+#define GS_LOGO       0              /* 18 sprites */
+
+/* timings (frames) */
+#define COUNT_FRAMES  120
+#define GO_FRAMES     30
+#define CALL_FRAMES   80
+#define SURV_RESPAWN  70
+
+enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME };
+enum { M_MARATHON, M_SPRINT, M_VS, M_SURV };
+enum { R_NONE, R_CLEAR, R_TOPOUT, R_WIN, R_LOSE, R_DRAW };
+enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_OPTIONS };
+enum { MENU_MARATHON, MENU_SPRINT, MENU_VS, MENU_SURV, MENU_RECORDS, MENU_OPTIONS, MENU_N };
+
+typedef struct {
+    BYTE    i;
+    BYTE    state;
+    BYTE    cpu_on;
+    tt_board b;
+    tt_cpu  cpu;
+    WORD    count_t, go_t;
+    DWORD   time;                    /* frames played */
+    BYTE    result;
+    BYTE    ask_sel;
+    /* input */
+    BYTE    prev, das_dir, das_t, arr_t;
+    /* effects */
+    char    call1[13], call2[13];
+    WORD    call_t;
+    BYTE    trail_t, flash_t;
+    BYTE    tr_type, tr_rot;
+    signed char tr_x, tr_y0, tr_y1;
+    /* records */
+    signed char rank;
+    char    name[4];
+    BYTE    name_pos;
+    BYTE    wins;
+} Side;
+
+static Side  side[2];
+static BYTE  screen = SCR_TITLE, mode = M_MARATHON, paused = 0;
+static BYTE  menu_sel = 0, cpu_level = 4, track_on = 0;
+static BYTE  opt_player = 0, opt_sel = 0, save_rec_due = 0, save_opt_due = 0;
+static BYTE  surv_human = 0;
+static WORD  surv_kos = 0, surv_wait = 0;
+static DWORD frames = 0, seed_mix = 0x1234567UL, vs_time = 0;
+static picture bg;
+
+/* ======================================================================
+ * colours
+ * ==================================================================== */
+static WORD ng5(WORD r, WORD g, WORD b)
+{
+    return (WORD)(((r & 1) << 14) | ((g & 1) << 13) | ((b & 1) << 12) |
+                  ((r >> 1) << 8) | ((g >> 1) << 4) | (b >> 1));
+}
+static WORD ng8(const unsigned char *c) { return ng5((WORD)(c[0] >> 3), (WORD)(c[1] >> 3), (WORD)(c[2] >> 3)); }
+static WORD ch_r(WORD w) { return (WORD)(((w >> 7) & 0x1e) | ((w >> 14) & 1)); }
+static WORD ch_g(WORD w) { return (WORD)(((w >> 3) & 0x1e) | ((w >> 13) & 1)); }
+static WORD ch_b(WORD w) { return (WORD)(((w << 1) & 0x1e) | ((w >> 12) & 1)); }
+
+/* is palette word w the 8-bit colour c (compared at 5 bits)? */
+static int same5(WORD w, const unsigned char *c)
+{
+    return ch_r(w) == (c[0] >> 3) && ch_g(w) == (c[1] >> 3) && ch_b(w) == (c[2] >> 3);
+}
+
+static WORD fixpal[16 * 16];
+
+static int adiff(int a, int b) { return a > b ? a - b : b - a; }
+
+/*
+ * tiles.png is painted in "role" colours.  Whatever slot the converter gave
+ * each role, find it, then build the 14 palettes by role (art_keys.h).
+ */
+static void load_fix_palettes(void)
+{
+    BYTE role[16];
+    int k, r, p, best, d, bd;
+    WORD w;
+    role[0] = 0;
+    for (k = 1; k < 16; k++) {
+        w = tt_fix_Palettes.data[k];
+        best = 7; bd = 999;
+        for (r = 1; r < 16; r++) {
+            d = adiff(ch_r(w), ROLE_REF[r][0] >> 3) + adiff(ch_g(w), ROLE_REF[r][1] >> 3) + adiff(ch_b(w), ROLE_REF[r][2] >> 3);
+            if (d < bd) { bd = d; best = r; }
+        }
+        role[k] = (BYTE)best;
+    }
+    for (p = 2; p < 16; p++) {
+        fixpal[p * 16] = 0;
+        for (k = 1; k < 16; k++) fixpal[p * 16 + k] = ng8(FIX_PAL_RGB[p][role[k]]);
+    }
+    palJobPut(2, 14, &fixpal[32]);
+}
+
+/* ---------- backdrop: floor lines scroll by palette cycling ---------- */
+static WORD bgpal[16 * 4];
+static BYTE bg_npal;
+static BYTE bg_phase_at[BG_NPHASE][4], bg_phase_n[BG_NPHASE];
+static BYTE bg_vline_at[4], bg_vline_n;
+static WORD bg_floor, bg_line, bg_phase;
+static const unsigned char ACCENT[5][3] = {
+    { 157, 77, 255 }, { 47, 224, 255 }, { 255, 138, 30 }, { 255, 63, 164 }, { 166, 255, 58 }
+};
+static BYTE accent_now = 0;
+
+static void bg_boot(void)
+{
+    int k, j;
+    bg_npal = (BYTE)tt_bg_Palettes.count;
+    if (bg_npal > 4) bg_npal = 4;
+    for (k = 0; k < bg_npal * 16; k++) bgpal[k] = tt_bg_Palettes.data[k];
+    for (j = 0; j < BG_NPHASE; j++) bg_phase_n[j] = 0;
+    bg_vline_n = 0;
+    for (k = 0; k < bg_npal * 16; k++) {
+        if (!(k & 15)) continue;
+        for (j = 0; j < BG_NPHASE; j++)
+            if (same5(bgpal[k], BG_PHASE_KEY[j]) && bg_phase_n[j] < 4) bg_phase_at[j][bg_phase_n[j]++] = (BYTE)k;
+        if (same5(bgpal[k], BG_VLINE_KEY) && bg_vline_n < 4) bg_vline_at[bg_vline_n++] = (BYTE)k;
+    }
+    bg_floor = ng8(BG_FLOOR_KEY);
+}
+
+/* accent colour of the floor grid (title violet, marathon cyan, ...) */
+static void bg_accent(BYTE a)
+{
+    const unsigned char *c = ACCENT[a];
+    accent_now = a;
+    /* web: G.shade(accent, -0.35) */
+    bg_line = ng5((WORD)((c[0] * 65 / 100) >> 3), (WORD)((c[1] * 65 / 100) >> 3), (WORD)((c[2] * 65 / 100) >> 3));
+}
+
+static void bg_tick(void)
+{
+    int j, k;
+    if (frames % 10) return;
+    bg_phase = (WORD)((bg_phase + 1) % BG_NPHASE);
+    for (j = 0; j < BG_NPHASE; j++)
+        for (k = 0; k < bg_phase_n[j]; k++) bgpal[bg_phase_at[j][k]] = j == bg_phase ? bg_line : bg_floor;
+    for (k = 0; k < bg_vline_n; k++) bgpal[bg_vline_at[k]] = bg_line;
+    palJobPut(SPR_PAL_BG, bg_npal, bgpal);
+}
+
+static void resend_static_palettes(void)
+{
+    palJobPut(2, 14, &fixpal[32]);
+    palJobPut(SPR_PAL_GLYPH, tt_glyphs_Palettes.count, tt_glyphs_Palettes.data);
+}
+
+/* ======================================================================
+ * fix layer through a shadow copy
+ * ==================================================================== */
+#define FX_N      (FIX_COLS * 32)
+#define FX_BUDGET 600
+static WORD fx_want[FX_N], fx_sent[FX_N], fx_list[FX_N];
+static BYTE fx_dirty[FX_N];
+static WORD fx_n;
+
+static void fx_put(int x, int y, WORD w)
+{
+    WORD i;
+    if (x < 0 || x >= FIX_COLS || y < 0 || y >= FIX_ROWS) return;
+    i = (WORD)((x << 5) + y + 2);
+    if (fx_want[i] == w) return;
+    fx_want[i] = w;
+    if (!fx_dirty[i]) { fx_dirty[i] = 1; fx_list[fx_n++] = i; }
+}
+
+static void fx_flush(void)
+{
+    WORD k, n = fx_n > FX_BUDGET ? FX_BUDGET : fx_n, i;
+    for (k = 0; k < n; k++) {
+        i = fx_list[k];
+        fx_dirty[i] = 0;
+        if (fx_sent[i] != fx_want[i]) {
+            SC234Put(0x7000 + i, fx_want[i]);
+            fx_sent[i] = fx_want[i];
+        }
+    }
+    for (k = n; k < fx_n; k++) fx_list[k - n] = fx_list[k];
+    fx_n = (WORD)(fx_n - n);
+}
+
+static void fx_boot(void)
+{
+    WORD i;
+    for (i = 0; i < FX_N; i++) { fx_want[i] = 0xffff; fx_sent[i] = 0xffff; fx_dirty[i] = 0; }
+    fx_n = 0;
+}
+
+static WORD tw(BYTE pal, WORD tile) { return (WORD)(((WORD)pal << 12) | FIXBANK | tile); }
+
+static void fill(int x, int y, int w, int h, WORD word)
+{
+    int i, j;
+    for (j = 0; j < h; j++) for (i = 0; i < w; i++) fx_put(x + i, y + j, word);
+}
+
+static void cls(void) { fill(0, 0, FIX_COLS, FIX_ROWS, BLANK); }
+
+static void txt(int x, int y, BYTE pal, const char *s)
+{
+    char c;
+    while ((c = *s++) != 0) {
+        if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+        if (c < 32 || c > 95) c = '?';
+        fx_put(x++, y, tw(pal, (WORD)c));
+    }
+}
+
+static void str_cpy(char *d, const char *s) { while ((*d++ = *s++) != 0) ; }
+
+static int slen(const char *s) { int n = 0; while (s[n]) n++; return n; }
+
+static void txt_c(int cx, int w, int y, BYTE pal, const char *s)   /* centred in w columns from cx */
+{
+    txt(cx + (w - slen(s)) / 2, y, pal, s);
+}
+
+/* LED digits with dim 8s behind them */
+static void led(int x, int y, BYTE pal, const char *s)
+{
+    char c;
+    WORD t;
+    while ((c = *s++) != 0) {
+        if (c >= '0' && c <= '9') t = (WORD)(T_LED + c - '0');
+        else if (c == ':') t = T_LED + 10;
+        else if (c == '.') t = T_LED + 11;
+        else if (c == '-') t = T_LED + 12;
+        else t = T_LED + 13;
+        fx_put(x++, y, tw(pal, t));
+    }
+}
+
+static char nb[16];
+
+static const char *num(DWORD v, int width, char pad)
+{
+    int k;
+    nb[width] = 0;
+    for (k = width - 1; k >= 0; k--) {
+        nb[k] = (v || k == width - 1) ? (char)('0' + (int)(v % 10)) : pad;
+        v /= 10;
+    }
+    return nb;
+}
+
+/* frames -> "M:SS.CC" (cent = 1) or "M:SS.T" or "M:SS" */
+static const char *fmt_time(DWORD f, int dec)
+{
+    DWORD s = f / 60, m = s / 60, cs = (f % 60) * 100 / 60;
+    int k = 0;
+    if (m > 99) m = 99;
+    if (m >= 10) nb[k++] = (char)('0' + m / 10);
+    nb[k++] = (char)('0' + m % 10);
+    nb[k++] = ':';
+    nb[k++] = (char)('0' + (s % 60) / 10);
+    nb[k++] = (char)('0' + s % 10);
+    if (dec >= 1) { nb[k++] = '.'; nb[k++] = (char)('0' + cs / 10); }
+    if (dec >= 2) nb[k++] = (char)('0' + cs % 10);
+    nb[k] = 0;
+    return nb;
+}
+
+/* ======================================================================
+ * chrome letter sprites (logo, countdown, PAUSED)
+ * ==================================================================== */
+static WORD gs_y[G_SLOTS], gs_x[G_SLOTS], gs_col[G_SLOTS];
+
+static void gs_boot(void)
+{
+    int k;
+    for (k = 0; k < G_SLOTS; k++) {
+        gs_y[k] = 0; gs_x[k] = 0xffff; gs_col[k] = 0xffff;
+        SC234Put(VRAM_SHRINK_ADDR(SPR_G0 + k), 0xfff);
+        SC234Put(VRAM_POSY_ADDR(SPR_G0 + k), VRAM_POSY(224, SPR_UNLINK, 0));
+    }
+}
+
+static void gs_hide(int k)
+{
+    if (!gs_y[k]) return;
+    SC234Put(VRAM_POSY_ADDR(SPR_G0 + k), VRAM_POSY(224, SPR_UNLINK, 0));
+    gs_y[k] = 0;
+}
+
+/* sprite k shows column col (0..) of glyphs.png, 2 tiles tall, at (x, y) */
+static void gs_show(int k, short x, short y, int col)
+{
+    WORD s = (WORD)(SPR_G0 + k), v;
+    const ushort *m = tt_glyphs.maps[0] + col * tt_glyphs.tileHeight * 2;
+    v = (WORD)VRAM_POSY(y, SPR_UNLINK, 2);
+    if (gs_y[k] != v) { SC234Put(VRAM_POSY_ADDR(s), v); gs_y[k] = v; }
+    v = (WORD)VRAM_POSX(x & 0x1ff);
+    if (gs_x[k] != v) { SC234Put(VRAM_POSX_ADDR(s), v); gs_x[k] = v; }
+    if (gs_col[k] != col) {
+        SC234Put(VRAM_SPR_ADDR(s), m[0]);
+        SC234Put(VRAM_SPR_ADDR(s) + 1, (WORD)(m[1] + (SPR_PAL_GLYPH << 8)));
+        SC234Put(VRAM_SPR_ADDR(s) + 2, m[2]);
+        SC234Put(VRAM_SPR_ADDR(s) + 3, (WORD)(m[3] + (SPR_PAL_GLYPH << 8)));
+        gs_col[k] = (WORD)col;
+    }
+}
+
+/* a word in chrome letters from slot k (2 sprites per letter), letters 24 px apart */
+static void gs_word(int k, short x, short y, const char *s, int maxlen)
+{
+    static const char *G = GLYPHS;
+    int n = 0, g;
+    for (; *s && n < maxlen; s++, n++) {
+        for (g = 0; G[g] && G[g] != *s; g++) ;
+        if (!G[g]) { gs_hide(k + n * 2); gs_hide(k + n * 2 + 1); continue; }
+        gs_show(k + n * 2, (short)(x + n * 24), y, g * 2);
+        gs_show(k + n * 2 + 1, (short)(x + n * 24 + 16), y, g * 2 + 1);
+    }
+    for (; n < maxlen; n++) { gs_hide(k + n * 2); gs_hide(k + n * 2 + 1); }
+}
+
+static void gs_clear(int k, int n) { while (n--) gs_hide(k++); }
+
+/* big letters on the fix layer (2x2 tiles each): the fix layer is drawn over
+   every sprite, so anything shown over a board has to live there */
+static void big(int x, int y, BYTE pal, const char *s)
+{
+    static const char *B = BIGCHARS;
+    int g;
+    for (; *s; s++, x += 2) {
+        for (g = 0; B[g] && B[g] != *s; g++) ;
+        if (!B[g]) continue;
+        fx_put(x, y, tw(pal, (WORD)(T_BIG + g * 4)));
+        fx_put(x + 1, y, tw(pal, (WORD)(T_BIG + g * 4 + 1)));
+        fx_put(x, y + 1, tw(pal, (WORD)(T_BIG + g * 4 + 2)));
+        fx_put(x + 1, y + 1, tw(pal, (WORD)(T_BIG + g * 4 + 3)));
+    }
+}
+
+/* ======================================================================
+ * sound and music
+ * ==================================================================== */
+static BYTE pan_of(Side *s)
+{
+    if (screen != SCR_GAME || side[0].state == S_OFF || side[1].state == S_OFF) return SND_CENTRE;
+    return s->i ? SND_RIGHT : SND_LEFT;
+}
+
+static void sfx(Side *s, BYTE id) { snd_play(id, s ? pan_of(s) : SND_CENTRE); }
+
+/* CD tracks: 2 title, 3 marathon, 4 sprint, 5 versus, 6 survival */
+static void music(BYTE track)
+{
+    if (!opt_music) { if (track_on) music_pause(); track_on = 0; return; }
+    if (track == track_on) return;
+    track_on = track;
+    music_play(track);
+}
+
+static BYTE mode_track(void) { return (BYTE)(3 + mode); }
+
+/* ======================================================================
+ * boards
+ * ==================================================================== */
+static DWORD fresh_seed(void)
+{
+    seed_mix = seed_mix * 1103515245UL + 12345UL + frames;
+    return seed_mix ^ (frames << 16);
+}
+
+static Side *other(Side *s) { return &side[s->i ^ 1]; }
+
+static void say(Side *s, const char *a, const char *b)
+{
+    int k;
+    for (k = 0; k < 12 && a[k]; k++) s->call1[k] = a[k];
+    s->call1[k] = 0;
+    for (k = 0; k < 12 && b[k]; k++) s->call2[k] = b[k];
+    s->call2[k] = 0;
+    s->call_t = CALL_FRAMES;
+}
+
+static void begin_side(Side *s, DWORD seed, WORD count)
+{
+    tt_u16 goal = mode == M_MARATHON ? 150 : mode == M_SPRINT ? 40 : 0;
+    tt_init(&s->b, seed, 1, goal, (tt_u8)(mode == M_MARATHON), (tt_u8)(mode >= M_VS));
+    s->b.clear_delay = opt_clear;
+    s->b.sonic = (tt_u8)(s->cpu_on ? 0 : pad_cfg[s->i].sonic);
+    s->state = S_COUNT;
+    s->count_t = count;
+    s->go_t = 0;
+    s->time = 0;
+    s->result = R_NONE;
+    s->call_t = 0;
+    s->trail_t = s->flash_t = 0;
+    s->das_dir = 0;
+    s->rank = -1;
+    if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? (tt_u8)(1 + surv_kos / 2 > 8 ? 8 : 1 + surv_kos / 2) : cpu_level, fresh_seed());
+}
+
+/* both boards, same bricks: a fresh Versus or Survival match */
+static void begin_match(void)
+{
+    DWORD seed = fresh_seed();
+    vs_time = 0;
+    surv_kos = 0;
+    surv_wait = 0;
+    begin_side(&side[0], seed, COUNT_FRAMES);
+    begin_side(&side[1], seed, COUNT_FRAMES);
+}
+
+static void draw_static(void);
+
+static void start_game(BYTE m, BYTE p)
+{
+    int k;
+    mode = m;
+    screen = SCR_GAME;
+    paused = 0;
+    gs_clear(GS_LOGO, 18);
+    cls();
+    for (k = 0; k < 2; k++) {
+        Side *s = &side[k];
+        s->i = (BYTE)k;
+        s->state = S_OFF;
+        s->cpu_on = 0;
+        s->wins = 0;
+        s->prev = 0xff;              /* the button that started the game is not a move */
+        s->call_t = 0;
+    }
+    bg_accent((BYTE)(1 + (m > 3 ? 3 : m)));
+    if (m == M_VS || m == M_SURV) {
+        side[p ^ 1].cpu_on = 1;
+        surv_human = p;
+        begin_match();
+    } else begin_side(&side[p], fresh_seed(), COUNT_FRAMES);
+    draw_static();
+    music(mode_track());
+}
+
+static void to_title(void)
+{
+    screen = SCR_TITLE;
+    paused = 0;
+    gs_clear(0, G_SLOTS);
+    cls();
+    bg_accent(0);
+    music(2);
+}
+
+/* ---------- input during play ---------- */
+static BYTE btn_bit(BYTE b) { return (BYTE)(b < 4 ? (JOY_A << b) : 0); }
+
+static void side_input(Side *s, BYTE cur, BYTE live)
+{
+    PadCfg *c = &pad_cfg[s->i];
+    tt_board *b = &s->b;
+    BYTE edge = (BYTE)(cur & ~s->prev);
+    BYTE l = (BYTE)(cur & JOY_LEFT), r = (BYTE)(cur & JOY_RIGHT);
+    int dir;
+    s->prev = cur;
+    if (live) {
+        if (edge & btn_bit(c->btn[ACT_HOLD])) tt_hold(b);
+        if (edge & btn_bit(c->btn[ACT_ROT_L])) tt_rotate(b, -1);
+        if (edge & btn_bit(c->btn[ACT_ROT_R])) tt_rotate(b, 1);
+    }
+    /* DAS / ARR (charges during the countdown and line clears too) */
+    if (edge & JOY_LEFT) { s->das_dir = 1; s->das_t = 0; if (live) tt_move(b, -1); }
+    else if (edge & JOY_RIGHT) { s->das_dir = 2; s->das_t = 0; if (live) tt_move(b, 1); }
+    else if ((s->das_dir == 1 && !l) || (s->das_dir == 2 && !r)) {
+        s->das_dir = (BYTE)(l ? 1 : r ? 2 : 0);
+        s->das_t = 0;
+    } else if (s->das_dir) {
+        dir = s->das_dir == 1 ? -1 : 1;
+        if (s->das_t < c->das) s->das_t++;
+        if (s->das_t >= c->das && live) {
+            if (!c->arr) { while (tt_move(b, dir)) ; }
+            else if (s->das_t == c->das) { s->das_t++; s->arr_t = 0; tt_move(b, dir); }
+            else if (++s->arr_t >= c->arr) { s->arr_t = 0; tt_move(b, dir); }
+        }
+    }
+    b->soft = (tt_u8)(live && (cur & JOY_DOWN) != 0);
+    if (live && ((edge & btn_bit(c->btn[ACT_HARD])) || (c->up_drop && (edge & JOY_UP)))) tt_hard_drop(b);
+}
+
+/* ---------- what happened this frame: sounds and callouts ---------- */
+static const char *LINE_NAME[5] = { "", "SINGLE", "DOUBLE", "TRIPLE", "QUAD!" };
+
+static void side_events(Side *s)
+{
+    tt_board *b = &s->b;
+    WORD ev = b->ev;
+    char a[13], c[13];
+    int k = 0, j;
+    const char *p;
+    if (!ev) return;
+    if ((ev & TT_EV_MOVE) && !s->cpu_on) sfx(s, SND_MOVE);
+    if (ev & TT_EV_ROTATE) sfx(s, (ev & TT_EV_KICK) ? SND_KICK : SND_ROTATE);
+    if (ev & TT_EV_HOLD) sfx(s, SND_HOLD);
+    if (ev & TT_EV_HARD) {
+        s->trail_t = 8;
+        s->tr_type = b->hd_type; s->tr_rot = b->hd_rot;
+        s->tr_x = b->hd_x; s->tr_y0 = b->hd_y0; s->tr_y1 = b->hd_y1;
+        sfx(s, SND_HARD);
+    } else if (ev & TT_EV_LOCK) sfx(s, SND_LOCK);
+    if (ev & TT_EV_LOCK) s->flash_t = 4;
+    if (ev & (TT_EV_CLEAR | TT_EV_SPIN)) {
+        /* first line: B2B / T-SPIN / MINI T-SPIN; second: SINGLE.. QUAD! and the combo */
+        if (b->last_b2b) { a[k++] = 'B'; a[k++] = '2'; a[k++] = 'B'; a[k++] = ' '; }
+        p = b->last_spin == TT_SPIN_FULL ? "T-SPIN" : b->last_spin == TT_SPIN_MINI ? "MINI T-SPIN" : "";
+        while (*p && k < 12) a[k++] = *p++;
+        a[k] = 0;
+        p = LINE_NAME[b->last_lines];
+        for (j = 0; *p && j < 12; ) c[j++] = *p++;
+        if (b->last_combo > 0 && j < 9) {
+            c[j++] = ' '; c[j++] = 'X';
+            if (b->last_combo + 1 >= 10) c[j++] = (char)('0' + (b->last_combo + 1) / 10);
+            c[j++] = (char)('0' + (b->last_combo + 1) % 10);
+        }
+        c[j] = 0;
+        if (b->last_pc) say(s, "ALL CLEAR!", c);
+        else say(s, a, c);
+        if (b->last_spin && b->last_lines) sfx(s, SND_TSPIN);
+        else if (b->last_lines) sfx(s, (BYTE)(SND_CLEAR1 + b->last_lines - 1));
+        else sfx(s, SND_TSPIN);
+        if (b->last_combo > 0) sfx(s, SND_COMBO);
+    }
+    if (ev & TT_EV_LEVEL) { say(s, "LEVEL UP", num(b->level, 2, '0')); sfx(s, SND_LEVEL); }
+    if (ev & TT_EV_GARBAGE) sfx(s, SND_GARBAGE);
+    if (ev & TT_EV_TOPOUT) sfx(s, SND_TOPOUT);
+}
+
+/* ---------- results ---------- */
+static void side_finish(Side *s, BYTE result)
+{
+    s->state = S_DONE;
+    s->result = result;
+    s->b.active = 0;
+    s->rank = -1;
+    if (s->cpu_on) return;
+    if (mode == M_MARATHON) s->rank = (signed char)mar_rank(s->b.score);
+    else if (mode == M_SPRINT && result == R_CLEAR) s->rank = (signed char)spr_rank(s->time);
+    else if (mode == M_SURV) s->rank = (signed char)srv_rank(surv_kos);
+    if (s->rank >= 0) {
+        s->state = S_NAME;
+        s->name[0] = 'A'; s->name[1] = 'A'; s->name[2] = 'A'; s->name[3] = 0;
+        s->name_pos = 0;
+    }
+    sfx(s, (BYTE)(result == R_TOPOUT || result == R_LOSE ? SND_TOPOUT : SND_GO));
+}
+
+/* ======================================================================
+ * drawing
+ * ==================================================================== */
+static void draw_bezel(int fc)
+{
+    int y;
+    fx_put(fc - 1, FIELD_ROW - 1, tw(PAL_WHITE, T_BEZ + 0));
+    fill(fc, FIELD_ROW - 1, 10, 1, tw(PAL_WHITE, T_BEZ + 1));
+    fx_put(fc + 10, FIELD_ROW - 1, tw(PAL_WHITE, T_BEZ + 2));
+    for (y = 0; y < 20; y++) {
+        fx_put(fc - 1, FIELD_ROW + y, tw(PAL_WHITE, T_BEZ + 3));
+        fx_put(fc + 10, FIELD_ROW + y, tw(PAL_WHITE, T_BEZ + 4));
+    }
+    fx_put(fc - 1, FIELD_ROW + 20, tw(PAL_WHITE, T_BEZ + 5));
+    fill(fc, FIELD_ROW + 20, 10, 1, tw(PAL_WHITE, T_BEZ + 6));
+    fx_put(fc + 10, FIELD_ROW + 20, tw(PAL_WHITE, T_BEZ + 7));
+}
+
+static void draw_static(void)
+{
+    int k;
+    for (k = 0; k < 2; k++) {
+        draw_bezel(FIELD_COL[k]);
+        txt(PANEL_COL[k], HOLD_ROW - 1, PAL_AMBER, "HOLD");
+        fill(PANEL_COL[k], HOLD_ROW, 4, 2, tw(PAL_WHITE, T_INSET));
+        txt(PANEL_COL[k], NEXT_ROW - 1, PAL_AMBER, "NEXT");
+        fill(PANEL_COL[k], NEXT_ROW, 4, 15, tw(PAL_WHITE, T_INSET));
+    }
+}
+
+/* a brick in a 4x2 box at (x, y): 3-wide bricks are shifted half a cell to sit centred */
+static void draw_mini(int x, int y, BYTE type, BYTE pal)
+{
+    int k, minx = 9, maxx = -1, miny = 9, cx, cy, w, t, r, lh, rh;
+    BYTE cell[2][4];
+    for (r = 0; r < 2; r++) for (t = 0; t < 4; t++) cell[r][t] = 0;
+    if (type) {
+        for (k = 0; k < 4; k++) {
+            cx = TT_SHAPE[type][0][k][0]; cy = TT_SHAPE[type][0][k][1];
+            if (cx < minx) minx = cx;
+            if (cx > maxx) maxx = cx;
+            if (cy < miny) miny = cy;
+        }
+        for (k = 0; k < 4; k++) {
+            cx = TT_SHAPE[type][0][k][0] - minx; cy = TT_SHAPE[type][0][k][1] - miny;
+            if (cy < 2 && cx < 4) cell[cy][cx] = 1;
+        }
+    }
+    w = type ? maxx - minx + 1 : 4;
+    for (r = 0; r < 2; r++)
+        for (t = 0; t < 4; t++) {
+            WORD tile = T_INSET;
+            if (w == 3) {
+                lh = t >= 1 && cell[r][t - 1];
+                rh = t <= 2 && cell[r][t];
+                tile = (WORD)(lh && rh ? T_HALF_LR : lh ? T_HALF_L : rh ? T_HALF_R : T_INSET);
+            } else if (w == 2) {
+                if (t >= 1 && t <= 2 && cell[r][t - 1]) tile = T_BRICK;
+            } else if (cell[r][t]) tile = T_BRICK;
+            fx_put(x + t, y + r, tw(pal, tile));
+        }
+}
+
+static void draw_field(Side *s)
+{
+    tt_board *b = &s->b;
+    int fc = FIELD_COL[s->i], x, y, k, gy = -1, cx, cy;
+    BYTE ghost[TT_ROWS][TT_COLS];
+    WORD wd;
+    if (paused) { fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK)); return; }
+    for (y = 0; y < TT_ROWS; y++) for (x = 0; x < TT_COLS; x++) ghost[y][x] = 0;
+    /* 1 ghost, 2 brick, 3 trail, 4 lock flash */
+    if (s->trail_t && s->state == S_PLAY)
+        for (k = 0; k < 4; k++) {
+            cx = s->tr_x + TT_SHAPE[s->tr_type][s->tr_rot][k][0];
+            for (y = s->tr_y0 + TT_SHAPE[s->tr_type][s->tr_rot][k][1]; y < s->tr_y1 + TT_SHAPE[s->tr_type][s->tr_rot][k][1]; y++)
+                if (y >= 0 && y < TT_ROWS && cx >= 0 && cx < TT_COLS) ghost[y][cx] = 3;
+        }
+    if (b->active && s->state == S_PLAY) {
+        if (opt_ghost) gy = tt_ghost_y(b);
+        for (k = 0; k < 4; k++) {
+            cx = b->x + TT_SHAPE[b->type][b->rot][k][0];
+            if (gy >= 0) { cy = gy + TT_SHAPE[b->type][b->rot][k][1]; if (cy >= 0) ghost[cy][cx] = 1; }
+        }
+        for (k = 0; k < 4; k++) {
+            cx = b->x + TT_SHAPE[b->type][b->rot][k][0];
+            cy = b->y + TT_SHAPE[b->type][b->rot][k][1];
+            if (cy >= 0) ghost[cy][cx] = 2;
+        }
+    }
+    if (s->flash_t) for (k = 0; k < 4; k++) ghost[b->lock_cells[k][1]][b->lock_cells[k][0]] = 4;
+    for (y = TT_HIDDEN; y < TT_ROWS; y++)
+        for (x = 0; x < TT_COLS; x++) {
+            BYTE c = b->grid[y][x], g = ghost[y][x];
+            if (b->clear_t && (b->clear_rows & (1UL << y)))
+                wd = (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : tw(PAL_OF(c ? c : TT_GARBAGE), T_BRICK);
+            else if (g == 2) wd = tw(PAL_OF(b->type), T_BRICK);
+            else if (g == 4 && c) wd = tw(PAL_WHITE, T_BRICK);
+            else if (c) wd = tw(PAL_OF(c), T_BRICK);
+            else if (g == 1) wd = tw(PAL_OF(b->type), T_GHOST);
+            else if (g == 3) wd = tw(PAL_OF(s->tr_type), (WORD)(T_TRAIL + (s->trail_t >> 2 & 1)));
+            else wd = tw(PAL_WHITE, T_EMPTY);
+            fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, wd);
+        }
+}
+
+/* incoming garbage bar in the left bezel: amber while it waits, flashing red when it can land */
+static void draw_gauge(Side *s)
+{
+    int fc = FIELD_COL[s->i], n = tt_pending(&s->b), ready = tt_pending_ready(&s->b), y;
+    BYTE hot = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_WHITE);
+    if (n > 20) n = 20;
+    if (ready > 20) ready = 20;
+    for (y = 0; y < 20; y++) {
+        int from_bottom = 19 - y;
+        WORD wd;
+        if (from_bottom < ready) wd = tw(hot, T_BEZ_GAUGE);
+        else if (from_bottom < n) wd = tw(PAL_AMBER, T_BEZ_GAUGE);
+        else wd = tw(PAL_WHITE, T_BEZ + 3);
+        fx_put(fc - 1, FIELD_ROW + y, wd);
+    }
+}
+
+static void banner(Side *s, int row, int h)
+{
+    fill(FIELD_COL[s->i], row, 10, h, tw(PAL_WHITE, T_BLACK));
+}
+
+static const char NAME_LETTERS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ .!";
+
+static void draw_overlay(Side *s)
+{
+    int fc = FIELD_COL[s->i];
+    const char *a = 0, *b2 = 0;
+    BYTE pa = PAL_WHITE;
+    if (paused) return;
+    switch (s->state) {
+    case S_OFF:
+        fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_EMPTY));
+        banner(s, 11, 4);
+        txt_c(fc, 10, 12, PAL_AMBER, s->i ? "2P" : "1P");
+        if ((frames >> 5) & 1) txt_c(fc, 10, 13, PAL_WHITE, "PRESS");
+        txt_c(fc, 10, 14, PAL_WHITE, "START");
+        return;
+    case S_ASK:
+        fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_EMPTY));
+        banner(s, 10, 6);
+        txt_c(fc, 10, 11, PAL_AMBER, s->i ? "2P JOINS" : "1P JOINS");
+        txt(fc, 13, s->ask_sel == 0 ? PAL_YELLOW : PAL_GREY, s->ask_sel == 0 ? ">SOLO" : " SOLO");
+        txt(fc, 14, s->ask_sel == 1 ? PAL_YELLOW : PAL_GREY, s->ask_sel == 1 ? ">VERSUS" : " VERSUS");
+        return;
+    case S_NAME:
+        banner(s, 9, 7);
+        txt_c(fc, 10, 10, PAL_YELLOW, "NEW RECORD");
+        txt_c(fc, 10, 11, PAL_WHITE, "NO.");
+        fx_put(fc + 6, 11, tw(PAL_WHITE, (WORD)('1' + s->rank)));
+        {
+            int k;
+            for (k = 0; k < 3; k++)
+                fx_put(fc + 3 + k * 2, 13, tw((BYTE)(k == s->name_pos && ((frames >> 3) & 1) ? PAL_WHITE : PAL_AMBER),
+                                              (WORD)s->name[k]));
+        }
+        txt_c(fc, 10, 15, PAL_STEEL, "A: NEXT");
+        return;
+    case S_DONE:
+        switch (s->result) {
+        case R_CLEAR:  a = "COMPLETE!"; pa = PAL_GREEN; break;
+        case R_TOPOUT: a = mode == M_SURV ? "GAME OVER" : "BRICKED UP"; pa = PAL_RED; break;
+        case R_WIN:    a = "WINNER!"; pa = PAL_YELLOW; break;
+        case R_LOSE:   a = "BRICKED UP"; pa = PAL_RED; break;
+        default:       a = "DRAW"; pa = PAL_WHITE; break;
+        }
+        banner(s, 10, 6);
+        txt_c(fc, 10, 11, pa, a);
+        if (mode == M_SPRINT && s->result == R_CLEAR) b2 = fmt_time(s->time, 2);
+        else if (mode == M_MARATHON) b2 = num(s->b.score, 7, ' ');
+        else if (mode == M_SURV) { txt_c(fc, 10, 12, PAL_WHITE, "KOS"); b2 = num(surv_kos, 3, ' '); }
+        if (b2) { fill(fc, 13, 10, 1, tw(PAL_WHITE, T_BLACK)); led(fc + (10 - slen(b2)) / 2, 13, PAL_GREEN, b2); }
+        if (!s->cpu_on && ((frames >> 5) & 1)) txt_c(fc, 10, 14, PAL_WHITE, "START");
+        return;
+    default:
+        return;
+    }
+}
+
+static void draw_side(Side *s)
+{
+    int fc = FIELD_COL[s->i], pc = PANEL_COL[s->i], k, x0 = fc - 1;
+    tt_board *b = &s->b;
+    BYTE live = (BYTE)(s->state == S_COUNT || s->state == S_PLAY || s->state == S_DONE || s->state == S_NAME);
+    /* field */
+    if (live) draw_field(s);
+    draw_overlay(s);
+    draw_gauge(s);
+    /* hold and next */
+    if (live && !paused) {
+        draw_mini(pc, HOLD_ROW, b->hold, b->hold_used ? PAL_STEEL : PAL_OF(b->hold));
+        for (k = 0; k < TT_NEXT; k++) draw_mini(pc, NEXT_ROW + k * 3, b->queue[k], PAL_OF(b->queue[k]));
+    } else {
+        fill(pc, HOLD_ROW, 4, 2, tw(PAL_WHITE, T_INSET));
+        fill(pc, NEXT_ROW, 4, 15, tw(PAL_WHITE, T_INSET));
+    }
+    /* callouts above the board */
+    fill(x0, 1, 12, 2, BLANK);
+    if (s->call_t && !paused) {
+        txt_c(x0, 12, 1, PAL_YELLOW, s->call1);
+        txt_c(x0, 12, 2, PAL_WHITE, s->call2);
+    }
+    /* stats under the board */
+    fill(x0, STAT_ROW, 12, 3, BLANK);
+    if (s->state == S_OFF || s->state == S_ASK) return;
+    if (s->cpu_on) {
+        txt(x0, STAT_ROW, PAL_PINK, "CPU");
+        txt(x0 + 4, STAT_ROW, PAL_GREY, "LV");
+        led(x0 + 7, STAT_ROW, PAL_AMBER, num(s->cpu.level, 1, '0'));
+    } else txt(x0, STAT_ROW, s->i ? PAL_CYAN : PAL_YELLOW, s->i ? "2P" : "1P");
+    switch (mode) {
+    case M_MARATHON:
+        txt(x0 + 3, STAT_ROW, PAL_GREY, "LINES");
+        led(x0 + 9, STAT_ROW, PAL_AMBER, num(b->lines, 3, '0'));
+        txt(x0, STAT_ROW + 1, PAL_GREY, "SCORE");
+        led(x0 + 5, STAT_ROW + 1, PAL_AMBER, num(b->score, 7, '0'));
+        txt(x0, STAT_ROW + 2, PAL_GREY, "LV");
+        led(x0 + 2, STAT_ROW + 2, PAL_AMBER, num(b->level, 2, '0'));
+        led(x0 + 5, STAT_ROW + 2, PAL_GREEN, fmt_time(s->time, 1));
+        break;
+    case M_SPRINT:
+        txt(x0 + 3, STAT_ROW, PAL_GREY, "LINES");
+        led(x0 + 9, STAT_ROW, PAL_AMBER, num(b->lines > 40 ? 0 : 40 - b->lines, 2, '0'));
+        led(x0 + 2, STAT_ROW + 1, PAL_GREEN, fmt_time(s->time, 2));
+        txt(x0, STAT_ROW + 2, PAL_GREY, "PCS");
+        led(x0 + 4, STAT_ROW + 2, PAL_AMBER, num(b->pieces, 3, '0'));
+        break;
+    default:
+        txt(x0, STAT_ROW + 1, PAL_GREY, "LINES");
+        led(x0 + 6, STAT_ROW + 1, PAL_AMBER, num(b->lines, 3, '0'));
+        txt(x0, STAT_ROW + 2, PAL_GREY, "SENT");
+        led(x0 + 5, STAT_ROW + 2, PAL_AMBER, num(b->sent, 3, '0'));
+        if (mode == M_VS) {
+            txt(x0 + 9, STAT_ROW + 2, PAL_GREY, "W");
+            led(x0 + 10, STAT_ROW + 2, PAL_AMBER, num(s->wins, 2, '0'));
+        }
+        break;
+    }
+}
+
+static void draw_center(void)
+{
+    static const char *MODE_NAME[4] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL" };
+    int x = CENTER_COL;
+    fill(14, 0, 12, 1, BLANK);
+    txt_c(14, 12, 0, PAL_WHITE, MODE_NAME[mode]);
+    fill(x, 4, 6, 20, BLANK);
+    switch (mode) {
+    case M_MARATHON:
+        txt_c(x, 6, 4, PAL_GREY, "BEST");
+        if (mar_score[0] > 999999UL) { led(x, 5, PAL_AMBER, num(mar_score[0] / 1000, 5, ' ')); txt(x + 5, 5, PAL_AMBER, "K"); }
+        else led(x, 5, PAL_AMBER, num(mar_score[0], 6, ' '));
+        txt_c(x, 6, 6, PAL_BEIGE, mar_name[0]);
+        txt_c(x, 6, 8, PAL_GREY, "GOAL");
+        led(x + 1, 9, PAL_AMBER, "150");
+        break;
+    case M_SPRINT:
+        txt_c(x, 6, 4, PAL_GREY, "BEST");
+        led(x, 5, PAL_GREEN, fmt_time(spr_time[0], 1));
+        txt_c(x, 6, 6, PAL_BEIGE, spr_name[0]);
+        txt_c(x, 6, 8, PAL_GREY, "GOAL");
+        led(x + 2, 9, PAL_AMBER, "40");
+        break;
+    case M_VS:
+        txt_c(x, 6, 5, PAL_PINK, "VS");
+        led(x + 1, 7, PAL_GREEN, fmt_time(vs_time, 0));
+        txt_c(x, 6, 9, PAL_GREY, "SPEED");
+        led(x + 2, 10, PAL_AMBER, num(side[0].b.level, 2, '0'));
+        break;
+    default:
+        txt_c(x, 6, 4, PAL_GREY, "KOS");
+        led(x + 1, 5, PAL_AMBER, num(surv_kos, 3, '0'));
+        txt_c(x, 6, 7, PAL_GREY, "BEST");
+        led(x + 1, 8, PAL_AMBER, num(srv_kos[0], 3, '0'));
+        txt_c(x, 6, 9, PAL_BEIGE, srv_name[0]);
+        led(x + 1, 11, PAL_GREEN, fmt_time(side[surv_human].time, 0));
+        break;
+    }
+    if (paused) {
+        banner(&side[0], 10, 6); banner(&side[1], 10, 6);
+        txt_c(x, 6, 14, PAL_WHITE, "START");
+        txt_c(x, 6, 15, PAL_GREY, "RESUME");
+        txt_c(x, 6, 17, PAL_WHITE, "SELECT");
+        txt_c(x, 6, 18, PAL_GREY, "QUIT");
+        big(FIELD_COL[0], 6, PAL_YELLOW, "PAUSE");
+        big(FIELD_COL[1], 6, PAL_YELLOW, "PAUSE");
+    }
+}
+
+/* countdown 3 2 1 GO in big letters over each board */
+static void draw_count(Side *s)
+{
+    int fc = FIELD_COL[s->i];
+    char d[2];
+    if (paused) return;
+    if (s->state == S_COUNT) {
+        d[0] = (char)('1' + (s->count_t - 1) / 40); d[1] = 0;
+        big(fc + 4, 11, PAL_YELLOW, d);
+    } else if (s->go_t && s->state == S_PLAY) big(fc + 3, 11, PAL_GREEN, "GO");
+}
+
+/* ======================================================================
+ * game flow
+ * ==================================================================== */
+static void name_input(Side *s, BYTE edge)
+{
+    int c = 0;
+    while (NAME_LETTERS[c] && NAME_LETTERS[c] != s->name[s->name_pos]) c++;
+    if (edge & JOY_UP) c = (c + 1) % 29;
+    if (edge & JOY_DOWN) c = (c + 28) % 29;
+    s->name[s->name_pos] = NAME_LETTERS[c];
+    if (edge & (JOY_UP | JOY_DOWN)) sfx(s, SND_MENU);
+    if ((edge & (JOY_B | JOY_LEFT)) && s->name_pos > 0) s->name_pos--;
+    if (edge & (JOY_A | JOY_RIGHT)) {
+        sfx(s, SND_MENU);
+        if (++s->name_pos >= 3) {
+            if (mode == M_MARATHON) mar_insert(s->rank, s->name, s->b.score);
+            else if (mode == M_SPRINT) spr_insert(s->rank, s->name, s->time);
+            else srv_insert(s->rank, s->name, surv_kos);
+            save_rec_due = 1;
+            s->state = S_DONE;
+        }
+    }
+}
+
+/* a CPU in Survival is knocked out: a new one comes in after a moment */
+static void surv_ko(Side *cpu)
+{
+    surv_kos++;
+    say(&side[surv_human], "K.O.!", "NEXT CPU");
+    sfx(&side[surv_human], SND_GO);
+    cpu->state = S_OFF;
+    surv_wait = SURV_RESPAWN;
+}
+
+static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
+{
+    tt_board *b = &s->b;
+    (void)edge;
+    switch (s->state) {
+    case S_COUNT:
+        if (!s->cpu_on) side_input(s, cur, 0);
+        if (s->count_t % 40 == 0) sfx(s, SND_BEEP);
+        if (--s->count_t == 0) { s->state = S_PLAY; s->go_t = GO_FRAMES; sfx(s, SND_GO); }
+        break;
+    case S_PLAY:
+        if (s->go_t) s->go_t--;
+        if (start && !s->cpu_on) { paused = 1; sfx(0, SND_MENU); return; }
+        if (s->cpu_on || HARNESS_BOT(s)) cpu_frame(&s->cpu, b);
+        else side_input(s, cur, 1);
+        tt_tick(b);
+        side_events(s);
+        s->time++;
+        if (s->trail_t) s->trail_t--;
+        if (s->flash_t) s->flash_t--;
+        if (b->done) side_finish(s, R_CLEAR);
+        else if (!b->alive) {
+            if (mode == M_VS) {
+                Side *o = other(s);
+                if (o->state == S_PLAY && o->b.alive) { o->wins++; side_finish(o, R_WIN); side_finish(s, R_LOSE); }
+                else side_finish(s, R_DRAW);
+            } else if (mode == M_SURV && s->cpu_on) surv_ko(s);
+            else if (mode == M_SURV) { side_finish(s, R_TOPOUT); other(s)->state = S_DONE; other(s)->result = R_WIN; }
+            else side_finish(s, R_TOPOUT);
+        }
+        break;
+    case S_DONE:
+        s->prev = cur;
+        if (s->cpu_on) break;
+        if (start || (edge & JOY_A)) {
+            sfx(s, SND_MENU);
+            if (mode >= M_VS) begin_match();
+            else begin_side(s, fresh_seed(), COUNT_FRAMES);
+        }
+        break;
+    case S_NAME:
+        s->prev = cur;
+        name_input(s, edge);
+        break;
+    case S_OFF:
+        s->prev = cur;
+        if (!start || s->cpu_on) break;
+        sfx(s, SND_MENU);
+        if (mode >= M_VS) {
+            /* 2P takes the CPU's place: a new Versus match */
+            other(s)->cpu_on = 0;
+            mode = M_VS;
+            begin_match();
+            music(mode_track());
+        } else { s->state = S_ASK; s->ask_sel = 0; }
+        break;
+    case S_ASK:
+        s->prev = cur;
+        if (edge & (JOY_UP | JOY_DOWN)) { s->ask_sel ^= 1; sfx(s, SND_MENU); }
+        if (edge & JOY_B) { s->state = S_OFF; break; }
+        if (start || (edge & JOY_A)) {
+            sfx(s, SND_MENU);
+            if (s->ask_sel == 0) begin_side(s, fresh_seed(), COUNT_FRAMES);
+            else {
+                mode = M_VS;
+                side[0].cpu_on = side[1].cpu_on = 0;
+                side[0].wins = side[1].wins = 0;
+                bg_accent(3);
+                begin_match();
+                music(mode_track());
+            }
+        }
+        break;
+    }
+}
+
+static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps)
+{
+    int k;
+    BYTE start[2];
+    start[0] = (BYTE)(ps & P1_START);
+    start[1] = (BYTE)(ps & P2_START);
+    if (paused) {
+        if (start[0] || start[1]) { paused = 0; side[0].prev = cur[0]; side[1].prev = cur[1]; }
+        else if (ps & (P1_SELECT | P2_SELECT)) { to_title(); return; }
+    } else {
+        if ((ps & (P1_SELECT | P2_SELECT)) &&
+            side[0].state != S_PLAY && side[1].state != S_PLAY && side[0].state != S_COUNT && side[1].state != S_COUNT) {
+            to_title();
+            return;
+        }
+        if (ps & (P1_SELECT | P2_SELECT)) paused = 1;
+        for (k = 0; k < 2 && !paused; k++) {
+            side[k].b.ev = 0;
+            side_play(&side[k], cur[k], edge[k], start[k]);
+        }
+        if (!paused) {
+            /* garbage changes hands after both boards moved */
+            if (mode >= M_VS) {
+                for (k = 0; k < 2; k++)
+                    if (side[k].b.out) {
+                        if (side[k ^ 1].state == S_PLAY || side[k ^ 1].state == S_COUNT)
+                            tt_receive(&side[k ^ 1].b, (tt_u8)(side[k].b.out > 40 ? 40 : side[k].b.out));
+                        side[k].b.out = 0;
+                    }
+                if (side[0].state == S_PLAY || side[1].state == S_PLAY) {
+                    vs_time++;
+                    /* the drop speed rises every minute */
+                    if (vs_time % 3600 == 0)
+                        for (k = 0; k < 2; k++) {
+                            tt_board *b = &side[k].b;
+                            if (b->level < 10) { b->level++; b->gravity = tt_gravity_for(b->level); }
+                        }
+                }
+            }
+            if (mode == M_SURV && surv_wait && --surv_wait == 0 && side[surv_human].state == S_PLAY) {
+                Side *c = &side[surv_human ^ 1];
+                begin_side(c, fresh_seed(), 40);
+                c->b.level = side[surv_human].b.level;
+                c->b.gravity = tt_gravity_for(c->b.level);
+            }
+            for (k = 0; k < 2; k++) if (side[k].call_t) side[k].call_t--;
+        }
+    }
+    for (k = 0; k < 2; k++) { draw_side(&side[k]); draw_count(&side[k]); }
+    draw_center();
+}
+
+/* ======================================================================
+ * menus
+ * ==================================================================== */
+#define REP_FIRST 14
+#define REP_NEXT  5
+typedef struct { BYTE prev, hold; } Rep;
+static Rep rep[2];
+
+static BYTE repeat_dirs(Rep *p, BYTE cur)
+{
+    BYTE dirs = (BYTE)(cur & (JOY_UP | JOY_DOWN | JOY_LEFT | JOY_RIGHT));
+    BYTE edge = (BYTE)(cur & ~p->prev), out = (BYTE)(edge & dirs);
+    if (!dirs || (edge & dirs)) p->hold = 0;
+    else if (++p->hold >= REP_FIRST && (p->hold - REP_FIRST) % REP_NEXT == 0) out = dirs;
+    if (p->hold > REP_FIRST + REP_NEXT * 40) p->hold = REP_FIRST;
+    p->prev = cur;
+    return out;
+}
+
+static void title_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
+{
+    static const char *ITEM[MENU_N] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL", "RECORDS", "OPTIONS" };
+    static const char *INFO[MENU_N] = { "150 LINES, HIGH SCORE", "40 LINES, BEST TIME", "VS CPU, OR 2P PRESS START",
+                                        "TOP OUT CPU AFTER CPU", "BEST SCORES AND TIMES", "SPEED, BUTTONS, SOUND" };
+    BYTE r = (BYTE)(rp[0] | rp[1]), go;
+    int k;
+    go = (BYTE)(((edge[0] & JOY_A) || (ps & P1_START)) ? 1 : ((edge[1] & JOY_A) || (ps & P2_START)) ? 2 : 0);
+    if (r & (JOY_UP | JOY_DOWN)) {
+        menu_sel = (BYTE)((menu_sel + ((r & JOY_UP) ? MENU_N - 1 : 1)) % MENU_N);
+        sfx(0, SND_MENU);
+    }
+    if (menu_sel == MENU_VS && (r & JOY_LEFT) && cpu_level > 1) { cpu_level--; sfx(0, SND_MOVE); }
+    if (menu_sel == MENU_VS && (r & JOY_RIGHT) && cpu_level < CPU_MAX_LEVEL) { cpu_level++; sfx(0, SND_MOVE); }
+    if (go) {
+        sfx(0, SND_MENU);
+        switch (menu_sel) {
+        case MENU_MARATHON: start_game(M_MARATHON, (BYTE)(go - 1)); return;
+        case MENU_SPRINT:   start_game(M_SPRINT, (BYTE)(go - 1)); return;
+        case MENU_VS:       start_game(M_VS, (BYTE)(go - 1)); return;
+        case MENU_SURV:     start_game(M_SURV, (BYTE)(go - 1)); return;
+        case MENU_RECORDS:  screen = SCR_RECORDS; gs_clear(GS_LOGO, 18); cls(); return;
+        default:            screen = SCR_OPTIONS; opt_player = (BYTE)(go - 1); opt_sel = 0;
+                            gs_clear(GS_LOGO, 18); cls(); return;
+        }
+    }
+    gs_word(GS_LOGO, 52, 28, "SPACBRACK", 9);
+    txt_c(0, 40, 8, PAL_AMBER, "BRICK RACE");
+    for (k = 0; k < MENU_N; k++) {
+        BYTE on = (BYTE)(k == menu_sel);
+        fx_put(13, 11 + k * 2, on ? tw(PAL_YELLOW, '>') : BLANK);
+        txt(15, 11 + k * 2, on ? PAL_WHITE : PAL_GREY, ITEM[k]);
+    }
+    fill(24, 15, 10, 1, BLANK);
+    txt(24, 15, menu_sel == MENU_VS ? PAL_PINK : PAL_STEEL, "CPU LV");
+    led(31, 15, PAL_AMBER, num(cpu_level, 1, '0'));
+    if (menu_sel == MENU_VS) { fx_put(30, 15, tw(PAL_PINK, '<')); fx_put(32, 15, tw(PAL_PINK, '>')); }
+    else { fx_put(30, 15, BLANK); fx_put(32, 15, BLANK); }
+    fill(0, 24, 40, 1, BLANK);
+    txt_c(0, 40, 24, PAL_BEIGE, INFO[menu_sel]);
+    txt_c(0, 40, 26, PAL_STEEL, "A OR START: WHOEVER PRESSES PLAYS");
+}
+
+static void records_frame(const BYTE *edge, BYTE ps)
+{
+    int k;
+    if ((edge[0] | edge[1]) & (JOY_A | JOY_B) || (ps & (P1_START | P2_START | P1_SELECT | P2_SELECT))) {
+        sfx(0, SND_MENU); to_title(); return;
+    }
+    txt_c(0, 40, 1, PAL_WHITE, "RECORDS");
+    txt(2, 4, PAL_CYAN, "MARATHON");
+    txt(15, 4, PAL_ORANGE, "SPRINT");
+    txt(28, 4, PAL_PINK, "SURVIVAL");
+    for (k = 0; k < REC_N; k++) {
+        fx_put(1, 6 + k * 2, tw(PAL_STEEL, (WORD)('1' + k)));
+        txt(2, 6 + k * 2, PAL_BEIGE, mar_name[k]);
+        led(6, 6 + k * 2, PAL_AMBER, num(mar_score[k], 7, ' '));
+        txt(15, 6 + k * 2, PAL_BEIGE, spr_name[k]);
+        led(19, 6 + k * 2, PAL_GREEN, fmt_time(spr_time[k], 2));
+        txt(28, 6 + k * 2, PAL_BEIGE, srv_name[k]);
+        led(32, 6 + k * 2, PAL_AMBER, num(srv_kos[k], 3, ' '));
+        txt(36, 6 + k * 2, PAL_STEEL, "KO");
+    }
+    if (save_answer) { txt(2, 22, PAL_RED, "NOT SAVED: ERROR "); led(19, 22, PAL_RED, num(save_answer, 3, '0')); }
+    txt_c(0, 40, 26, PAL_STEEL, "A: BACK");
+}
+
+/* ---------- options: speed and buttons per player, shared settings ---------- */
+enum { O_DAS, O_ARR, O_SOFT, O_ROTL, O_ROTR, O_HOLD, O_HARD, O_UP, O_GHOST, O_CLEAR, O_MUSIC, O_DEFAULTS, O_EXIT, O_N };
+
+static void opt_button(PadCfg *c, int act, int d)
+{
+    BYTE old = c->btn[act], nw = (BYTE)((old + 5 + d) % 5);
+    int k;
+    /* a button does one thing: whoever had it gets this action's old button */
+    if (nw < 4) for (k = 0; k < ACT_N; k++) if (k != act && c->btn[k] == nw) c->btn[k] = old;
+    c->btn[act] = nw;
+}
+
+static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
+{
+    static const char *LABEL[O_N] = { "DAS (FRAMES)", "ARR (FRAMES)", "SOFT DROP", "ROTATE LEFT", "ROTATE RIGHT",
+                                      "HOLD", "HARD DROP", "UP HARD DROPS", "GHOST", "LINE CLEAR",
+                                      "MUSIC", "DEFAULTS", "SAVE AND EXIT" };
+    static const char *BTN = "ABCD-";
+    PadCfg *c = &pad_cfg[opt_player];
+    BYTE r = rp[opt_player], e = edge[opt_player];
+    int k, d = (r & JOY_RIGHT) ? 1 : (r & JOY_LEFT) ? -1 : 0;
+    char v[12];
+    if (r & JOY_UP) { opt_sel = (BYTE)((opt_sel + O_N - 1) % O_N); sfx(0, SND_MENU); }
+    if (r & JOY_DOWN) { opt_sel = (BYTE)((opt_sel + 1) % O_N); sfx(0, SND_MENU); }
+    if (d) {
+        sfx(0, SND_MOVE);
+        switch (opt_sel) {
+        case O_DAS:   c->das = (BYTE)(c->das + d < 4 ? 4 : c->das + d > 20 ? 20 : c->das + d); break;
+        case O_ARR:   c->arr = (BYTE)(c->arr + d < 0 ? 0 : c->arr + d > 6 ? 6 : c->arr + d); break;
+        case O_SOFT:  c->sonic ^= 1; break;
+        case O_ROTL:  opt_button(c, ACT_ROT_L, d); break;
+        case O_ROTR:  opt_button(c, ACT_ROT_R, d); break;
+        case O_HOLD:  opt_button(c, ACT_HOLD, d); break;
+        case O_HARD:  opt_button(c, ACT_HARD, d); break;
+        case O_UP:    c->up_drop ^= 1; break;
+        case O_GHOST: opt_ghost ^= 1; break;
+        case O_CLEAR: opt_clear = (BYTE)(opt_clear + d * 4 < 0 ? 0 : opt_clear + d * 4 > 20 ? 20 : opt_clear + d * 4); break;
+        case O_MUSIC: opt_music ^= 1; if (!opt_music) music(0); else { track_on = 0; music(2); } break;
+        default: break;
+        }
+    }
+    if ((e & JOY_A) || (ps & (opt_player ? P2_START : P1_START))) {
+        if (opt_sel == O_DEFAULTS) { save_defaults_pad(c); opt_ghost = 1; opt_clear = 8; sfx(0, SND_MENU); }
+        else if (opt_sel == O_EXIT) { save_opt_due = 1; sfx(0, SND_MENU); to_title(); return; }
+    }
+    if (e & JOY_B) { save_opt_due = 1; sfx(0, SND_MENU); to_title(); return; }
+
+    txt_c(0, 40, 1, PAL_WHITE, opt_player ? "OPTIONS  2P" : "OPTIONS  1P");
+    for (k = 0; k < O_N; k++) {
+        BYTE on = (BYTE)(k == opt_sel), y = (BYTE)(4 + k + (k >= O_GHOST) + (k >= O_DEFAULTS));
+        v[0] = 0;
+        if (k == O_DAS) str_cpy(v, num(c->das, 2, ' '));
+        else if (k == O_ARR) str_cpy(v, num(c->arr, 2, ' '));
+        else if (k == O_CLEAR) str_cpy(v, num(opt_clear, 2, ' '));
+        else if (k >= O_ROTL && k <= O_HARD) { v[0] = BTN[c->btn[k - O_ROTL]]; v[1] = 0; }
+        fx_put(6, y, on ? tw(PAL_YELLOW, '>') : BLANK);
+        txt(8, y, on ? PAL_WHITE : PAL_GREY, LABEL[k]);
+        fill(24, y, 9, 1, BLANK);
+        if (k == O_SOFT) txt(24, y, PAL_AMBER, c->sonic ? "INSTANT" : "FAST");
+        else if (k == O_UP) txt(24, y, PAL_AMBER, c->up_drop ? "ON" : "OFF");
+        else if (k == O_GHOST) txt(24, y, PAL_AMBER, opt_ghost ? "ON" : "OFF");
+        else if (k == O_MUSIC) txt(24, y, PAL_AMBER, opt_music ? "ON" : "OFF");
+        else if (k == O_ARR && !c->arr) txt(24, y, PAL_AMBER, " 0 INSTANT");
+        else if (v[0]) txt(24, y, PAL_AMBER, v);
+    }
+    txt(6, 3, PAL_CYAN, "THIS PLAYER");
+    txt(6, 12, PAL_CYAN, "EVERYONE");
+    txt_c(0, 40, 25, PAL_STEEL, "LEFT/RIGHT: CHANGE   B: SAVE AND EXIT");
+    txt_c(0, 40, 26, PAL_STEEL, "BUTTONS SWAP IF ALREADY USED");
+}
+
+/* ======================================================================
+ * main
+ * ==================================================================== */
+int main(void)
+{
+    BYTE cur[2], edge[2], rp[2], ps, k, psc;
+    static BYTE ps_prev, prev[2];
+
+    initGfx();
+    clearFixLayer();
+    LSPCmode = 0x1c00;
+    {
+        static const unsigned char NIGHT[3] = { 14, 12, 26 };   /* web PAL.night #0e0c1a */
+        backgroundColor(ng8(NIGHT));
+    }
+    fx_boot();
+    load_fix_palettes();
+    bg_boot();
+    bg_accent(0);
+    palJobPut(SPR_PAL_BG, bg_npal, bgpal);
+    palJobPut(SPR_PAL_GLYPH, tt_glyphs_Palettes.count, tt_glyphs_Palettes.data);
+    pictureInit(&bg, &tt_bg, SPR_BG, SPR_PAL_BG, 0, 0, FLIP_NONE);
+    gs_boot();
+    snd_init();
+    save_load();
+    side[0].i = 0; side[1].i = 1;
+    cls();
+    to_title();
+
+    for (;;) {
+        SCClose();
+        waitVBlank();
+        frames++;
+        if ((frames & 15) == 0) resend_static_palettes();
+        bg_tick();
+        snd_tick();
+        if (save_rec_due) { save_rec_due = 0; save_records(); }
+        else if (save_opt_due) { save_opt_due = 0; save_options(); }
+
+        cur[0] = volMEMBYTE(P1_CURRENT);
+        cur[1] = volMEMBYTE(P2_CURRENT);
+        psc = volMEMBYTE(PS_CURRENT);
+        ps = (BYTE)(psc & ~ps_prev);
+        ps_prev = psc;
+        for (k = 0; k < 2; k++) {
+            edge[k] = (BYTE)(cur[k] & ~prev[k]);
+            prev[k] = cur[k];
+            rp[k] = repeat_dirs(&rep[k], cur[k]);
+        }
+        seed_mix += edge[0] + (edge[1] << 8) + ps;
+
+        switch (screen) {
+        case SCR_TITLE:   title_frame(edge, rp, ps); break;
+        case SCR_GAME:    game_frame(cur, edge, ps); break;
+        case SCR_RECORDS: records_frame(edge, ps); break;
+        default:          options_frame(edge, rp, ps); break;
+        }
+        fx_flush();
+    }
+    return 0;
+}

@@ -1,0 +1,25 @@
+.DS_Store
+*.png_reject.png
+/dist/
+/build/
+.vscode
+SPR.cd
+char.bin
+maps.s
+output.map
+palettes.s
+as.exe.stackdump
+*.o
+*.prg
+**/out/fix.bin
+**/out/char.bin
+upgrade.log
+console_history
+neocore-version-switcher-latest-spool.bat
+neocore-version-switcher-spool/
+/build-pc/
+/shots/
+__pycache__/
+/bincue/
+# CD audio is rendered by tools/make_audio.py during the build (too big for git)
+/src/assets/cdda/*.wav

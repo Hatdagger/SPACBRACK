@@ -1,0 +1,100 @@
+name: Neo Geo CD build
+
+on:
+  push:
+    paths:
+      - 'neogeo-cd/**'
+      - '.github/workflows/neogeo-cd.yml'
+  workflow_dispatch:
+
+jobs:
+  rules:
+    name: Board rules and CPU checks (strict C89)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the rules checks
+        working-directory: neogeo-cd
+        run: |
+          gcc -std=c89 -pedantic -Wall -Wextra -Werror -O2 -Isrc -o sim src/rules.c src/cpu.c test/sim.c
+          ./sim
+
+  frontend:
+    name: Front end smoke test + screenshots (PC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pillow
+      - name: Art and its colour tables
+        working-directory: neogeo-cd
+        run: python3 tools/make_art.py
+      - name: Build main.c against stand-in hardware (strict C89)
+        working-directory: neogeo-cd
+        run: sh test/build_frontend.sh build-pc
+      - name: Play the tour script and render screenshots
+        working-directory: neogeo-cd
+        run: |
+          mkdir -p shots
+          build-pc/frontend test/tour.txt shots
+          python3 test/render_frames.py shots --sheet shots/00_sheet.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SPACBRACK-screenshots
+          path: neogeo-cd/shots/*.png
+
+  iso:
+    name: Build ISO + MAME CHD (NeoCore)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install numpy scipy pillow
+      - name: Art and its colour tables
+        working-directory: neogeo-cd
+        run: python tools/make_art.py
+      - name: Audio (placeholder songs for missing tracks, sound-chip files from sfx/*.wav)
+        working-directory: neogeo-cd
+        run: python tools/make_audio.py
+      - name: Build sprites, program, ISO and CHD
+        working-directory: neogeo-cd/src
+        shell: powershell
+        run: |
+          $bm = "..\neocore\toolchain\scripts\Builder-Manager.ps1"
+          $checks = @{ "make" = "..\build\SPACBRACK\SPACBRACK.prg" }
+          foreach ($rule in @("lib", "sprite", "make", "dist:iso", "dist:mame")) {
+            if ($rule -eq "dist:iso") {
+              # NeoCore's CUE writer reads the CD tracks from the build folder
+              New-Item -ItemType Directory -Force -Path ..\build\SPACBRACK\assets\cdda | Out-Null
+              Copy-Item assets\cdda\*.wav ..\build\SPACBRACK\assets\cdda\ -Force
+            }
+            Write-Host "=== mak $rule ===" -ForegroundColor Cyan
+            powershell -ExecutionPolicy Bypass -File $bm -ConfigFile project.xml -Rule $rule
+            if ($LASTEXITCODE -ne 0) { throw "mak $rule failed" }
+            if ($checks[$rule] -and -not (Test-Path $checks[$rule])) {
+              Get-Content ..\build\SPACBRACK\gcc.log -ErrorAction SilentlyContinue
+              throw "mak $rule did not produce $($checks[$rule])"
+            }
+          }
+      - name: Raw BIN/CUE (MODE1/2352 data + audio tracks)
+        working-directory: neogeo-cd
+        run: python tools/make_bincue.py dist/SPACBRACK/SPACBRACK-1.0.0/cd/iso bincue
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SPACBRACK-BINCUE
+          path: neogeo-cd/bincue/
+          if-no-files-found: error
+      - name: List output
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path neogeo-cd\dist) { Get-ChildItem -Recurse neogeo-cd\dist | Select-Object FullName, Length }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SPACBRACK-NeoGeoCD
+          path: neogeo-cd/dist/
+          if-no-files-found: error

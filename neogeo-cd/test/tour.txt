@@ -1,0 +1,113 @@
+# Title, Marathon (with 2P dropping in solo), Sprint finish, Versus vs CPU,
+# Survival, options and records.  Run by CI; screenshots are uploaded.
+wait 90
+dump 01_title
+p1 D
+p1 D
+dump 02_title_versus
+p1 U
+p1 U
+p1 A
+until 1 COUNT 5
+wait 50
+dump 03_countdown
+until 1 PLAY 200
+bot 1 8
+wait 600
+dump 04_marathon
+p2 START
+wait 3
+dump 05_2p_asks
+p2 A
+until 2 COUNT 10
+bot 2 6
+until 2 PLAY 200
+wait 700
+dump 06_marathon_2p
+p1 START
+wait 3
+dump 07_paused
+p1 START
+wait 2
+lines 1 148
+until 1 NAME 3000
+dump 08_marathon_record
+p1 A
+p1 A
+p1 A
+until 1 DONE 10
+dump 09_marathon_done
+sounds move rotate hard hold menu beep go cdda save
+p1 SELECT
+wait 3
+p1 SELECT
+bot 1 0
+bot 2 0
+wait 60
+# Sprint, finished by a bot
+p1 D
+p1 A
+until 1 PLAY 200
+bot 1 8
+wait 300
+dump 10_sprint
+lines 1 38
+until 1 NAME 3000
+p1 U
+p1 A
+p1 A
+p1 A
+until 1 DONE 10
+dump 11_sprint_done
+p1 SELECT
+wait 3
+p1 SELECT
+bot 1 0
+wait 60
+# Versus vs CPU level 5
+p1 D
+p1 R
+p1 A
+until 1 PLAY 200
+bot 1 8
+wait 1500
+dump 12_versus
+until 2 DONE 20000
+wait 3
+dump 13_versus_done
+p1 SELECT
+wait 3
+p1 SELECT
+bot 1 0
+wait 60
+# Survival
+p1 D
+p1 A
+until 1 PLAY 200
+bot 1 8
+wait 1200
+dump 14_survival
+p1 SELECT
+wait 3
+p1 SELECT
+bot 1 0
+wait 60
+# options and records
+p1 D
+p1 D
+p1 A
+wait 4
+p1 D
+p1 D
+p1 D
+p1 R
+wait 30
+dump 15_options
+p1 B
+wait 30
+p1 U
+p1 A
+wait 40
+dump 16_records
+sounds save
+end

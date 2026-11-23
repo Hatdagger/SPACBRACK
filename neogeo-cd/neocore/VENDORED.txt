@@ -1,0 +1,3 @@
+NeoCore (https://github.com/David-Vandensteen/neocore), vendored at commit f1875d3 (2026-03-08).
+MIT license, Copyright (c) David Vandensteen. Only src-lib/, toolchain/ and manifest.xml are copied.
+The build tools themselves (GCC 2.95, DATlib, MAME, Raine) are downloaded by mak.bat on first run.
