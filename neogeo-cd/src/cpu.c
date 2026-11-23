@@ -23,6 +23,20 @@ static const tt_u8 LV[CPU_MAX_LEVEL + 1][7] = {
     {  8,  3,  0,  2, 2, 1, 1 }           /* 8 */
 };
 
+/*
+ * Easing (a player is waiting to take this seat in Survival): play like a CPU
+ * two levels lower and slip a little more often, so the wait is shorter but
+ * the CPU still looks like it is trying.
+ */
+#define EASE_DROP     2
+#define EASE_MISTAKE 10
+static const tt_u8 *lv(const tt_cpu *c)
+{
+    int l = c->level;
+    if (c->ease) l = l > EASE_DROP ? l - EASE_DROP : 1;
+    return LV[l];
+}
+
 static const tt_u8 POP[32] = { 0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5 };
 #define POPC(v) (POP[(v) & 31] + POP[((v) >> 5) & 31])
 
@@ -135,7 +149,7 @@ static void keep_best(tt_cpu *c, long s, tt_u8 n)
 
 static void search_step(tt_cpu *c, const tt_board *b)
 {
-    int n, ok, type, quota = PER_FRAME, maxc = LV[c->level][6] ? CPU_NCAND : 56;
+    int n, ok, type, quota = PER_FRAME, maxc = lv(c)[6] ? CPU_NCAND : 56;
     long s;
     while (c->ci < maxc && quota > 0) {
         n = c->ci++;
@@ -152,9 +166,9 @@ static void search_step(tt_cpu *c, const tt_board *b)
 
 static void plan(tt_cpu *c)
 {
-    int pick = 0, slop = LV[c->level][4];
+    int pick = 0, slop = lv(c)[4];
     if (!c->nc) { c->use_hold = 0; c->trot = 0; c->tx = 3; return; }
-    if ((int)(crand(c) % 100) < LV[c->level][3]) {
+    if ((int)(crand(c) % 100) < (lv(c)[3] + (c->ease ? EASE_MISTAKE : 0))) {
         if (slop > c->nc) slop = c->nc;
         pick = (int)(crand(c) % (tt_u32)slop);
     }
@@ -186,13 +200,13 @@ void cpu_frame(tt_cpu *c, tt_board *b)
         c->top_min = TT_ROWS;
         for (x = 0; x < TT_COLS; x++) if (c->top[x] < c->top_min) c->top_min = c->top[x];
         c->ci = 0; c->nc = 0;
-        c->timer = LV[c->level][0];
+        c->timer = lv(c)[0];
         c->state = CS_SEARCH;
         /* fall through */
     case CS_SEARCH:
         search_step(c, b);
         if (c->timer) c->timer--;
-        if (c->ci >= CPU_NCAND || (!LV[c->level][6] && c->ci >= 56)) { plan(c); c->state = CS_THINK; }
+        if (c->ci >= CPU_NCAND || (!lv(c)[6] && c->ci >= 56)) { plan(c); c->state = CS_THINK; }
         break;
     case CS_THINK:
         if (c->timer) { c->timer--; break; }
@@ -207,7 +221,7 @@ void cpu_frame(tt_cpu *c, tt_board *b)
         break;
     case CS_MOVE:
         if (c->timer) { c->timer--; break; }
-        c->timer = LV[c->level][1];
+        c->timer = lv(c)[1];
         if (b->rot != c->trot) {
             d = (c->trot - b->rot) & 3;
             if (!tt_rotate(b, d == 3 ? -1 : 1)) c->state = CS_SETTLE;
@@ -218,14 +232,14 @@ void cpu_frame(tt_cpu *c, tt_board *b)
             break;
         }
         c->state = CS_SETTLE;
-        c->timer = LV[c->level][2];
+        c->timer = lv(c)[2];
         break;
     case CS_SETTLE:
         if (c->timer) { c->timer--; break; }
         c->state = CS_DROP;
         /* fall through */
     case CS_DROP:
-        if (LV[c->level][5]) tt_hard_drop(b);
+        if (lv(c)[5]) tt_hard_drop(b);
         else b->soft = 1;
         break;
     }

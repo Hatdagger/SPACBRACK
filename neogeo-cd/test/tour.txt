@@ -87,6 +87,41 @@ until 1 PLAY 200
 bot 1 8
 wait 1200
 dump 14_survival
+# a CPU goes down: K.O. pause, then the next one counts in with READY
+until 2 GAP 30000
+dump 14a_survival_ko
+until 2 COUNT 200
+wait 20
+dump 14b_survival_ready
+until 2 PLAY 200
+# 2P claims the CPU's seat and comes in when it goes down; 1P's run goes on
+p2 START
+wait 3
+dump 14c_survival_2p_next
+cpu 2
+until 2 GAP 30000
+state 1 PLAY
+until 2 COUNT 200
+human 2
+bot 2 1
+until 2 PLAY 200
+# 1P knocks out 2P: 2P rematches from the K.O. pause
+until 2 GAP 30000
+state 1 PLAY
+dump 14d_survival_2p_out
+p2 START
+until 2 COUNT 200
+human 2
+state 1 PLAY
+until 2 PLAY 200
+# 2P out again, no Start this time: a CPU takes the seat
+bot 2 0
+until 2 GAP 30000
+until 2 COUNT 200
+cpu 2
+state 1 PLAY
+until 2 PLAY 200
+dump 14e_survival_cpu_back
 p1 SELECT
 wait 3
 p1 SELECT

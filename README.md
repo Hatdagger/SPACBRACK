@@ -11,9 +11,9 @@ Note: the falling blocks are called **bricks** everywhere in this game.
 | **Marathon** | 150 lines. The level (and drop speed) goes up every 10 lines, up to level 15. High score. |
 | **Sprint** | 40 lines as fast as you can. Best time. |
 | **Versus** | Against the CPU (level 1-8, chosen on the title menu with left/right) or a 2nd player. Garbage, last one standing wins. The drop speed rises every minute. |
-| **Survival** | Against a line of CPUs. When a CPU tops out, its board is wiped and a new, tougher CPU comes in while your board keeps going. Score = CPUs knocked out (KOs). |
+| **Survival** | King of the hill. Whoever tops out is replaced while the other board keeps going: a 3-second changeover (K.O. pause, then READY, GO) brings in a new, tougher CPU (or a player, see below). Drop speed rises every minute up to 5. Score = your KO streak. |
 
-**Two players:** whoever presses A or Start on the title menu plays, on their own side of the screen. In Marathon or Sprint the other player can press **Start** at any time and choose **SOLO** (their own game on the other board, the first player's game keeps running) or **VERSUS** (both boards switch to a fresh Versus match). In Versus or Survival against the CPU, 2P pressing Start takes the CPU's place in a new Versus match.
+**Two players:** whoever presses A or Start on the title menu plays, on their own side of the screen. In Marathon or Sprint the other player can press **Start** at any time and choose **SOLO** (their own game on the other board, the first player's game keeps running) or **VERSUS** (both boards switch to a fresh Versus match). In Versus against the CPU, 2P pressing Start takes the CPU's place in a new Versus match. In Survival, Start on the CPU's pad claims its seat: the CPU eases off a little and the player comes in when it is knocked out, without restarting the other player's streak. A player who is knocked out can press Start during the K.O. pause to come straight back with a new streak; otherwise a CPU takes the seat. The run ends when no player is left on a board.
 
 ## Rules (modern)
 

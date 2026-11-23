@@ -74,6 +74,6 @@ static const unsigned char BG_FLOOR_KEY[3] = {   8,   0,  24 };
 /* chrome letters in glyphs.png, 32x32 each */
 #define GLYPHS "SPACBRKGOUED321!WIN"
 /* big fix-layer letters from T_BIG, 4 tiles each */
-#define BIGCHARS "321GOPAUSEDK.!WIN"
+#define BIGCHARS "321GOPAUSEDK.!WINREY"
 
 #endif

@@ -103,7 +103,7 @@ T_BEZ_GAUGE = 148   # left bezel with the incoming-garbage bar lit
 T_BLACK = 150
 T_STEEL = 151
 T_BIG = 160         # big letters on the fix layer, 2x2 tiles each (TL TR BL BR)
-BIGCHARS = '321GOPAUSEDK.!WIN'
+BIGCHARS = '321GOPAUSEDK.!WINREY'
 
 
 def font_glyph(ch):

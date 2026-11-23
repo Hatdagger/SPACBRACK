@@ -6,14 +6,17 @@
  *   Marathon  150 lines, levels speed up every 10, high score
  *   Sprint    40 lines as fast as you can, best time
  *   Versus    vs CPU (levels 1-8) or vs 2P, garbage, last one standing
- *   Survival  vs a line of CPUs: each one you top out is replaced by a
- *             tougher one while your board keeps going; score = KOs
+ *   Survival  king of the hill: whoever tops out is replaced (3 s: K.O.,
+ *             READY, GO) while the other board keeps going; score = KOs
  *
  * Two boards side by side like Calm Combo.  In Marathon or Sprint a second
  * player can press Start at any time and choose PLAY SOLO (their own game on
  * the other board) or CHALLENGE (both boards switch to a fresh Versus).  In
- * Versus or Survival against the CPU, 2P's Start takes the CPU's place in a
- * new Versus match.
+ * Versus against the CPU, 2P's Start takes the CPU's place in a new Versus
+ * match.  In Survival a player's Start claims the CPU's seat: they come in
+ * when that CPU is knocked out (it eases off meanwhile), and the run goes on.
+ * A player who is knocked out can press Start during the K.O. pause to come
+ * straight back with a new streak; if nobody does, a CPU comes in.
  *
  * Drawing: the boards, panels and all text are on the fix layer (8x8 tiles:
  * one brick = one tile, recoloured per palette), written through a shadow
@@ -82,12 +85,15 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define COUNT_FRAMES  120
 #define GO_FRAMES     30
 #define CALL_FRAMES   80
-#define SURV_RESPAWN  70
+#define SURV_KO       90             /* K.O. pause: Start here to come (back) in */
+#define SURV_READY    90             /* ...then READY on the new board, then GO: 3 s in all */
+#define SURV_MAX_SPEED 5             /* Survival's minute-by-minute speed stops here */
+#define VS_MAX_SPEED  10
 #define TRAIL_FRAMES  9              /* hard drop tail: 3 rows, then 2, then 1 */
 
 static const BYTE TRAIL_LEN[TRAIL_FRAMES + 1] = { 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 };
 
-enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME };
+enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME, S_GAP };
 enum { M_MARATHON, M_SPRINT, M_VS, M_SURV };
 enum { R_NONE, R_CLEAR, R_TOPOUT, R_WIN, R_LOSE, R_DRAW };
 enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_OPTIONS };
@@ -116,6 +122,11 @@ typedef struct {
     char    name[4];
     BYTE    name_pos;
     BYTE    wins;
+    /* survival */
+    WORD    kos;                     /* this streak's knock-outs */
+    WORD    gap_t;                   /* S_GAP: frames left of the K.O. pause */
+    BYTE    join;                    /* this pad's player takes the seat next */
+    BYTE    ready;                   /* this count-in shows READY, not 3 2 1 */
     /* what is on screen now, so a frame only draws what changed */
     BYTE    fd_full, fd_state, fd_paused, fd_go;
     DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
@@ -128,8 +139,6 @@ static Side  side[2];
 static BYTE  screen = SCR_TITLE, mode = M_MARATHON, paused = 0;
 static BYTE  menu_sel = 0, cpu_level = 4, track_on = 0;
 static BYTE  opt_player = 0, opt_sel = 0, save_rec_due = 0, save_opt_due = 0;
-static BYTE  surv_human = 0;
-static WORD  surv_kos = 0, surv_wait = 0;
 static DWORD frames = 0, seed_mix = 0x1234567UL, vs_time = 0;
 static DWORD ctr_key1, ctr_key2;
 static WORD  rec_gen = 0;           /* records changed (the BEST shown in the middle) */
@@ -515,6 +524,15 @@ static void say(Side *s, const char *a, const char *b)
     s->call_gen++;
 }
 
+static BYTE active(Side *s) { return (BYTE)(s->state == S_COUNT || s->state == S_PLAY); }
+
+/* a Survival CPU gets tougher every 2 KOs of the player it faces */
+static tt_u8 surv_level(Side *s)
+{
+    WORD l = (WORD)(1 + other(s)->kos / 2);
+    return (tt_u8)(l > 8 ? 8 : l);
+}
+
 static void begin_side(Side *s, DWORD seed, WORD count)
 {
     tt_u16 goal = mode == M_MARATHON ? 150 : mode == M_SPRINT ? 40 : 0;
@@ -531,7 +549,9 @@ static void begin_side(Side *s, DWORD seed, WORD count)
     s->das_dir = 0;
     s->rank = -1;
     s->fd_full = 1;
-    if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? (tt_u8)(1 + surv_kos / 2 > 8 ? 8 : 1 + surv_kos / 2) : cpu_level, fresh_seed());
+    s->join = 0;
+    s->ready = 0;
+    if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? surv_level(s) : cpu_level, fresh_seed());
 }
 
 /* both boards, same bricks: a fresh Versus or Survival match */
@@ -539,13 +559,14 @@ static void begin_match(void)
 {
     DWORD seed = fresh_seed();
     vs_time = 0;
-    surv_kos = 0;
-    surv_wait = 0;
+    side[0].kos = side[1].kos = 0;
     begin_side(&side[0], seed, COUNT_FRAMES);
     begin_side(&side[1], seed, COUNT_FRAMES);
 }
 
 static void draw_static(void);
+static BYTE carries(Side *s);
+static void surv_gap(Side *s);
 
 static void start_game(BYTE m, BYTE p)
 {
@@ -567,7 +588,6 @@ static void start_game(BYTE m, BYTE p)
     bg_accent((BYTE)(1 + (m > 3 ? 3 : m)));
     if (m == M_VS || m == M_SURV) {
         side[p ^ 1].cpu_on = 1;
-        surv_human = p;
         begin_match();
     } else begin_side(&side[p], fresh_seed(), COUNT_FRAMES);
     draw_static();
@@ -676,7 +696,7 @@ static void side_finish(Side *s, BYTE result)
     if (s->cpu_on) return;
     if (mode == M_MARATHON) s->rank = (signed char)mar_rank(s->b.score);
     else if (mode == M_SPRINT && result == R_CLEAR) s->rank = (signed char)spr_rank(s->time);
-    else if (mode == M_SURV) s->rank = (signed char)srv_rank(surv_kos);
+    else if (mode == M_SURV) s->rank = (signed char)srv_rank(s->kos);
     if (s->rank >= 0) {
         s->state = S_NAME;
         s->name[0] = 'A'; s->name[1] = 'A'; s->name[2] = 'A'; s->name[3] = 0;
@@ -927,6 +947,17 @@ static void draw_overlay(Side *s)
         }
         txt_c(fc, 10, 15, PAL_STEEL, "A: NEXT");
         return;
+    case S_GAP:
+        banner(s, 10, 6);
+        txt_c(fc, 10, 11, PAL_RED, "K.O.");
+        txt_c(fc, 10, 12, PAL_WHITE, "KOS");
+        fill(fc, 13, 10, 1, tw(PAL_WHITE, T_BLACK));
+        b2 = num(s->kos, 3, ' ');
+        led(fc + (10 - slen(b2)) / 2, 13, PAL_GREEN, b2);
+        fill(fc, 14, 10, 1, tw(PAL_WHITE, T_BLACK));
+        if (s->join) txt_c(fc, 10, 14, PAL_YELLOW, s->i ? "2P IS NEXT" : "1P IS NEXT");
+        else if ((frames >> 4) & 1) txt_c(fc, 10, 14, PAL_WHITE, s->i ? "2P START" : "1P START");
+        return;
     case S_DONE:
         switch (s->result) {
         case R_CLEAR:  a = "COMPLETE!"; pa = PAL_GREEN; break;
@@ -939,7 +970,7 @@ static void draw_overlay(Side *s)
         txt_c(fc, 10, 11, pa, a);
         if (mode == M_SPRINT && s->result == R_CLEAR) b2 = fmt_time(s->time, 2);
         else if (mode == M_MARATHON) b2 = num(s->b.score, 7, ' ');
-        else if (mode == M_SURV) { txt_c(fc, 10, 12, PAL_WHITE, "KOS"); b2 = num(surv_kos, 3, ' '); }
+        else if (mode == M_SURV) { txt_c(fc, 10, 12, PAL_WHITE, "KOS"); b2 = num(s->kos, 3, ' '); }
         if (b2) { fill(fc, 13, 10, 1, tw(PAL_WHITE, T_BLACK)); led(fc + (10 - slen(b2)) / 2, 13, PAL_GREEN, b2); }
         if (!s->cpu_on && ((frames >> 5) & 1)) txt_c(fc, 10, 14, PAL_WHITE, "START");
         return;
@@ -971,7 +1002,7 @@ static void draw_stats(Side *s)
         break;
     default:
         k0 = m | (who << 16);
-        k1 = m | b->lines;
+        k1 = m | (mode == M_SURV ? s->kos : b->lines);
         k2 = m | ((DWORD)b->sent << 8) | s->wins;
         break;
     }
@@ -998,7 +1029,10 @@ static void draw_stats(Side *s)
             txt(x0, STAT_ROW + 1, PAL_GREY, "SCORE");
             led(x0 + 5, STAT_ROW + 1, PAL_AMBER, num(b->score, 7, '0'));
         } else if (mode == M_SPRINT) led(x0 + 2, STAT_ROW + 1, PAL_GREEN, fmt_time(s->time, 2));
-        else {
+        else if (mode == M_SURV) {
+            txt(x0, STAT_ROW + 1, PAL_GREY, "KOS");
+            led(x0 + 6, STAT_ROW + 1, PAL_AMBER, num(s->kos, 3, '0'));
+        } else {
             txt(x0, STAT_ROW + 1, PAL_GREY, "LINES");
             led(x0 + 6, STAT_ROW + 1, PAL_AMBER, num(b->lines, 3, '0'));
         }
@@ -1028,8 +1062,8 @@ static void draw_side(Side *s)
 {
     int pc = PANEL_COL[s->i], k, x0 = FIELD_COL[s->i] - 1;
     tt_board *b = &s->b;
-    BYTE live = (BYTE)(s->state == S_COUNT || s->state == S_PLAY || s->state == S_DONE || s->state == S_NAME);
-    BYTE key[2 + TT_NEXT], show = (BYTE)(live && !paused), changed = 0;
+    BYTE live = (BYTE)(s->state == S_COUNT || s->state == S_PLAY || s->state == S_DONE || s->state == S_NAME || s->state == S_GAP);
+    BYTE key[2 + TT_NEXT], show = (BYTE)(live && !paused && s->state != S_GAP), changed = 0;
     WORD ck;
     /* field */
     if (live) draw_field(s);
@@ -1063,13 +1097,19 @@ static void draw_side(Side *s)
     draw_stats(s);
 }
 
+/* the drop speed both Survival boards share (a new board takes it on) */
+static BYTE surv_speed(void)
+{
+    return (BYTE)(side[0].b.level > side[1].b.level ? side[0].b.level : side[1].b.level);
+}
+
 static void draw_center(void)
 {
     static const char *MODE_NAME[4] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL" };
     int x = CENTER_COL;
     DWORD k1 = 0x80000000UL | mode | ((DWORD)paused << 4) | ((DWORD)rec_gen << 8), k2 = 0;
     if (mode == M_VS) k2 = (vs_time / 60) | ((DWORD)side[0].b.level << 24);
-    else if (mode == M_SURV) k2 = ((DWORD)surv_kos << 20) ^ (side[surv_human].time / 60);
+    else if (mode == M_SURV) k2 = (vs_time / 60) | ((DWORD)surv_speed() << 24);
     if (k1 == ctr_key1 && k2 == ctr_key2) return;
     ctr_key1 = k1; ctr_key2 = k2;
     fill(14, 0, 12, 1, BLANK);
@@ -1098,12 +1138,12 @@ static void draw_center(void)
         led(x + 2, 10, PAL_AMBER, num(side[0].b.level, 2, '0'));
         break;
     default:
-        txt_c(x, 6, 4, PAL_GREY, "KOS");
-        led(x + 1, 5, PAL_AMBER, num(surv_kos, 3, '0'));
-        txt_c(x, 6, 7, PAL_GREY, "BEST");
-        led(x + 1, 8, PAL_AMBER, num(srv_kos[0], 3, '0'));
-        txt_c(x, 6, 9, PAL_BEIGE, srv_name[0]);
-        led(x + 1, 11, PAL_GREEN, fmt_time(side[surv_human].time, 0));
+        txt_c(x, 6, 4, PAL_GREY, "BEST");
+        led(x + 1, 5, PAL_AMBER, num(srv_kos[0], 3, '0'));
+        txt_c(x, 6, 6, PAL_BEIGE, srv_name[0]);
+        led(x + 1, 8, PAL_GREEN, fmt_time(vs_time, 0));
+        txt_c(x, 6, 10, PAL_GREY, "SPEED");
+        led(x + 2, 11, PAL_AMBER, num(surv_speed(), 2, '0'));
         break;
     }
     if (paused) {
@@ -1117,13 +1157,14 @@ static void draw_center(void)
     }
 }
 
-/* countdown 3 2 1 GO in big letters over each board */
+/* countdown 3 2 1 GO (or READY GO) in big letters over each board */
 static void draw_count(Side *s)
 {
     int fc = FIELD_COL[s->i];
     char d[2];
     if (paused) return;
-    if (s->state == S_COUNT) {
+    if (s->state == S_COUNT && s->ready) big(fc, 11, PAL_YELLOW, "READY");
+    else if (s->state == S_COUNT) {
         d[0] = (char)('1' + (s->count_t - 1) / 40); d[1] = 0;
         big(fc + 4, 11, PAL_YELLOW, d);
     } else if (s->go_t && s->state == S_PLAY) big(fc + 3, 11, PAL_GREEN, "GO");
@@ -1146,22 +1187,90 @@ static void name_input(Side *s, BYTE edge)
         if (++s->name_pos >= 3) {
             if (mode == M_MARATHON) mar_insert(s->rank, s->name, s->b.score);
             else if (mode == M_SPRINT) spr_insert(s->rank, s->name, s->time);
-            else srv_insert(s->rank, s->name, surv_kos);
+            else srv_insert(s->rank, s->name, s->kos);
             save_rec_due = 1;
             rec_gen++;
             s->state = S_DONE;
+            if (mode == M_SURV && carries(other(s))) surv_gap(s);
         }
     }
 }
 
-/* a CPU in Survival is knocked out: a new one comes in after a moment */
-static void surv_ko(Side *cpu)
+/* ---------- Survival ---------- */
+/* a player on a board keeps the run going */
+static BYTE carries(Side *s) { return (BYTE)(!s->cpu_on && active(s)); }
+
+/* the K.O. pause on a knocked-out board: Start comes (back) in */
+static void surv_gap(Side *s)
 {
-    surv_kos++;
-    say(&side[surv_human], "K.O.!", "NEXT CPU");
-    sfx(&side[surv_human], SND_GO);
-    cpu->state = S_OFF;
-    surv_wait = SURV_RESPAWN;
+    s->state = S_GAP;
+    s->gap_t = SURV_KO;
+    s->b.active = 0;
+    if (!s->cpu_on) s->join = 0;
+}
+
+/* side l topped out: the other board scores a K.O. and plays on */
+static void surv_topout(Side *l)
+{
+    Side *w = other(l);
+    char c[13];
+    int k;
+    const char *p;
+    if (w->state == S_PLAY) {
+        if (w->kos < 999) w->kos++;
+        p = num(w->kos, 1, '0');
+        for (k = 0; *p && k < 8; ) c[k++] = *p++;
+        p = w->kos == 1 ? " KO" : " KOS";
+        while (*p && k < 12) c[k++] = *p++;
+        c[k] = 0;
+        say(w, "K.O.!", c);
+        sfx(w, SND_GO);
+    }
+    if (l->cpu_on) { surv_gap(l); return; }
+    side_finish(l, R_TOPOUT);                  /* GAME OVER, and maybe a record */
+    if (l->state == S_DONE && carries(w)) surv_gap(l);
+}
+
+/* the K.O. pause is over: whoever claimed the seat comes in, else a CPU */
+static void surv_next(Side *s)
+{
+    Side *o = other(s);
+    s->cpu_on = (BYTE)!s->join;
+    s->kos = 0;
+    begin_side(s, fresh_seed(), SURV_READY);
+    s->ready = 1;
+    s->b.level = o->b.level < 1 ? 1 : o->b.level;
+    s->b.gravity = tt_gravity_for(s->b.level);
+    s->prev = 0xff;
+}
+
+/* nobody is playing or coming in: the run is over */
+static void surv_check_end(void)
+{
+    int k;
+    for (k = 0; k < 2; k++)
+        if (carries(&side[k]) || (side[k].state == S_GAP && side[k].join)) return;
+    for (k = 0; k < 2; k++) {
+        Side *s = &side[k];
+        if (active(s)) { s->state = S_DONE; s->result = R_WIN; s->b.active = 0; }
+        else if (s->state == S_GAP) { s->state = S_DONE; s->result = R_TOPOUT; s->rank = -1; }
+    }
+}
+
+/* a player claims a CPU's seat (Start on that CPU's pad) */
+static void surv_claim(Side *s)
+{
+    if (s->state == S_COUNT) {                 /* still counting in: just take over */
+        s->cpu_on = 0;
+        s->kos = 0;
+        s->b.sonic = pad_cfg[s->i].sonic;
+        s->prev = 0xff;
+    } else {                                   /* playing: wait for it to go down */
+        s->join = 1;
+        s->cpu.ease = 1;
+        say(s, s->i ? "2P" : "1P", "IS NEXT");
+    }
+    sfx(s, SND_MENU);
 }
 
 static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
@@ -1170,13 +1279,15 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
     (void)edge;
     switch (s->state) {
     case S_COUNT:
+        if (mode == M_SURV && s->cpu_on && start) surv_claim(s);
         if (!s->cpu_on) side_input(s, cur, 0);
-        if (s->count_t % 40 == 0) sfx(s, SND_BEEP);
+        if (s->ready ? s->count_t == SURV_READY : s->count_t % 40 == 0) sfx(s, SND_BEEP);
         if (--s->count_t == 0) { s->state = S_PLAY; s->go_t = GO_FRAMES; sfx(s, SND_GO); }
         break;
     case S_PLAY:
         if (s->go_t) s->go_t--;
         if (start && !s->cpu_on) { paused = 1; sfx(0, SND_MENU); return; }
+        if (start && mode == M_SURV && !s->join) surv_claim(s);
         if (s->cpu_on || HARNESS_BOT(s)) cpu_frame(&s->cpu, b);
         else side_input(s, cur, 1);
         tt_tick(b);
@@ -1190,13 +1301,20 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
                 Side *o = other(s);
                 if (o->state == S_PLAY && o->b.alive) { o->wins++; side_finish(o, R_WIN); side_finish(s, R_LOSE); }
                 else side_finish(s, R_DRAW);
-            } else if (mode == M_SURV && s->cpu_on) surv_ko(s);
-            else if (mode == M_SURV) { side_finish(s, R_TOPOUT); other(s)->state = S_DONE; other(s)->result = R_WIN; }
+            } else if (mode == M_SURV) surv_topout(s);
             else side_finish(s, R_TOPOUT);
         }
         break;
     case S_DONE:
         s->prev = cur;
+        if (mode == M_SURV && (start || (!s->cpu_on && (edge & JOY_A)))) {
+            /* a new run: whoever pressed plays, the other board is a CPU */
+            sfx(s, SND_MENU);
+            s->cpu_on = 0;
+            other(s)->cpu_on = 1;
+            begin_match();
+            break;
+        }
         if (s->cpu_on) break;
         if (start || (edge & JOY_A)) {
             sfx(s, SND_MENU);
@@ -1207,6 +1325,11 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
     case S_NAME:
         s->prev = cur;
         name_input(s, edge);
+        break;
+    case S_GAP:
+        s->prev = cur;
+        if (start && !s->join) { s->join = 1; sfx(s, SND_MENU); }
+        if (--s->gap_t == 0) surv_next(s);
         break;
     case S_OFF:
         s->prev = cur;
@@ -1275,16 +1398,11 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps)
                     if (vs_time % 3600 == 0)
                         for (k = 0; k < 2; k++) {
                             tt_board *b = &side[k].b;
-                            if (b->level < 10) { b->level++; b->gravity = tt_gravity_for(b->level); }
+                            if (b->level < (mode == M_SURV ? SURV_MAX_SPEED : VS_MAX_SPEED)) { b->level++; b->gravity = tt_gravity_for(b->level); }
                         }
                 }
             }
-            if (mode == M_SURV && surv_wait && --surv_wait == 0 && side[surv_human].state == S_PLAY) {
-                Side *c = &side[surv_human ^ 1];
-                begin_side(c, fresh_seed(), 40);
-                c->b.level = side[surv_human].b.level;
-                c->b.gravity = tt_gravity_for(c->b.level);
-            }
+            if (mode == M_SURV) surv_check_end();
             for (k = 0; k < 2; k++) if (side[k].call_t) side[k].call_t--;
         }
     }

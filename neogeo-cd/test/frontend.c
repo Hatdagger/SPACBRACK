@@ -191,7 +191,7 @@ static void dump(const char *name)
 }
 
 /* ---- script ---- */
-static const char *STATE_NAME[] = { "OFF", "ASK", "COUNT", "PLAY", "DONE", "NAME" };
+static const char *STATE_NAME[] = { "OFF", "ASK", "COUNT", "PLAY", "DONE", "NAME", "GAP" };
 static int wait_n, hold_p, hold_n, until_p = -1, until_left;
 static BYTE hold_k, hold_sys, tap_k[2], tap_sys, tap_phase;
 static char until_s[64];
@@ -216,7 +216,7 @@ static BYTE key(const char *k, BYTE *sys, int pl)
 static int state_id(const char *n)
 {
     int k;
-    for (k = 0; k < 6; k++) if (!strcmp(n, STATE_NAME[k])) return k;
+    for (k = 0; k < 7; k++) if (!strcmp(n, STATE_NAME[k])) return k;
     fprintf(stderr, "unknown state %s\n", n); exit(2);
     return 0;
 }
@@ -284,6 +284,13 @@ void waitVBlank(void)
             pl = atoi(a1) - 1;
             if (side[pl].state != state_id(a2)) {
                 fprintf(stderr, "frame %ld: player %d is %s, expected %s\n", frame, pl + 1, STATE_NAME[side[pl].state], a2);
+                exit(4);
+            }
+        } else if (!strcmp(cmd, "human") || !strcmp(cmd, "cpu")) {
+            pl = atoi(a1) - 1;
+            if (!side[pl].cpu_on != !strcmp(cmd, "human")) {
+                fprintf(stderr, "frame %ld: player %d's seat is %s, expected %s\n", frame, pl + 1,
+                        side[pl].cpu_on ? "a CPU" : "a player", cmd);
                 exit(4);
             }
         } else if (!strcmp(cmd, "lines")) side[atoi(a1) - 1].b.lines = (tt_u16)atoi(a2);
