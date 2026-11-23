@@ -83,6 +83,9 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define GO_FRAMES     30
 #define CALL_FRAMES   80
 #define SURV_RESPAWN  70
+#define TRAIL_FRAMES  9              /* hard drop tail: 3 rows, then 2, then 1 */
+
+static const BYTE TRAIL_LEN[TRAIL_FRAMES + 1] = { 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 };
 
 enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME };
 enum { M_MARATHON, M_SPRINT, M_VS, M_SURV };
@@ -631,7 +634,7 @@ static void side_events(Side *s)
     if (ev & TT_EV_ROTATE) sfx(s, (ev & TT_EV_KICK) ? SND_KICK : SND_ROTATE);
     if (ev & TT_EV_HOLD) sfx(s, SND_HOLD);
     if (ev & TT_EV_HARD) {
-        s->trail_t = 8;
+        s->trail_t = TRAIL_FRAMES;
         s->tr_type = b->hd_type; s->tr_rot = b->hd_rot;
         s->tr_x = b->hd_x; s->tr_y0 = b->hd_y0; s->tr_y1 = b->hd_y1;
         sfx(s, SND_HARD);
@@ -778,7 +781,7 @@ static void draw_field(Side *s)
     sig = ((DWORD)(b->x + 4) & 15) | ((DWORD)(b->y & 31) << 4) | ((DWORD)b->rot << 9) |
           ((DWORD)b->type << 11) | ((DWORD)b->active << 14) | ((DWORD)play << 15) |
           ((DWORD)opt_ghost << 16) | ((DWORD)(s->flash_t != 0) << 17) |
-          ((DWORD)(s->trail_t ? 1 + (s->trail_t >> 2 & 1) : 0) << 18) |
+          ((DWORD)TRAIL_LEN[s->trail_t] << 18) |
           ((DWORD)(b->clear_t ? 1 + (b->clear_t >> 1 & 1) : 0) << 20);   /* what shows, not the timers */
     full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go;
     if (!full && sig == s->fd_sig && !b->grid_rows) return;
@@ -787,7 +790,7 @@ static void draw_field(Side *s)
     if (paused) { fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK)); s->fd_ov = 0; b->grid_rows = 0; return; }
 
     if (s->trail_t && play)
-        for (y = s->tr_y0 < 0 ? 0 : s->tr_y0; y <= s->tr_y1 + 3 && y < TT_ROWS; y++) ov |= 1UL << y;
+        for (y = s->tr_y1 - 3 < 0 ? 0 : s->tr_y1 - 3; y <= s->tr_y1 + 3 && y < TT_ROWS; y++) ov |= 1UL << y;
     if (b->active && play) {
         ov |= brick_rows(b->type, b->rot, b->y);
         if (opt_ghost) { gy = tt_ghost_y(b); ov |= brick_rows(b->type, b->rot, gy); }
@@ -814,15 +817,24 @@ static void draw_field(Side *s)
                 fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, c ? tw(PAL_OF(c), T_BRICK) : tw(PAL_WHITE, T_EMPTY));
             }
     }
-    /* on top, lowest first: drop trail, ghost, lock flash, falling brick */
+    /* on top, lowest first: drop tail, ghost, lock flash, falling brick */
     if (s->trail_t && play) {
-        trail_w = tw(PAL_OF(s->tr_type), (WORD)(T_TRAIL + (s->trail_t >> 2 & 1)));
+        const tt_s8 (*sh)[2] = TT_SHAPE[s->tr_type][s->tr_rot];
+        int len = TRAIL_LEN[s->trail_t], j, top, ty;
         for (k = 0; k < 4; k++) {
-            cx = s->tr_x + TT_SHAPE[s->tr_type][s->tr_rot][k][0];
+            /* one tail per column, above the brick's top cell in that column */
+            for (j = 0; j < 4; j++) if (sh[j][0] == sh[k][0] && sh[j][1] < sh[k][1]) break;
+            if (j < 4) continue;
+            cx = s->tr_x + sh[k][0];
             if (cx < 0 || cx >= TT_COLS) continue;
-            for (y = s->tr_y0 + TT_SHAPE[s->tr_type][s->tr_rot][k][1]; y < s->tr_y1 + TT_SHAPE[s->tr_type][s->tr_rot][k][1]; y++)
-                if (y >= TT_HIDDEN && y < TT_ROWS && !b->grid[y][cx] && !(clearing && (b->clear_rows & (1UL << y))))
-                    fx_put(fc + cx, FIELD_ROW + y - TT_HIDDEN, trail_w);
+            ty = s->tr_y1 + sh[k][1];                 /* where that cell landed */
+            top = s->tr_y0 + sh[k][1];                /* ...and where it started */
+            if (ty - len > top) top = ty - len;
+            for (y = ty - 1; y >= top; y--) {
+                if (y < TT_HIDDEN || y >= TT_ROWS || b->grid[y][cx] || (clearing && (b->clear_rows & (1UL << y)))) continue;
+                trail_w = tw(PAL_OF(s->tr_type), (WORD)(T_TRAIL + (y == ty - 1 ? 0 : 1)));
+                fx_put(fc + cx, FIELD_ROW + y - TT_HIDDEN, trail_w);
+            }
         }
     }
     if (gy >= 0)

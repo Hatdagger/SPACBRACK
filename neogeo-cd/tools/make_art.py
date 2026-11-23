@@ -168,13 +168,13 @@ def make_fix():
     fill(T_HALF_L, 13); brick(T_HALF_L, x0=4, x_from=0, x_to=4)
     fill(T_HALF_R, 13); brick(T_HALF_R, x0=-4, x_from=4, x_to=8)
     fill(T_HALF_LR, 13); brick(T_HALF_LR, x0=4, x_from=0, x_to=4); brick(T_HALF_LR, x0=-4, x_from=4, x_to=8)
-    # hard drop trail: streaks in the brick colour and white
-    for k, cols in enumerate(((1, 3, 6), (2, 5))):
+    # hard drop tail: a solid band in the brick colour just above where it
+    # landed (T_TRAIL, next to the brick) and a thin one further up (T_TRAIL + 1)
+    for k, band in enumerate((((1, 3), (2, 1), (3, 2), (4, 2), (5, 1), (6, 3)), ((3, 3), (4, 3)))):
         n = T_TRAIL + k
         fill(n, 11); put(n, 0, 0, 12)
-        for x in cols:
-            for y in range(8):
-                if (y + x * 3 + k) % 4 != 3: put(n, x, y, 5 if (y + x) % 3 == 0 else 1)
+        for x, role in band:
+            for y in range(8): put(n, x, y, role)
     # bezel (web G.deck: steel, light top/left, dark bottom/right, black line at the field)
     bez = ['TL', 'T', 'TR', 'L', 'R', 'BL', 'B', 'BR']
     for k, kind in enumerate(bez):
