@@ -232,6 +232,12 @@ Keep game references as parody / nods rather than actual copyrighted characters.
 - From main menu: local 2P and online. Toggle features, cards, house rules and perks. No card loss.
 - Netcode: each client simulates its own board and sends garbage/move events + board snapshots. Countdown start/break events need to be authoritative (host decides) so both screens agree on who won.
 
+## Neo Geo CD port (planned, Nov 2026)
+- Full plan: docs/neogeo-cd-plan.md in the repo. Reuses Calm Combo's working NeoCore + GitHub Actions pipeline (BIN/CUE for the user's MiSTer, ISO/CHD for MAME).
+- Board and HUD on the fix layer (8x8 tiles), bricks/cards/characters as sprites; board.js/ai.js port to C with a parity test.
+- Milestones: 1 Versus battle only (first test disc), 2 all rules/perks/cards, 3 sound (CD audio + ADPCM effects), 4 Adventure, 5 hardware polish.
+- Open: drop rotate CCW on the 4-button pad? (proposed A rotate, B hard drop, C hold, D card, Select perk, Start pause)
+
 ## Platform feasibility (first pass)
 | Platform | Adventure | Local versus | Online versus |
 |---|---|---|---|
