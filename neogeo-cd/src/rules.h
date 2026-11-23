@@ -26,8 +26,22 @@ typedef unsigned long  tt_u32;
 #define TT_QMAX    16
 #define TT_GMAX    8           /* garbage batches waiting */
 
-/* cell values (0 = empty) */
-enum { TT_I = 1, TT_J, TT_L, TT_O, TT_S, TT_T, TT_Z, TT_GARBAGE };
+/* cell values (0 = empty); TT_ROCK = a Cyclops boulder */
+enum { TT_I = 1, TT_J, TT_L, TT_O, TT_S, TT_T, TT_Z, TT_GARBAGE, TT_ROCK };
+
+/* garbage hole patterns (the sender's card decides): one hole per row at
+   std: the same column; ribs: alternating 5 apart; claw: one step right per
+   row; stairs: one step right per row from the left half, up to the wall */
+enum { TT_PAT_STD, TT_PAT_RIBS, TT_PAT_CLAW, TT_PAT_STAIRS };
+
+/* timed card effects on a board (frames left in fx[]) */
+enum { TT_FX_GLARE,      /* no preview */
+       TT_FX_SONAR,      /* 5-brick preview */
+       TT_FX_HOWL,       /* falls 3x faster */
+       TT_FX_SHIVER,     /* the brick slips a column every second */
+       TT_FX_DARK,       /* field hidden (front end) */
+       TT_FX_ECHO,       /* incoming garbage bounces back (front end) */
+       TT_FX_N };
 
 #define TT_LOCK_FRAMES   30    /* 0.5 s on the floor before a brick locks */
 #define TT_MAX_RESETS    15    /* moves/rotations that restart the lock delay */
@@ -93,6 +107,7 @@ typedef struct {
 
     /* versus garbage */
     tt_u8  g_rows[TT_GMAX], g_hole[TT_GMAX], g_wait[TT_GMAX];
+    tt_u8  g_pat[TT_GMAX], g_done[TT_GMAX];   /* hole pattern, rows of it already landed */
     tt_u8  g_n;
     tt_u16 out;                /* rows to send to the opponent (front end takes them) */
     tt_u16 sent, recv;         /* totals, for the result screen */
@@ -101,6 +116,8 @@ typedef struct {
     /* card abilities (Versus and Survival, when cards are on) */
     tt_u8  meter;              /* 0..TT_METER_MAX */
     tt_u16 cool;               /* frames until an ability can fire again */
+    tt_u16 fx[TT_FX_N];        /* timed effects, frames left */
+    tt_u8  shiver_t;
 
     /* last frame's events */
     tt_u16 ev;
@@ -135,5 +152,21 @@ int  tt_pending_ready(const tt_board *b);   /* ...of which can land now */
 tt_u32 tt_rand(tt_board *b);
 int  tt_can_spend(const tt_board *b, int cost);   /* meter holds cost, no cooldown */
 int  tt_spend(tt_board *b, int cost);       /* pay for an ability: 1 if it could */
+
+/*
+ * Card effects (the front end picks who they hit).  Lines that an effect
+ * clears or completes don't count, score, fill the meter or send garbage.
+ */
+void tt_receive_pat(tt_board *b, tt_u8 rows, tt_u8 pat);   /* garbage with a hole pattern */
+int  tt_take_pending(tt_board *b, tt_u8 *rows, tt_u8 *pat); /* pop the oldest waiting batch: 0 when none */
+void tt_boulder(tt_board *b);               /* a 2x2 rock lands on a random spot */
+void tt_eye_beam(tt_board *b, int x);       /* empty columns x and x+1 */
+int  tt_best_beam(const tt_board *b);       /* the x that empties the most */
+int  tt_beam_start(const tt_board *b);      /* where aiming starts: under the brick */
+void tt_collapse(tt_board *b);              /* every brick falls down its column */
+void tt_pound(tt_board *b, int n);          /* the bottom n rows go, the stack drops */
+void tt_rattle(tt_board *b);                /* the falling brick slips a column */
+void tt_full_moon(tt_board *b);             /* the next 3 bricks are I */
+void tt_fx_on(tt_board *b, int fx, tt_u16 frames);
 
 #endif

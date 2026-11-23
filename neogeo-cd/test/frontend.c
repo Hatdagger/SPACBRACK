@@ -15,13 +15,18 @@
  *   wait N            let N frames pass
  *   p1 KEY / p2 KEY   press a button for one frame, then release for one
  *                     (U D L R A B C D, START, SELECT)
- *   hold P KEY N      hold a button for N frames
+ *   hold P KEY N      hold a button for N frames (KEY+KEY: several at once)
  *   bot P LEVEL       a CPU plays player P's board (0 = stop)
  *   until P STATE N   wait until player P's board is in STATE (at most N
  *                     frames, then fail): OFF ASK COUNT PLAY DONE NAME
  *   state P STATE     fail unless player P's board is in STATE
  *   lines P N         set player P's line count (to reach a goal quickly)
  *   meter P N [COOL]  set player P's card meter (and cooldown frames)
+ *   check P WHAT N    fail unless player P's WHAT is N (meter, aim, card,
+ *                     alive, fx0..fx5 on/off) or at least N (cool, rocks,
+ *                     pending, fired = abilities fired)
+ *   setcard P N       give player P card N (0 Cyclops .. 3 Giant Bat ..)
+ *   garbage P N       send player P N rows of garbage
  *   cards P N         fail unless player P has pressed the card button N times
  *   paused N          fail unless the game is paused (1) or not (0)
  *   pad P WHAT N      fail unless player P's options have WHAT (card, hard, up) = N
@@ -205,7 +210,7 @@ static int wait_n, hold_p, hold_n, until_p = -1, until_left;
 static BYTE hold_k, hold_sys, tap_k[2], tap_sys, tap_phase;
 static char until_s[64];
 
-static BYTE key(const char *k, BYTE *sys, int pl)
+static BYTE key1(const char *k, BYTE *sys, int pl)
 {
     *sys = 0;
     if (!strcmp(k, "U")) return JOY_UP;
@@ -220,6 +225,31 @@ static BYTE key(const char *k, BYTE *sys, int pl)
     if (!strcmp(k, "SELECT")) { *sys = (BYTE)(pl == 1 ? P1_SELECT : P2_SELECT); return 0; }
     fprintf(stderr, "unknown key %s\n", k); exit(2);
     return 0;
+}
+
+/* KEY or KEY+KEY.. (held together) */
+static BYTE key(const char *k, BYTE *sys, int pl)
+{
+    char one[16];
+    BYTE out = 0, s1;
+    int n;
+    *sys = 0;
+    while (*k) {
+        for (n = 0; k[n] && k[n] != '+' && n < 15; n++) one[n] = k[n];
+        one[n] = 0;
+        out |= key1(one, &s1, pl);
+        *sys |= s1;
+        k += n;
+        if (*k == '+') k++;
+    }
+    return out;
+}
+
+static int count_cells(const tt_board *b, int v)
+{
+    int x, y, n = 0;
+    for (y = 0; y < TT_ROWS; y++) for (x = 0; x < TT_COLS; x++) n += b->grid[y][x] == v;
+    return n;
 }
 
 static int state_id(const char *n)
@@ -302,7 +332,29 @@ void waitVBlank(void)
                         side[pl].cpu_on ? "a CPU" : "a player", cmd);
                 exit(4);
             }
-        } else if (!strcmp(cmd, "meter")) {
+        } else if (!strcmp(cmd, "check")) {
+            /* check P WHAT N: meter = N, cool (frames left) >= N, rocks >= N,
+               pending >= N, fx<k> (effect k on) = N, aim = N, card = N, alive = N */
+            Side *cs = &side[atoi(a1) - 1];
+            long v, want = atol(a3);
+            int ge = 0;
+            if (!strcmp(a2, "meter")) v = cs->b.meter;
+            else if (!strcmp(a2, "cool")) { v = cs->b.cool; ge = 1; }
+            else if (!strcmp(a2, "rocks")) { v = count_cells(&cs->b, TT_ROCK); ge = 1; }
+            else if (!strcmp(a2, "pending")) { v = tt_pending(&cs->b); ge = 1; }
+            else if (!strncmp(a2, "fx", 2)) v = cs->b.fx[atoi(a2 + 2) % TT_FX_N] != 0;
+            else if (!strcmp(a2, "aim")) v = cs->aim;
+            else if (!strcmp(a2, "card")) v = cs->card;
+            else if (!strcmp(a2, "alive")) v = cs->b.alive;
+            else if (!strcmp(a2, "fired")) { v = cs->fired; ge = 1; }
+            else { fprintf(stderr, "unknown check %s\n", a2); exit(2); }
+            if (ge ? v < want : v != want) {
+                fprintf(stderr, "frame %ld: player %s %s is %ld, expected %s%ld\n", frame, a1, a2, v, ge ? ">= " : "", want);
+                exit(4);
+            }
+        } else if (!strcmp(cmd, "setcard")) side[atoi(a1) - 1].card = (BYTE)atoi(a2);
+        else if (!strcmp(cmd, "garbage")) tt_receive(&side[atoi(a1) - 1].b, (tt_u8)atoi(a2));
+        else if (!strcmp(cmd, "meter")) {
             side[atoi(a1) - 1].b.meter = (tt_u8)atoi(a2);
             side[atoi(a1) - 1].b.cool = (tt_u16)atoi(a3);
         } else if (!strcmp(cmd, "cards")) {

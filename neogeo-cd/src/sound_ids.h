@@ -22,11 +22,16 @@ enum {
     SND_MENU,
     SND_BEEP,
     SND_GO,
+    SND_CAST,
+    SND_BOULDER,
+    SND_BEAM,
+    SND_ECHO,
+    SND_DENY,
     SND_COUNT
 };
 
 #define SND_CMD_BASE 0x20
 #define SND_CMD(id, pan) ((BYTE)(SND_CMD_BASE + (id) * 3 + (pan)))   /* pan 0 left, 1 centre, 2 right */
-#define SND_NAMES "move", "rotate", "kick", "lock", "hard", "hold", "clear1", "clear2", "clear3", "clear4", "tspin", "combo", "garbage", "level", "topout", "menu", "beep", "go"   /* file names, for the PC harness */
+#define SND_NAMES "move", "rotate", "kick", "lock", "hard", "hold", "clear1", "clear2", "clear3", "clear4", "tspin", "combo", "garbage", "level", "topout", "menu", "beep", "go", "cast", "boulder", "beam", "echo", "deny"   /* file names, for the PC harness */
 
 #endif

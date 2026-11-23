@@ -5,12 +5,13 @@ Built with [NeoCore](https://github.com/David-Vandensteen/neocore) (GCC 2.95 + D
 ## Code
 | File | What |
 |---|---|
-| `src/rules.c/.h` | One board's rules: bag, SRS kicks, gravity, lock delay, T-spins, scoring, garbage. Plain C89, no hardware, so the PC tests run the same code. |
+| `src/rules.c/.h` | One board's rules: bag, SRS kicks, gravity, lock delay, T-spins, scoring, garbage (with the cards' hole patterns), and the card effects on a board (boulders, eye beam, collapse, pound, timed effects). Plain C89, no hardware, so the PC tests run the same code. |
 | `src/cpu.c/.h` | CPU opponent (levels 1-8), ported from the web prototype's `ai.js`. Its search is spread over frames. |
-| `src/main.c` | Screens, modes, input (DAS/ARR, remap), drawing. |
+| `src/main.c` | Screens, modes, input (DAS/ARR, remap), drawing, card abilities (who they hit, aiming, Echo Wall, CPU use). |
+| `src/cards.h` | The 10 cards: names, passives, abilities and costs. |
 | `src/save.c/.h` | Records and options in backup memory (BIOS CARD call, saves 2-4 under NeoCore's game number 0x7777). |
 | `src/sound.c/.h` | Sound-chip effects queue and CD audio tracks (from Calm Combo). |
-| `test/sim.c` | Rules checks: 7-bag, kicks, T-spin double, all clear, back-to-back, garbage, lock delay, fuzzing, CPU 40-line runs, CPU vs CPU. |
+| `test/sim.c` | Rules checks: 7-bag, kicks, T-spin double, all clear, back-to-back, garbage and its patterns, card meter and effects, lock delay, fuzzing (card effects included), CPU 40-line runs, CPU vs CPU. |
 | `test/frontend.c` | Runs the real `main.c` against stand-in hardware from a script (`test/tour.txt`) and dumps snapshots; `test/render_frames.py` draws them. |
 
 ```
@@ -43,5 +44,5 @@ For `mak dist:iso`, also copy `assets\cdda\*.wav` into `..\build\SPACBRACK\asset
 
 ## Next
 1. Test the disc on the MiSTer / real hardware (saving, sprite and fix timing).
-2. Cards in Versus / Versus CPU / Survival (on/off option, pick-a-card screen, every card and ability unlocked).
+2. Cards: the 6 boss cards' house rules and perks (monster abilities are in).
 3. Your own songs.

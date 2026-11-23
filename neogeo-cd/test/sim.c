@@ -158,6 +158,144 @@ static void test_lock_delay(void)
     CHECK(b.pieces == 1, "locks after 30 frames on the floor");
 }
 
+/* the hole of each row the board took, bottom row first */
+static int hole_of(const tt_board *b, int y)
+{
+    int x, h = -1;
+    for (x = 0; x < TT_COLS; x++) {
+        if (b->grid[y][x] != TT_GARBAGE) { if (h >= 0) return -2; h = x; }
+    }
+    return h;
+}
+
+static void land(tt_board *b, tt_u8 rows, tt_u8 pat)
+{
+    memset(b->grid, 0, sizeof b->grid);
+    b->g_n = 0;
+    tt_receive_pat(b, rows, pat);
+    b->g_wait[0] = 0;
+    set_piece(b, TT_O, 0, 4, 0);
+    tt_hard_drop(b);
+}
+
+static void test_patterns(void)
+{
+    tt_board b;
+    int i, h0, ok;
+    tt_init(&b, 7, 1, 0, 0, 1);
+    b.clear_delay = 0;
+    land(&b, 4, TT_PAT_STD);
+    h0 = hole_of(&b, TT_ROWS - 4);
+    ok = h0 >= 0;
+    for (i = 1; i < 4; i++) ok = ok && hole_of(&b, TT_ROWS - 4 + i) == h0;
+    CHECK(ok, "plain garbage: one hole, same column");
+    land(&b, 4, TT_PAT_RIBS);
+    h0 = hole_of(&b, TT_ROWS - 4);       /* the batch's first row ends up on top */
+    ok = h0 >= 0;
+    for (i = 1; i < 4; i++) ok = ok && hole_of(&b, TT_ROWS - 4 + i) == ((i & 1) ? (h0 + 5) % 10 : h0);
+    CHECK(ok, "rib garbage: holes alternate 5 apart");
+    land(&b, 3, TT_PAT_CLAW);
+    h0 = hole_of(&b, TT_ROWS - 3);
+    ok = h0 >= 0;
+    for (i = 1; i < 3; i++) ok = ok && hole_of(&b, TT_ROWS - 3 + i) == (h0 + i) % 10;
+    CHECK(ok, "claw garbage: the hole steps right each row");
+    land(&b, 3, TT_PAT_STAIRS);
+    h0 = hole_of(&b, TT_ROWS - 3);
+    ok = h0 >= 0 && h0 <= 4;
+    for (i = 1; i < 3; i++) ok = ok && hole_of(&b, TT_ROWS - 3 + i) == h0 + i;
+    CHECK(ok, "stair garbage: the hole climbs from the left half");
+    /* a batch cut by the 8-row cap carries on its pattern */
+    land(&b, 10, TT_PAT_CLAW);
+    h0 = hole_of(&b, TT_ROWS - 8);
+    b.g_wait[0] = 0;
+    set_piece(&b, TT_O, 0, 4, 0);
+    tt_hard_drop(&b);
+    CHECK(b.recv >= 10 && hole_of(&b, TT_ROWS - 2) == (h0 + 8) % 10 && hole_of(&b, TT_ROWS - 1) == (h0 + 9) % 10, "a split claw batch keeps stepping");
+}
+
+static int filled(const tt_board *b)
+{
+    int x, y, n = 0;
+    for (y = 0; y < TT_ROWS; y++) for (x = 0; x < TT_COLS; x++) n += b->grid[y][x] != 0;
+    return n;
+}
+
+static void test_effects(void)
+{
+    static const char *pic[4] = { "#### #####", "## #######", "#.#.#.#.#.", "##########" };
+    tt_board b;
+    tt_u8 r, p;
+    int n, f, x;
+    tt_u16 lines;
+
+    /* boulders: a 2x2 rock on top of the stack, the brick lifted clear */
+    tt_init(&b, 21, 1, 0, 0, 1);
+    n = filled(&b);
+    tt_boulder(&b);
+    CHECK(filled(&b) == n + 4, "a boulder is 4 rock cells");
+    CHECK(!tt_collides(&b, b.type, b.rot, b.x, b.y), "the falling brick is clear of the rock");
+    for (x = 0; x < 40 && b.alive; x++) tt_boulder(&b);
+    CHECK(!b.alive, "a field full of rocks tops out");
+
+    /* eye beam empties 2 columns; the CPU aims at the fullest */
+    tt_init(&b, 22, 1, 0, 0, 1);
+    field(&b, pic, 4);
+    b.grid[TT_ROWS - 5][6] = b.grid[TT_ROWS - 5][7] = TT_GARBAGE;
+    CHECK(tt_best_beam(&b) == 6, "the beam picks the fullest pair");
+    tt_eye_beam(&b, 6);
+    for (n = 0, f = 0; f < TT_ROWS; f++) n += b.grid[f][6] || b.grid[f][7];
+    CHECK(n == 0, "eye beam empties both columns");
+
+    /* collapse: bricks fall down their columns; full rows go without counting */
+    tt_init(&b, 23, 1, 0, 0, 1);
+    field(&b, pic, 4);
+    lines = b.lines;
+    tt_collapse(&b);
+    CHECK(b.lines == lines && b.meter == 0, "collapse lines don't count");
+    for (n = 0, x = 0; x < TT_COLS; x++) n += b.grid[TT_ROWS - 1][x] != 0;
+    CHECK(n < TT_COLS, "collapse clears the rows it completes");
+    for (n = 0, x = 0; x < TT_COLS; x++)
+        for (f = TT_ROWS - 1; f > 0; f--) if (!b.grid[f][x] && b.grid[f - 1][x]) n++;
+    CHECK(n == 0, "after a collapse no brick hangs over a gap");
+
+    /* pound: the bottom 3 rows go */
+    tt_init(&b, 24, 1, 0, 0, 1);
+    field(&b, pic, 4);
+    tt_pound(&b, 3);
+    for (n = 0, x = 0; x < TT_COLS; x++) n += b.grid[TT_ROWS - 1][x] != 0;
+    CHECK(n == 9 && filled(&b) == 9, "pound leaves only the top row, dropped to the floor");
+
+    /* howl: 3x gravity */
+    tt_init(&b, 25, 1, 0, 0, 1);
+    for (f = 0; f < 60; f++) tt_tick(&b);
+    n = b.y;
+    tt_init(&b, 25, 1, 0, 0, 1);
+    tt_fx_on(&b, TT_FX_HOWL, 360);
+    for (f = 0; f < 60; f++) tt_tick(&b);
+    CHECK(b.y >= 3 * n - 1 && b.y > n, "howl makes the brick fall 3x faster");
+    CHECK(b.fx[TT_FX_HOWL] == 300, "effects count down");
+
+    /* shiver: a column a second */
+    tt_init(&b, 26, 1, 0, 0, 1);
+    b.gravity = 0;
+    x = b.x;
+    tt_fx_on(&b, TT_FX_SHIVER, 360);
+    for (f = 0; f < 59; f++) tt_tick(&b);
+    CHECK(b.x == x, "no shiver before a second");
+    tt_tick(&b);
+    CHECK(b.x == x + 1 || b.x == x - 1, "shiver slips the brick a column");
+
+    /* full moon and waiting garbage taken back (echo wall) */
+    tt_init(&b, 27, 1, 0, 0, 1);
+    tt_full_moon(&b);
+    CHECK(b.queue[0] == TT_I && b.queue[1] == TT_I && b.queue[2] == TT_I, "full moon: 3 I bricks next");
+    tt_receive_pat(&b, 2, TT_PAT_RIBS);
+    tt_receive_pat(&b, 3, TT_PAT_CLAW);
+    CHECK(tt_take_pending(&b, &r, &p) && r == 2 && p == TT_PAT_RIBS, "take back the oldest batch");
+    CHECK(tt_take_pending(&b, &r, &p) && r == 3 && p == TT_PAT_CLAW, "...then the next");
+    CHECK(!tt_take_pending(&b, &r, &p) && !tt_pending(&b), "...until none wait");
+}
+
 /* the CPU plays solo; returns lines cleared before topping out or the goal */
 static int cpu_solo(int level, tt_u32 seed, tt_u16 goal, long *frames)
 {
@@ -227,7 +365,12 @@ static void test_fuzz(void)
         else if (k == 7) tt_rotate(&b, -1);
         else if (k == 8) tt_hold(&b);
         else if (k == 10) tt_hard_drop(&b);
-        else if (k == 11 && (r & 0x100000)) tt_receive(&b, (tt_u8)(1 + (r >> 24) % 4));
+        else if (k == 11 && (r & 0x100000)) tt_receive_pat(&b, (tt_u8)(1 + (r >> 24) % 4), (tt_u8)((r >> 8) & 3));
+        else if (k == 12 && (r & 0xf00000) == 0x100000) tt_boulder(&b);
+        else if (k == 12 && (r & 0xf00000) == 0x200000) tt_collapse(&b);
+        else if (k == 12 && (r & 0xf00000) == 0x300000) tt_pound(&b, 3);
+        else if (k == 12 && (r & 0xf00000) == 0x400000) tt_eye_beam(&b, (int)((r >> 8) % 9));
+        else if (k == 12 && (r & 0xf00000) == 0x500000) tt_fx_on(&b, (int)((r >> 8) % TT_FX_N), 300);
         tt_tick(&b);
         if (b.active) CHECK(!tt_collides(&b, b.type, b.rot, b.x, b.y), "falling brick never overlaps");
         if (!b.alive) { games++; tt_init(&b, (tt_u32)f + 1, 1 + games % 15, 0, 1, 1); }
@@ -244,6 +387,8 @@ int main(void)
     test_pc_and_b2b();
     test_garbage();
     test_meter();
+    test_patterns();
+    test_effects();
     test_lock_delay();
     test_fuzz();
     test_cpu();

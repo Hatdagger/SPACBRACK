@@ -31,7 +31,8 @@ SRC = os.path.normpath(os.path.join(HERE, '..', 'src'))
 ASSETS = os.path.join(SRC, 'assets')
 
 SFX = ['move', 'rotate', 'kick', 'lock', 'hard', 'hold', 'clear1', 'clear2', 'clear3', 'clear4',
-       'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go']
+       'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go',
+       'cast', 'boulder', 'beam', 'echo', 'deny']
 # (file, song, semitones)
 TRACKS = [('track02_title', 'title', 0), ('track03_marathon', 'battle', 0), ('track04_sprint', 'boss', 0),
           ('track05_versus', 'battle', 3), ('track06_survival', 'boss', -2)]
@@ -219,6 +220,17 @@ def render_sfx(name):
     elif name == 'menu': b.tone(1320, d=.04, v=.08 * 1.5)
     elif name == 'beep': b.tone(660, d=.15, v=.14)
     elif name == 'go': b.tone(1320, d=.4, v=.14, sus=True)
+    # card abilities (js/audio.js ab_glare, boulder, defense_eyebeam, ab_echo)
+    elif name == 'cast':
+        b.tone(300, to=1600, d=.25, v=.1, typ='triangle'); b.tone(1600, d=.4, v=.07, typ='sine', at=.25, vib=True)
+    elif name == 'boulder':
+        b.tone(120, to=30, d=.35, v=.3, typ='triangle'); b.noise(d=.3, v=.2, f=400)
+    elif name == 'beam':
+        b.tone(2200, to=200, d=.5, v=.14, typ='sawtooth'); b.noise(d=.5, v=.14, typ='bandpass', f=3000, to=400, q=3)
+    elif name == 'echo':
+        for i in range(4): b.tone(1200, to=2400, d=.15, v=.1 * .6 ** i, at=i * .12)
+    elif name == 'deny':
+        b.tone(150, d=.07, v=.1, typ='triangle'); b.tone(110, d=.1, v=.1, typ='triangle', at=.09)
     x = b.buf * 4.5
     x = filt(x, 'lowpass', 6000, SFX_RATE)
     pk = np.abs(x).max()

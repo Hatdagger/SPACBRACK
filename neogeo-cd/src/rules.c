@@ -237,7 +237,7 @@ int tt_pending_ready(const tt_board *b)
     return n;
 }
 
-void tt_receive(tt_board *b, tt_u8 rows)
+void tt_receive_pat(tt_board *b, tt_u8 rows, tt_u8 pat)
 {
     if (!rows || !b->alive) return;
     if (b->g_n == TT_GMAX) {                    /* full: add to the newest batch */
@@ -247,27 +247,59 @@ void tt_receive(tt_board *b, tt_u8 rows)
     b->g_rows[b->g_n] = rows;
     b->g_hole[b->g_n] = (tt_u8)(tt_rand(b) % TT_COLS);
     b->g_wait[b->g_n] = TT_GARBAGE_DELAY;
+    b->g_pat[b->g_n] = pat;
+    b->g_done[b->g_n] = 0;
     b->g_n++;
+}
+
+void tt_receive(tt_board *b, tt_u8 rows) { tt_receive_pat(b, rows, TT_PAT_STD); }
+
+/* the oldest batch is gone: move the rest up */
+static void drop_batch(tt_board *b)
+{
+    int k;
+    for (k = 1; k < b->g_n; k++) {
+        b->g_rows[k - 1] = b->g_rows[k]; b->g_hole[k - 1] = b->g_hole[k]; b->g_wait[k - 1] = b->g_wait[k];
+        b->g_pat[k - 1] = b->g_pat[k]; b->g_done[k - 1] = b->g_done[k];
+    }
+    b->g_n--;
+}
+
+int tt_take_pending(tt_board *b, tt_u8 *rows, tt_u8 *pat)
+{
+    if (!b->g_n) return 0;
+    *rows = b->g_rows[0];
+    *pat = b->g_pat[0];
+    drop_batch(b);
+    return 1;
 }
 
 /* your attack cancels waiting garbage first (oldest first) */
 static int cancel(tt_board *b, int n)
 {
-    int k;
     while (n > 0 && b->g_n) {
         if (b->g_rows[0] > n) { b->g_rows[0] = (tt_u8)(b->g_rows[0] - n); return 0; }
         n -= b->g_rows[0];
-        for (k = 1; k < b->g_n; k++) {
-            b->g_rows[k - 1] = b->g_rows[k]; b->g_hole[k - 1] = b->g_hole[k]; b->g_wait[k - 1] = b->g_wait[k];
-        }
-        b->g_n--;
+        drop_batch(b);
     }
     return n;
 }
 
+/* the hole of row i of a batch (i counts from the batch's first row) */
+static int hole_at(int pat, int gap, int i)
+{
+    int h;
+    switch (pat) {
+    case TT_PAT_RIBS:   return (i & 1) ? (gap + 5) % TT_COLS : gap;
+    case TT_PAT_CLAW:   return (gap + i) % TT_COLS;
+    case TT_PAT_STAIRS: h = gap % 5 + i; return h > TT_COLS - 1 ? TT_COLS - 1 : h;
+    default:            return gap;
+    }
+}
+
 static void apply_garbage(tt_board *b)
 {
-    int landed = 0, n, k, x, y;
+    int landed = 0, n, x, y, h, y0;
     while (b->g_n && !b->g_wait[0] && landed < TT_GARBAGE_CAP) {
         n = b->g_rows[0];
         if (n > TT_GARBAGE_CAP - landed) n = TT_GARBAGE_CAP - landed;
@@ -277,17 +309,17 @@ static void apply_garbage(tt_board *b)
                 if (b->grid[y][x]) b->alive = 0;
         for (y = 0; y < TT_ROWS - n; y++)
             for (x = 0; x < TT_COLS; x++) b->grid[y][x] = b->grid[y + n][x];
-        for (y = TT_ROWS - n; y < TT_ROWS; y++)
-            for (x = 0; x < TT_COLS; x++) b->grid[y][x] = (tt_u8)(x == b->g_hole[0] ? 0 : TT_GARBAGE);
+        /* the batch's rows come in from the bottom: its first row ends up on top */
+        y0 = TT_ROWS - n;
+        for (y = y0; y < TT_ROWS; y++) {
+            h = hole_at(b->g_pat[0], b->g_hole[0], b->g_done[0] + y - y0);
+            for (x = 0; x < TT_COLS; x++) b->grid[y][x] = (tt_u8)(x == h ? 0 : TT_GARBAGE);
+        }
         landed += n;
         b->recv = (tt_u16)(b->recv + n);
         b->g_rows[0] = (tt_u8)(b->g_rows[0] - n);
-        if (!b->g_rows[0]) {
-            for (k = 1; k < b->g_n; k++) {
-                b->g_rows[k - 1] = b->g_rows[k]; b->g_hole[k - 1] = b->g_hole[k]; b->g_wait[k - 1] = b->g_wait[k];
-            }
-            b->g_n--;
-        }
+        b->g_done[0] = (tt_u8)(b->g_done[0] + n);
+        if (!b->g_rows[0]) drop_batch(b);
     }
     if (landed) { b->ev |= TT_EV_GARBAGE; b->grid_rows = 0xffffffffUL; }
     if (!b->alive) top_out(b);
@@ -452,6 +484,7 @@ void tt_tick(tt_board *b)
     }
     for (k = 0; k < b->g_n; k++) if (b->g_wait[k]) b->g_wait[k]--;
     if (b->cool) b->cool--;
+    for (k = 0; k < TT_FX_N; k++) if (b->fx[k]) b->fx[k]--;
 
     if (b->clear_t) {
         if (--b->clear_t == 0) { collapse(b); spawn(b, 0); }
@@ -459,7 +492,11 @@ void tt_tick(tt_board *b)
     }
     if (!b->active) return;
 
+    /* Shiver: the brick slips a column every second */
+    if (b->fx[TT_FX_SHIVER] && ++b->shiver_t >= 60) { b->shiver_t = 0; tt_rattle(b); }
+
     g = b->gravity;
+    if (b->fx[TT_FX_HOWL]) g *= 3;
     if (b->soft) {
         if (b->sonic) g = (tt_u32)G_ONE * TT_ROWS;
         else {
@@ -484,4 +521,139 @@ void tt_tick(tt_board *b)
         b->lock_t++;
         if (b->lock_t >= TT_LOCK_FRAMES || b->resets >= TT_MAX_RESETS) lock(b);
     } else b->lock_t = 0;
+}
+
+/* ======================================================================
+ * card effects
+ * ==================================================================== */
+
+/* an effect changes the field: a line clear still flashing finishes first */
+static void settle(tt_board *b)
+{
+    if (!b->clear_t) return;
+    b->clear_t = 0;
+    collapse(b);
+    if (b->alive && !b->done) spawn(b, 0);
+}
+
+/* bricks moved under the falling one: lift it clear (or it is bricked up) */
+static void nudge(tt_board *b)
+{
+    int t = 0;
+    if (!b->active) return;
+    while (t < 4 && tt_collides(b, b->type, b->rot, b->x, b->y)) { b->y--; t++; }
+    if (tt_collides(b, b->type, b->rot, b->x, b->y)) top_out(b);
+}
+
+/* full rows go without counting */
+static void silent_clear(tt_board *b)
+{
+    int y, x, to = TT_ROWS - 1;
+    for (y = TT_ROWS - 1; y >= 0; y--) {
+        for (x = 0; x < TT_COLS && b->grid[y][x]; x++) ;
+        if (x == TT_COLS) continue;
+        if (to != y) for (x = 0; x < TT_COLS; x++) b->grid[to][x] = b->grid[y][x];
+        to--;
+    }
+    for (; to >= 0; to--) for (x = 0; x < TT_COLS; x++) b->grid[to][x] = 0;
+}
+
+static int col_top(const tt_board *b, int x)
+{
+    int y;
+    for (y = 0; y < TT_ROWS && !b->grid[y][x]; y++) ;
+    return y;
+}
+
+void tt_fx_on(tt_board *b, int fx, tt_u16 frames)
+{
+    if (fx < 0 || fx >= TT_FX_N || !b->alive) return;
+    b->fx[fx] = frames;
+    if (fx == TT_FX_SHIVER) b->shiver_t = 0;
+}
+
+void tt_boulder(tt_board *b)
+{
+    int x, top, t2, y0, dx, dy;
+    if (!b->alive) return;
+    settle(b);
+    x = (int)(tt_rand(b) % (TT_COLS - 1));
+    top = col_top(b, x);
+    t2 = col_top(b, x + 1);
+    if (t2 < top) top = t2;
+    y0 = top - 2;
+    for (dy = 0; dy < 2; dy++)
+        for (dx = 0; dx < 2; dx++)
+            if (y0 + dy >= 0) b->grid[y0 + dy][x + dx] = TT_ROCK;
+    b->grid_rows = 0xffffffffUL;
+    if (y0 < 0) { top_out(b); return; }
+    nudge(b);
+}
+
+void tt_eye_beam(tt_board *b, int x)
+{
+    int y;
+    if (!b->alive) return;
+    if (x < 0) x = 0;
+    if (x > TT_COLS - 2) x = TT_COLS - 2;
+    settle(b);
+    for (y = 0; y < TT_ROWS; y++) b->grid[y][x] = b->grid[y][x + 1] = 0;
+    b->grid_rows = 0xffffffffUL;
+}
+
+int tt_best_beam(const tt_board *b)
+{
+    int x, y, n, best = 0, bn = -1;
+    for (x = 0; x <= TT_COLS - 2; x++) {
+        n = 0;
+        for (y = 0; y < TT_ROWS; y++) n += (b->grid[y][x] != 0) + (b->grid[y][x + 1] != 0);
+        if (n > bn) { bn = n; best = x; }
+    }
+    return best;
+}
+
+int tt_beam_start(const tt_board *b)
+{
+    int k, x, mx = TT_COLS;
+    if (!b->active) return TT_COLS / 2 - 1;
+    for (k = 0; k < 4; k++) { x = b->x + TT_SHAPE[b->type][b->rot][k][0]; if (x < mx) mx = x; }
+    return mx > TT_COLS - 2 ? TT_COLS - 2 : mx < 0 ? 0 : mx;
+}
+
+void tt_collapse(tt_board *b)
+{
+    int x, y, to;
+    if (!b->alive) return;
+    settle(b);
+    for (x = 0; x < TT_COLS; x++) {
+        to = TT_ROWS - 1;
+        for (y = TT_ROWS - 1; y >= 0; y--)
+            if (b->grid[y][x]) { b->grid[to][x] = b->grid[y][x]; if (to != y) b->grid[y][x] = 0; to--; }
+    }
+    silent_clear(b);
+    b->grid_rows = 0xffffffffUL;
+    nudge(b);
+}
+
+void tt_pound(tt_board *b, int n)
+{
+    int x, y;
+    if (!b->alive || n <= 0) return;
+    settle(b);
+    if (n > TT_ROWS) n = TT_ROWS;
+    for (y = TT_ROWS - 1; y >= 0; y--)
+        for (x = 0; x < TT_COLS; x++) b->grid[y][x] = (tt_u8)(y >= n ? b->grid[y - n][x] : 0);
+    b->grid_rows = 0xffffffffUL;
+}
+
+void tt_rattle(tt_board *b)
+{
+    int d = (tt_rand(b) & 1) ? 1 : -1;
+    if (!b->active) return;
+    if (!tt_move(b, d)) tt_move(b, -d);
+}
+
+void tt_full_moon(tt_board *b)
+{
+    b->queue[0] = b->queue[1] = b->queue[2] = TT_I;
 }

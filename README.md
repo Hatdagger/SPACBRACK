@@ -32,13 +32,24 @@ Note: the falling blocks are called **bricks** everywhere in this game.
 | Up | Hard drop (can be turned off) |
 | A / B | Rotate left / right |
 | C | Hold |
-| D | Card (Versus and Survival; the cards are being added) |
+| D | Card (Versus and Survival): hold it, pick a direction, let go to fire |
 | Start | Pause / join / retry |
 | Select | Pause; while paused, quit to the title |
 
 The card button can also go on Select or Start: then the other one pauses.
 
-**Cards** (Versus and Survival, can be turned off in Options): before a match each player picks one card on the PICK A CARD screen (Left/Right to look through all 10, A or Start to pick, B to change your mind; Start on the CPU's pad joins the pick). Four monster cards (Cyclops, Skeleton, Werewolf, Giant Bat) each have a passive and four abilities, used by holding the card button and pressing a direction; six boss cards (Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) bring a house rule and a perk. Everything is unlocked. CPUs pick at random. A rematch keeps the cards. The abilities themselves are still being added.
+**Cards** (Versus and Survival, can be turned off in Options): before a match each player picks one card on the PICK A CARD screen (Left/Right to look through all 10, A or Start to pick, B to change your mind; Start on the CPU's pad joins the pick). Four monster cards (Cyclops, Skeleton, Werewolf, Giant Bat) each have a passive and four abilities, used by holding the card button and pressing a direction; six boss cards (Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) bring a house rule and a perk. Everything is unlocked. CPUs pick at random. A rematch keeps the cards.
+
+**Monster abilities**: hold the card button, press a direction (the ability's name and cost show above your board), and let go to fire. Pressing another button while picking cancels. Not enough meter, the cooldown, or nobody on the other board: nothing fires (a low buzz).
+
+| Card (passive) | Left | Right | Down | Up |
+|---|---|---|---|---|
+| Cyclops (ghost always on) | Boulder 5: a 2x2 rock lands on the foe | Eye Beam 3: aim with Left/Right, fire with any button (or after 4 s); empties 2 of your columns | Glare 6: foe sees no next bricks for 8 s | Rockslide 10: three boulders |
+| Skeleton (your garbage has rib gaps) | Rattle 4: foe's brick slips a column | Collapse 3: your bricks fall straight down their columns | Shiver 6: foe's brick slips every second for 6 s | Bone Storm 10: send 4 rib rows |
+| Werewolf (your garbage has slashed gaps) | Claw 5: send 3 slashed rows | Pound 3: your bottom 3 rows go | Howl 6: foe falls 3x faster for 6 s | Full Moon 10: your next 3 bricks are I |
+| Giant Bat (+1 next brick) | Nightfall 4: send 1 row, foe's field goes dark for 5 s | Echo Wall 3: garbage waiting for you bounces back, and so does more for 6 s | Sonar 4: 5 next bricks for 10 s | Swarm 10: send 3 rows, dark for 8 s |
+
+Lines your own abilities clear don't count, score or fill the meter. With cards on you see 3 next bricks (the web game's number), 4 with the Giant Bat. Effects on a board show as a word under its NEXT column (GLAR, SONR, HOWL, SHVR, DARK, ECHO). CPUs fire an ability they can afford now and then, more often at higher levels. The six boss cards' house rules and perks are still being added.
 
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 

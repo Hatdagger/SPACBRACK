@@ -104,6 +104,7 @@ T_BEZ_PLAIN = 149   # left bezel without the gauge track (card frame)
 T_BLACK = 150
 T_STEEL = 151
 T_METER = 152       # right bezel with the card meter: track top/bottom, lit top/bottom (152..155)
+T_ROCK = 156        # a Cyclops boulder cell (drawn in the amber palette)
 T_BIG = 160         # big letters on the fix layer, 2x2 tiles each (TL TR BL BR)
 BIGCHARS = '321GOPAUSEDK.!WINREY'
 
@@ -226,6 +227,18 @@ def make_fix():
             for x in (2, 3, 4): put(n, x, y, 6 if k >= 2 else 15)
     fill(T_BLACK, 7)
     fill(T_STEEL, 8)
+    # boulder cell: a rounded stone with a crack, on the field colour
+    ROCK = ['.22222..',
+            '2551114.',
+            '25111113',
+            '21111313',
+            '11113113',
+            '41111313',
+            '.4111133',
+            '..33333.']
+    for y, row in enumerate(ROCK):
+        for x, c in enumerate(row):
+            put(T_ROCK, x, y, 11 if c == '.' else int(c))
     # big letters (countdown, PAUSED, K.O.!): the 5x7 font at 2x with a black
     # outline over the field colour, shaded top to bottom in the brick roles
     for k, ch in enumerate(BIGCHARS):
@@ -363,7 +376,7 @@ def write_header():
     for name, val in [('T_LED', T_LED), ('T_BRICK', T_BRICK), ('T_GHOST', T_GHOST), ('T_EMPTY', T_EMPTY),
                       ('T_INSET', T_INSET), ('T_HALF_L', T_HALF_L), ('T_HALF_R', T_HALF_R),
                       ('T_HALF_LR', T_HALF_LR), ('T_TRAIL', T_TRAIL), ('T_BEZ', T_BEZ),
-                      ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BEZ_PLAIN', T_BEZ_PLAIN), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL), ('T_METER', T_METER),
+                      ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BEZ_PLAIN', T_BEZ_PLAIN), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL), ('T_METER', T_METER), ('T_ROCK', T_ROCK),
                       ('T_BIG', T_BIG)]:
         out.append('#define %-12s %d' % (name, val))
     out += ['', '/* role colours painted in fix/tiles.png (index = role) */',

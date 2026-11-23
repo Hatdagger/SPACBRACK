@@ -51,6 +51,7 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define HOLD_ROW   4
 #define NEXT_ROW   8
 #define STAT_ROW   25
+#define FX_ROW     24                /* card effect tag under the NEXT column */
 
 /* fix palettes */
 #define PAL_GARB   9
@@ -94,6 +95,16 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define SURV_MAX_SPEED 5             /* Survival's minute-by-minute speed stops here */
 #define VS_MAX_SPEED  10
 #define TRAIL_FRAMES  9              /* hard drop tail: 3 rows, then 2, then 1 */
+/* card effects (the web game's times) */
+#define FX_GLARE      480            /* foe loses the preview: 8 s */
+#define FX_SHIVER     360
+#define FX_HOWL       360
+#define FX_NIGHTFALL  300
+#define FX_SWARM      480
+#define FX_ECHO       360
+#define FX_SONAR      600
+#define AIM_FRAMES    240            /* Eye Beam: aiming too long fires where it points */
+#define CPU_CARD_EVERY 60            /* a CPU thinks about its card once a second */
 
 static const BYTE TRAIL_LEN[TRAIL_FRAMES + 1] = { 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 };
 
@@ -135,8 +146,14 @@ typedef struct {
     BYTE    ready;                   /* this count-in shows READY, not 3 2 1 */
     /* cards */
     BYTE    card;                    /* CARD_CYCLOPS.. (when cards are on) */
+    BYTE    card_mode, card_dir;     /* card button held: picking an ability (1 + DIR_x, 0 none yet) */
+    BYTE    aim;                     /* Eye Beam: aiming */
+    signed char aim_x;
+    WORD    aim_t, cpu_card_t;
+    WORD    fired;                   /* abilities fired (the harness checks them) */
     /* what is on screen now, so a frame only draws what changed */
-    BYTE    fd_full, fd_state, fd_paused, fd_go;
+    BYTE    fd_full, fd_state, fd_paused, fd_go, fd_aim, fd_dark;
+    WORD    fx_key;
     DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
     BYTE    ov_key, mini_key[2 + TT_NEXT];
     WORD    gauge_key, meter_key, call_key, call_gen;
@@ -593,6 +610,8 @@ static void begin_side(Side *s, DWORD seed, WORD count)
     s->fd_full = 1;
     s->join = 0;
     s->ready = 0;
+    s->card_mode = s->card_dir = s->aim = 0;
+    s->cpu_card_t = 0;
     if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? surv_level(s) : cpu_level, fresh_seed());
 }
 
@@ -610,6 +629,8 @@ static void draw_static(void);
 static void pick_open(BYTE who);
 static BYTE cards_on(void);
 static BYTE carries(Side *s);
+static BYTE ghost_on(const Side *s);
+static BYTE previews(const Side *s);
 
 /* a fresh Versus or Survival match: with cards on, players in who (bits) pick first */
 static void new_match(BYTE who)
@@ -837,6 +858,12 @@ static DWORD brick_rows(int type, int rot, int y)
 
 #define ROWS_SEEN (((1UL << TT_ROWS) - 1) & ~((1UL << TT_HIDDEN) - 1))
 
+/* a settled cell: a brick in its colour, or a Cyclops boulder */
+static WORD cell_w(BYTE c)
+{
+    return c == TT_ROCK ? tw(PAL_AMBER, T_ROCK) : tw(PAL_OF(c), T_BRICK);
+}
+
 /*
  * The field is only drawn when something on it changed, and then only the
  * rows that changed: rows of settled bricks the rules touched (grid_rows),
@@ -848,27 +875,39 @@ static void draw_field(Side *s)
     tt_board *b = &s->b;
     int fc = FIELD_COL[s->i], x, y, k, gy = -1, cx, cy, full;
     BYTE play = (BYTE)(s->state == S_PLAY), go = (BYTE)(s->go_t != 0), c;
-    BYTE clearing = (BYTE)(b->clear_t != 0);
+    BYTE clearing = (BYTE)(b->clear_t != 0), ghost = ghost_on(s);
+    BYTE dark = (BYTE)(b->fx[TT_FX_DARK] && play);
+    BYTE aimk = (BYTE)(s->aim && play ? 0x80 | (s->aim_x << 1) | ((frames >> 3) & 1) : 0);
     DWORD sig, ov = 0, rows, bit;
     const tt_u8 *row;
     WORD trail_w;
 
     sig = ((DWORD)(b->x + 4) & 15) | ((DWORD)(b->y & 31) << 4) | ((DWORD)b->rot << 9) |
           ((DWORD)b->type << 11) | ((DWORD)b->active << 14) | ((DWORD)play << 15) |
-          ((DWORD)opt_ghost << 16) | ((DWORD)(s->flash_t != 0) << 17) |
+          ((DWORD)ghost << 16) | ((DWORD)(s->flash_t != 0) << 17) |
           ((DWORD)TRAIL_LEN[s->trail_t] << 18) |
           ((DWORD)(b->clear_t ? 1 + (b->clear_t >> 1 & 1) : 0) << 20);   /* what shows, not the timers */
-    full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go;
+    full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go ||
+           aimk != s->fd_aim || dark != s->fd_dark;
     if (!full && sig == s->fd_sig && !b->grid_rows) return;
     s->fd_full = 0; s->fd_paused = paused; s->fd_state = s->state; s->fd_go = go;
-    s->fd_sig = sig;
+    s->fd_sig = sig; s->fd_aim = aimk; s->fd_dark = dark;
     if (paused) { fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK)); s->fd_ov = 0; b->grid_rows = 0; return; }
+    /* Nightfall / Swarm: the whole field goes dark */
+    if (dark) {
+        if (full) {
+            fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK));
+            txt_c(fc, 10, FIELD_ROW + 9, PAL_VIOLET, "DARK");
+        }
+        s->fd_ov = 0; b->grid_rows = 0;
+        return;
+    }
 
     if (s->trail_t && play)
         for (y = s->tr_y1 - 3 < 0 ? 0 : s->tr_y1 - 3; y <= s->tr_y1 + 3 && y < TT_ROWS; y++) ov |= 1UL << y;
     if (b->active && play) {
         ov |= brick_rows(b->type, b->rot, b->y);
-        if (opt_ghost) { gy = tt_ghost_y(b); ov |= brick_rows(b->type, b->rot, gy); }
+        if (ghost) { gy = tt_ghost_y(b); ov |= brick_rows(b->type, b->rot, gy); }
     }
     if (s->flash_t) for (k = 0; k < 4; k++) ov |= 1UL << b->lock_cells[k][1];
     if (clearing) ov |= b->clear_rows;
@@ -884,14 +923,20 @@ static void draw_field(Side *s)
             for (x = 0; x < TT_COLS; x++) {
                 c = row[x];
                 fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN,
-                       (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : tw(PAL_OF(c ? c : TT_GARBAGE), T_BRICK));
+                       (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : cell_w(c ? c : TT_GARBAGE));
             }
         } else
             for (x = 0; x < TT_COLS; x++) {
                 c = row[x];
-                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, c ? tw(PAL_OF(c), T_BRICK) : tw(PAL_WHITE, T_EMPTY));
+                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, c ? cell_w(c) : tw(PAL_WHITE, T_EMPTY));
             }
     }
+    /* Eye Beam aim: the two columns it will empty, blinking */
+    if (aimk)
+        for (y = TT_HIDDEN; y < TT_ROWS; y++)
+            for (cx = s->aim_x; cx <= s->aim_x + 1; cx++)
+                fx_put(fc + cx, FIELD_ROW + y - TT_HIDDEN,
+                       b->grid[y][cx] ? tw((BYTE)(aimk & 1 ? PAL_WHITE : PAL_YELLOW), T_BRICK) : tw(PAL_YELLOW, T_GHOST));
     /* on top, lowest first: drop tail, ghost, lock flash, falling brick */
     if (s->trail_t && play) {
         const tt_s8 (*sh)[2] = TT_SHAPE[s->tr_type][s->tr_rot];
@@ -958,6 +1003,58 @@ static void draw_gauge(Side *s)
 static BYTE cards_on(void)
 {
     return (BYTE)(opt_cards && (mode == M_VS || mode == M_SURV));
+}
+
+static BYTE has_card(const Side *s, BYTE card) { return (BYTE)(cards_on() && s->card == card); }
+
+/* Cyclops' Focus: the ghost is always on */
+static BYTE ghost_on(const Side *s) { return (BYTE)(opt_ghost || has_card(s, CARD_CYCLOPS)); }
+
+/*
+ * Next bricks shown.  Without cards: all 5.  With cards, as in the web game:
+ * 3, Giant Bat's Echolocation 4, Sonar 5, under a Glare none.
+ */
+static BYTE previews(const Side *s)
+{
+    if (!cards_on()) return TT_NEXT;
+    if (s->b.fx[TT_FX_GLARE]) return 0;
+    if (s->b.fx[TT_FX_SONAR]) return 5;
+    return (BYTE)(has_card(s, CARD_BAT) ? 4 : 3);
+}
+
+/* the garbage this board sends: Skeleton ribs, Werewolf claws, Giant Bat stairs */
+static tt_u8 pat_of(const Side *s)
+{
+    if (!cards_on()) return TT_PAT_STD;
+    switch (s->card) {
+    case CARD_SKELETON: return TT_PAT_RIBS;
+    case CARD_WEREWOLF: return TT_PAT_CLAW;
+    case CARD_BAT:      return TT_PAT_STAIRS;
+    default:            return TT_PAT_STD;
+    }
+}
+
+/*
+ * Effects on a board, one word at a time under the NEXT column (4 columns,
+ * level with the bottom bezel): what hit it (HOWL, SHVR, GLAR, DARK) and
+ * what it has up (ECHO, SONR).
+ */
+static void draw_fx(Side *s, BYTE show)
+{
+    static const char *FX_TAG[TT_FX_N] = { "GLAR", "SONR", "HOWL", "SHVR", "DARK", "ECHO" };
+    static const BYTE FX_PAL[TT_FX_N] = { PAL_YELLOW, PAL_CYAN, PAL_RED, PAL_WHITE, PAL_VIOLET, PAL_VIOLET };
+    int k, n = 0, pick = -1, which;
+    WORD key;
+    for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k]) n++;
+    if (show && n) {
+        which = (int)((frames / 40) % n);
+        for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k] && which-- == 0) { pick = k; break; }
+    }
+    key = (WORD)(pick < 0 ? 0 : 0x100 | pick);
+    if (key == s->fx_key) return;
+    s->fx_key = key;
+    fill(PANEL_COL[s->i], FX_ROW, 4, 1, BLANK);
+    if (pick >= 0) txt(PANEL_COL[s->i], FX_ROW, FX_PAL[pick], FX_TAG[pick]);
 }
 
 /*
@@ -1150,22 +1247,23 @@ static void draw_side(Side *s)
     int pc = PANEL_COL[s->i], k, x0 = FIELD_COL[s->i] - 1;
     tt_board *b = &s->b;
     BYTE live = (BYTE)(s->state == S_COUNT || s->state == S_PLAY || s->state == S_DONE || s->state == S_NAME || s->state == S_GAP);
-    BYTE key[2 + TT_NEXT], show = (BYTE)(live && !paused && s->state != S_GAP), changed = 0;
+    BYTE key[2 + TT_NEXT], show = (BYTE)(live && !paused && s->state != S_GAP), changed = 0, np = previews(s);
     WORD ck;
     /* field */
     if (live) draw_field(s);
     draw_overlay(s);
     draw_gauge(s);
     draw_meter(s);
+    draw_fx(s, (BYTE)(live && !paused && s->state == S_PLAY));
     /* hold and next, when they change */
     key[0] = (BYTE)(show ? 1 + b->hold_used : 0);
     key[1] = (BYTE)(show ? b->hold : 0);
-    for (k = 0; k < TT_NEXT; k++) key[2 + k] = (BYTE)(show ? b->queue[k] : 0);
+    for (k = 0; k < TT_NEXT; k++) key[2 + k] = (BYTE)(show && k < np ? b->queue[k] : 0);
     for (k = 0; k < 2 + TT_NEXT; k++) if (key[k] != s->mini_key[k]) { s->mini_key[k] = key[k]; changed = 1; }
     if (changed) {
         if (show) {
             draw_mini(pc, HOLD_ROW, b->hold, b->hold_used ? PAL_STEEL : PAL_OF(b->hold));
-            for (k = 0; k < TT_NEXT; k++) draw_mini(pc, NEXT_ROW + k * 3, b->queue[k], PAL_OF(b->queue[k]));
+            for (k = 0; k < TT_NEXT; k++) draw_mini(pc, NEXT_ROW + k * 3, key[2 + k], key[2 + k] ? PAL_OF(key[2 + k]) : PAL_WHITE);
         } else {
             fill(pc, HOLD_ROW, 4, 2, tw(PAL_WHITE, T_INSET));
             fill(pc, NEXT_ROW, 4, 15, tw(PAL_WHITE, T_INSET));
@@ -1362,6 +1460,148 @@ static void surv_claim(Side *s)
     sfx(s, SND_MENU);
 }
 
+/* ======================================================================
+ * card abilities (monster cards: hold the card button, pick a direction,
+ * let go to fire; the 6 boss cards come later)
+ * ==================================================================== */
+
+/* garbage changes hands; Echo Wall bounces it back (bounced garbage doesn't bounce again) */
+static void deliver(Side *from, Side *to, tt_u8 rows, tt_u8 pat, BYTE bounced)
+{
+    if (!rows || (to->state != S_PLAY && to->state != S_COUNT)) return;
+    if (!bounced && to->b.fx[TT_FX_ECHO]) {
+        say(to, "ECHO!", "");
+        sfx(to, SND_ECHO);
+        deliver(to, from, rows, pat, 1);
+        return;
+    }
+    tt_receive_pat(&to->b, rows, pat);
+}
+
+/* abilities that hit the other board (they need someone playing there) */
+static const BYTE AT_FOE[CARD_MONSTERS][4] = {
+    { 1, 0, 1, 1 },      /* Cyclops:  Boulder, Eye Beam, Glare, Rockslide */
+    { 1, 0, 1, 1 },      /* Skeleton: Rattle, Collapse, Shiver, Bone Storm */
+    { 1, 0, 1, 0 },      /* Werewolf: Claw, Pound, Howl, Full Moon */
+    { 1, 0, 0, 1 }       /* Giant Bat: Nightfall, Echo Wall, Sonar, Swarm */
+};
+
+static BYTE card_ready(Side *s, BYTE dir)
+{
+    return (BYTE)(s->card < CARD_MONSTERS && tt_can_spend(&s->b, CARDS[s->card].cost[dir]) &&
+                  (!AT_FOE[s->card][dir] || other(s)->state == S_PLAY));
+}
+
+static void beam_fire(Side *s)
+{
+    s->aim = 0;
+    tt_eye_beam(&s->b, s->aim_x);
+    sfx(s, SND_BEAM);
+}
+
+/* fire ability dir (DIR_L..DIR_U) of this board's card: 1 if it went off */
+static BYTE card_fire(Side *s, BYTE dir)
+{
+    Side *o = other(s);
+    tt_board *f = &o->b;
+    tt_u8 r, pt;
+    int k;
+    if (!card_ready(s, dir)) {
+        say(s, CARDS[s->card].act[dir], s->b.cool ? "COOLING" : AT_FOE[s->card][dir] && o->state != S_PLAY ? "NO TARGET" : "NEED MORE");
+        sfx(s, SND_DENY);
+        return 0;
+    }
+    tt_spend(&s->b, CARDS[s->card].cost[dir]);
+    s->fired++;
+    say(s, CARDS[s->card].act[dir], CARDS[s->card].name);
+    sfx(s, SND_CAST);
+    switch (s->card * 4 + dir) {
+    case CARD_CYCLOPS * 4 + DIR_L:  tt_boulder(f); sfx(o, SND_BOULDER); break;
+    case CARD_CYCLOPS * 4 + DIR_R:
+        if (s->cpu_on || HARNESS_BOT(s)) { s->aim_x = (signed char)tt_best_beam(&s->b); beam_fire(s); }
+        else { s->aim = 1; s->aim_x = (signed char)tt_beam_start(&s->b); s->aim_t = AIM_FRAMES; }
+        break;
+    case CARD_CYCLOPS * 4 + DIR_D:  tt_fx_on(f, TT_FX_GLARE, FX_GLARE); break;
+    case CARD_CYCLOPS * 4 + DIR_U:  for (k = 0; k < 3; k++) tt_boulder(f); sfx(o, SND_BOULDER); break;
+    case CARD_SKELETON * 4 + DIR_L: tt_rattle(f); break;
+    case CARD_SKELETON * 4 + DIR_R: tt_collapse(&s->b); break;
+    case CARD_SKELETON * 4 + DIR_D: tt_fx_on(f, TT_FX_SHIVER, FX_SHIVER); break;
+    case CARD_SKELETON * 4 + DIR_U: deliver(s, o, 4, TT_PAT_RIBS, 0); break;
+    case CARD_WEREWOLF * 4 + DIR_L: deliver(s, o, 3, TT_PAT_CLAW, 0); break;
+    case CARD_WEREWOLF * 4 + DIR_R: tt_pound(&s->b, 3); sfx(s, SND_BOULDER); break;
+    case CARD_WEREWOLF * 4 + DIR_D: tt_fx_on(f, TT_FX_HOWL, FX_HOWL); break;
+    case CARD_WEREWOLF * 4 + DIR_U: tt_full_moon(&s->b); break;
+    case CARD_BAT * 4 + DIR_L:      deliver(s, o, 1, TT_PAT_STAIRS, 0); tt_fx_on(f, TT_FX_DARK, FX_NIGHTFALL); break;
+    case CARD_BAT * 4 + DIR_R:
+        while (tt_take_pending(&s->b, &r, &pt)) deliver(s, o, r, pt, 1);
+        tt_fx_on(&s->b, TT_FX_ECHO, FX_ECHO);
+        sfx(s, SND_ECHO);
+        break;
+    case CARD_BAT * 4 + DIR_D:      tt_fx_on(&s->b, TT_FX_SONAR, FX_SONAR); break;
+    case CARD_BAT * 4 + DIR_U:      deliver(s, o, 3, TT_PAT_STAIRS, 0); tt_fx_on(f, TT_FX_DARK, FX_SWARM); break;
+    }
+    return 1;
+}
+
+/*
+ * A player's card button during play.  Returns 1 when it took this frame's
+ * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
+ * with the card button held.  Another button cancels the pick and works as usual.
+ */
+static BYTE card_ctl(Side *s, BYTE cur)
+{
+    PadCfg *c = &pad_cfg[s->i];
+    BYTE edge = (BYTE)(cur & ~s->prev), cb = c->card < 4 ? btn_bit(c->card) : 0;
+    BYTE others = (BYTE)((JOY_A | JOY_B | JOY_C | JOY_D) & ~cb), d = 0;
+    char cost[8];
+    if (s->aim) {
+        if ((edge & JOY_LEFT) && s->aim_x > 0) { s->aim_x--; sfx(s, SND_MOVE); }
+        if ((edge & JOY_RIGHT) && s->aim_x < TT_COLS - 2) { s->aim_x++; sfx(s, SND_MOVE); }
+        if ((edge & others) || s->card_hit || (c->up_drop && (edge & JOY_UP)) || !--s->aim_t) beam_fire(s);
+    } else {
+        if (!cards_on() || s->card >= CARD_MONSTERS) return 0;
+        if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
+        if (!s->card_mode) return 0;
+        if (edge & others) { s->card_mode = 0; s->call_t = 0; return 0; }
+        if (edge & JOY_LEFT) d = 1 + DIR_L;
+        else if (edge & JOY_RIGHT) d = 1 + DIR_R;
+        else if (edge & JOY_DOWN) d = 1 + DIR_D;
+        else if (edge & JOY_UP) d = 1 + DIR_U;
+        else if (!s->card_dir)
+            d = (BYTE)(cur & JOY_LEFT ? 1 + DIR_L : cur & JOY_RIGHT ? 1 + DIR_R : cur & JOY_DOWN ? 1 + DIR_D : cur & JOY_UP ? 1 + DIR_U : 0);
+        if (d && d != s->card_dir) {
+            s->card_dir = d;
+            str_cpy(cost, card_ready(s, (BYTE)(d - 1)) ? "COST " : "NEED ");
+            cost[5] = (char)(CARDS[s->card].cost[d - 1] >= 10 ? '1' : '0' + CARDS[s->card].cost[d - 1]);
+            cost[6] = (char)(CARDS[s->card].cost[d - 1] >= 10 ? '0' : 0);
+            cost[7] = 0;
+            say(s, CARDS[s->card].act[d - 1], cost);
+            sfx(s, SND_MOVE);
+        }
+        if (!s->card_down) {
+            s->card_mode = 0;
+            if (s->card_dir) card_fire(s, (BYTE)(s->card_dir - 1));
+            else s->call_t = 0;
+        }
+    }
+    s->prev = cur;
+    s->das_dir = 0;
+    s->b.soft = 0;
+    return 1;
+}
+
+/* a CPU with a monster card fires something it can afford now and then (js/ai.js abilityRate) */
+static const BYTE CPU_CARD_RATE[CPU_MAX_LEVEL + 1] = { 0, 5, 10, 15, 20, 30, 40, 50, 60 };
+
+static void cpu_card(Side *s)
+{
+    BYTE ready[4], n = 0, k;
+    if (!cards_on() || s->card >= CARD_MONSTERS || ++s->cpu_card_t < CPU_CARD_EVERY) return;
+    s->cpu_card_t = 0;
+    for (k = 0; k < 4; k++) if (card_ready(s, k)) ready[n++] = k;
+    if (n && (BYTE)(fresh_seed() % 100) < CPU_CARD_RATE[s->cpu.level]) card_fire(s, ready[fresh_seed() % n]);
+}
+
 static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
 {
     tt_board *b = &s->b;
@@ -1387,8 +1627,8 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         if (s->go_t) s->go_t--;
         if (start && !s->cpu_on) { paused = 1; sfx(0, SND_MENU); return; }
         if (start && mode == M_SURV && !s->join) surv_claim(s);
-        if (s->cpu_on || HARNESS_BOT(s)) cpu_frame(&s->cpu, b);
-        else side_input(s, cur, 1);
+        if (s->cpu_on || HARNESS_BOT(s)) { cpu_frame(&s->cpu, b); if (s->cpu_on) cpu_card(s); }
+        else if (!card_ctl(s, cur)) side_input(s, cur, 1);
         tt_tick(b);
         side_events(s);
         s->time++;
@@ -1515,8 +1755,7 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
             if (mode >= M_VS) {
                 for (k = 0; k < 2; k++)
                     if (side[k].b.out) {
-                        if (side[k ^ 1].state == S_PLAY || side[k ^ 1].state == S_COUNT)
-                            tt_receive(&side[k ^ 1].b, (tt_u8)(side[k].b.out > 40 ? 40 : side[k].b.out));
+                        deliver(&side[k], &side[k ^ 1], (tt_u8)(side[k].b.out > 40 ? 40 : side[k].b.out), pat_of(&side[k]), 0);
                         side[k].b.out = 0;
                     }
                 if (side[0].state == S_PLAY || side[1].state == S_PLAY) {
