@@ -16,6 +16,7 @@
 #define T_BEZ_GAUGE  148
 #define T_BLACK      150
 #define T_STEEL      151
+#define T_METER      152
 #define T_BIG        160
 
 /* role colours painted in fix/tiles.png (index = role) */

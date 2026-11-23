@@ -102,6 +102,7 @@ T_BEZ = 140         # TL T TR L R BL B BR  (140..147)
 T_BEZ_GAUGE = 148   # left bezel with the incoming-garbage bar lit
 T_BLACK = 150
 T_STEEL = 151
+T_METER = 152       # right bezel with the card meter: track top/bottom, lit top/bottom (152..155)
 T_BIG = 160         # big letters on the fix layer, 2x2 tiles each (TL TR BL BR)
 BIGCHARS = '321GOPAUSEDK.!WINREY'
 
@@ -211,6 +212,14 @@ def make_fix():
             px[tile_origin(n)[0] + x, tile_origin(n)[1] + y] = px[tile_origin(T_BEZ + 3)[0] + x, tile_origin(T_BEZ + 3)[1] + y]
     for y in range(8):
         for x in (3, 4, 5): put(n, x, y, 6)
+    # card meter in the right bezel: 10 segments of 2 tiles, a 2-pixel gap on top of each
+    for k in range(4):
+        n = T_METER + k
+        for y in range(8):
+            for x in range(8):
+                px[tile_origin(n)[0] + x, tile_origin(n)[1] + y] = px[tile_origin(T_BEZ + 4)[0] + x, tile_origin(T_BEZ + 4)[1] + y]
+        for y in range(2 if k % 2 == 0 else 0, 8):
+            for x in (2, 3, 4): put(n, x, y, 6 if k >= 2 else 15)
     fill(T_BLACK, 7)
     fill(T_STEEL, 8)
     # big letters (countdown, PAUSED, K.O.!): the 5x7 font at 2x with a black
@@ -319,7 +328,7 @@ def write_header():
     for name, val in [('T_LED', T_LED), ('T_BRICK', T_BRICK), ('T_GHOST', T_GHOST), ('T_EMPTY', T_EMPTY),
                       ('T_INSET', T_INSET), ('T_HALF_L', T_HALF_L), ('T_HALF_R', T_HALF_R),
                       ('T_HALF_LR', T_HALF_LR), ('T_TRAIL', T_TRAIL), ('T_BEZ', T_BEZ),
-                      ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL),
+                      ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL), ('T_METER', T_METER),
                       ('T_BIG', T_BIG)]:
         out.append('#define %-12s %d' % (name, val))
     out += ['', '/* role colours painted in fix/tiles.png (index = role) */',

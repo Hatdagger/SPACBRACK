@@ -109,6 +109,28 @@ static void test_pc_and_b2b(void)
     CHECK(b.combo == 1, "combo counted");
 }
 
+static void test_meter(void)
+{
+    tt_board b;
+    static const char *pic[] = { "####.#####", "####.#####", "####.#####", "####.#####" };
+    int k;
+    tt_init(&b, 9, 1, 0, 0, 1);
+    b.clear_delay = 0;
+    CHECK(b.meter == 0 && !tt_can_spend(&b, 1), "meter starts empty");
+    for (k = 0; k < 3; k++) {
+        field(&b, pic, 4);
+        set_piece(&b, TT_I, 1, 2, 5);
+        tt_hard_drop(&b);
+    }
+    CHECK(b.meter == TT_METER_MAX, "meter fills a point a line, up to 10");
+    CHECK(tt_spend(&b, 4) && b.meter == 6, "an ability takes its cost");
+    CHECK(!tt_spend(&b, 1), "nothing fires during the cooldown");
+    for (k = 0; k < TT_CARD_COOL - 1; k++) tt_tick(&b);
+    CHECK(!tt_can_spend(&b, 1), "cooldown lasts 8 seconds");
+    tt_tick(&b);
+    CHECK(tt_can_spend(&b, 6) && !tt_can_spend(&b, 7), "then the meter is usable again");
+}
+
 static void test_garbage(void)
 {
     tt_board b;
@@ -221,6 +243,7 @@ int main(void)
     test_tsd();
     test_pc_and_b2b();
     test_garbage();
+    test_meter();
     test_lock_delay();
     test_fuzz();
     test_cpu();

@@ -34,6 +34,8 @@ enum { TT_I = 1, TT_J, TT_L, TT_O, TT_S, TT_T, TT_Z, TT_GARBAGE };
 #define TT_GARBAGE_DELAY 60    /* incoming garbage waits 1 s before it can land */
 #define TT_GARBAGE_CAP   8     /* most rows that land on one placement */
 #define TT_MAX_LEVEL     15
+#define TT_METER_MAX     10    /* card meter: +1 per line cleared */
+#define TT_CARD_COOL     480   /* 8 s after any card ability before the next */
 
 /* events of the last frame, for sound and callouts (bit flags) */
 #define TT_EV_MOVE     0x0001
@@ -96,6 +98,10 @@ typedef struct {
     tt_u16 sent, recv;         /* totals, for the result screen */
     tt_u8  vs;                 /* versus: attack counts */
 
+    /* card abilities (Versus and Survival, when cards are on) */
+    tt_u8  meter;              /* 0..TT_METER_MAX */
+    tt_u16 cool;               /* frames until an ability can fire again */
+
     /* last frame's events */
     tt_u16 ev;
     tt_u8  last_lines, last_spin, last_b2b, last_pc, last_attack;
@@ -127,5 +133,7 @@ int  tt_ghost_y(const tt_board *b);
 int  tt_pending(const tt_board *b);         /* garbage rows waiting */
 int  tt_pending_ready(const tt_board *b);   /* ...of which can land now */
 tt_u32 tt_rand(tt_board *b);
+int  tt_can_spend(const tt_board *b, int cost);   /* meter holds cost, no cooldown */
+int  tt_spend(tt_board *b, int cost);       /* pay for an ability: 1 if it could */
 
 #endif

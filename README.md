@@ -38,6 +38,8 @@ Note: the falling blocks are called **bricks** everywhere in this game.
 
 The card button can also go on Select or Start: then the other one pauses.
 
+**Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
+
 **Options** (opened by the player who picks it, so each player has their own): DAS, ARR (0 = instant), soft drop speed, which button does rotate left, rotate right, hold and hard drop (a button already in use swaps), whether Up hard drops, and the card button (A-D, Select or Start). Shared: ghost on/off, line clear delay, music on/off, cards on/off in Versus and Survival. Options saved by an older version still load; a pad that used D for hard drop with Up hard drop on moves to the new layout. Records and options are saved in the console's backup memory.
 
 ## Build and test

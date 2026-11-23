@@ -395,6 +395,7 @@ static void lock(tt_board *b)
 
     if (n) {
         b->lines = (tt_u16)(b->lines + n);
+        b->meter = (tt_u8)(b->meter + n > TT_METER_MAX ? TT_METER_MAX : b->meter + n);
         if (b->level_up && b->level < TT_MAX_LEVEL && 1 + b->lines / 10 > b->level) {
             b->level = (tt_u8)(1 + b->lines / 10);
             if (b->level > TT_MAX_LEVEL) b->level = TT_MAX_LEVEL;
@@ -428,6 +429,19 @@ void tt_hard_drop(tt_board *b)
     lock(b);
 }
 
+int tt_can_spend(const tt_board *b, int cost)
+{
+    return b->alive && !b->cool && b->meter >= cost;
+}
+
+int tt_spend(tt_board *b, int cost)
+{
+    if (!tt_can_spend(b, cost)) return 0;
+    b->meter = (tt_u8)(b->meter - cost);
+    b->cool = TT_CARD_COOL;
+    return 1;
+}
+
 void tt_tick(tt_board *b)
 {
     tt_u32 g;
@@ -437,6 +451,7 @@ void tt_tick(tt_board *b)
         return;
     }
     for (k = 0; k < b->g_n; k++) if (b->g_wait[k]) b->g_wait[k]--;
+    if (b->cool) b->cool--;
 
     if (b->clear_t) {
         if (--b->clear_t == 0) { collapse(b); spawn(b, 0); }

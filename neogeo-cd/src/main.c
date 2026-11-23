@@ -133,7 +133,7 @@ typedef struct {
     BYTE    fd_full, fd_state, fd_paused, fd_go;
     DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
     BYTE    ov_key, mini_key[2 + TT_NEXT];
-    WORD    gauge_key, call_key, call_gen;
+    WORD    gauge_key, meter_key, call_key, call_gen;
     DWORD   st_key[3];
 } Side;
 
@@ -308,6 +308,7 @@ static void invalidate(void)
         s->ov_key = 0xff;
         s->mini_key[0] = 0xff;
         s->gauge_key = 0xffff;
+        s->meter_key = 0xffff;
         s->call_key = 0xffff;
         for (j = 0; j < 3; j++) s->st_key[j] = 0xffffffffUL;
     }
@@ -901,6 +902,38 @@ static void draw_gauge(Side *s)
     }
 }
 
+/* cards are in play: Versus (CPU or 2P) and Survival, with the option on */
+static BYTE cards_on(void)
+{
+    return (BYTE)(opt_cards && (mode == M_VS || mode == M_SURV));
+}
+
+/*
+ * Card meter in the right bezel: 10 segments, one per line cleared.
+ * Cyan while it fills, yellow when full, grey during the 8 s cooldown.
+ */
+static void draw_meter(Side *s)
+{
+    int fc = FIELD_COL[s->i], k, n = s->b.meter;
+    BYTE on = cards_on(), col = (BYTE)(s->b.cool ? PAL_GREY : n >= TT_METER_MAX ? PAL_YELLOW : PAL_CYAN);
+    WORD key = (WORD)(0x8000 | (on << 14) | (col << 8) | n);
+    if (key == s->meter_key) return;
+    s->meter_key = key;
+    for (k = 0; k < 10; k++) {
+        int y = FIELD_ROW + 18 - 2 * k;
+        if (!on) {
+            fx_put(fc + 10, y, tw(PAL_WHITE, T_BEZ + 4));
+            fx_put(fc + 10, y + 1, tw(PAL_WHITE, T_BEZ + 4));
+        } else if (k < n) {
+            fx_put(fc + 10, y, tw(col, T_METER + 2));
+            fx_put(fc + 10, y + 1, tw(col, T_METER + 3));
+        } else {
+            fx_put(fc + 10, y, tw(PAL_WHITE, T_METER));
+            fx_put(fc + 10, y + 1, tw(PAL_WHITE, T_METER + 1));
+        }
+    }
+}
+
 static void banner(Side *s, int row, int h)
 {
     fill(FIELD_COL[s->i], row, 10, h, tw(PAL_WHITE, T_BLACK));
@@ -1071,6 +1104,7 @@ static void draw_side(Side *s)
     if (live) draw_field(s);
     draw_overlay(s);
     draw_gauge(s);
+    draw_meter(s);
     /* hold and next, when they change */
     key[0] = (BYTE)(show ? 1 + b->hold_used : 0);
     key[1] = (BYTE)(show ? b->hold : 0);

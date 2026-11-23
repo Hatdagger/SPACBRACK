@@ -71,6 +71,9 @@ p1 A
 until 1 PLAY 200
 bot 1 8
 wait 1500
+meter 1 7 300
+meter 2 10
+wait 2
 dump 12_versus
 until 2 DONE 20000
 wait 3

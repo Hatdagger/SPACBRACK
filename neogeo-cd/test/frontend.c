@@ -21,6 +21,7 @@
  *                     frames, then fail): OFF ASK COUNT PLAY DONE NAME
  *   state P STATE     fail unless player P's board is in STATE
  *   lines P N         set player P's line count (to reach a goal quickly)
+ *   meter P N [COOL]  set player P's card meter (and cooldown frames)
  *   cards P N         fail unless player P has pressed the card button N times
  *   paused N          fail unless the game is paused (1) or not (0)
  *   pad P WHAT N      fail unless player P's options have WHAT (card, hard, up) = N
@@ -298,6 +299,9 @@ void waitVBlank(void)
                         side[pl].cpu_on ? "a CPU" : "a player", cmd);
                 exit(4);
             }
+        } else if (!strcmp(cmd, "meter")) {
+            side[atoi(a1) - 1].b.meter = (tt_u8)atoi(a2);
+            side[atoi(a1) - 1].b.cool = (tt_u16)atoi(a3);
         } else if (!strcmp(cmd, "cards")) {
             pl = atoi(a1) - 1;
             if (side[pl].card_n != atoi(a2)) {
