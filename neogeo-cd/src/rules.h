@@ -103,6 +103,7 @@ typedef struct {
     tt_u8  hd_type, hd_rot;    /* hard drop trail: from hd_y0 down to hd_y1 */
     tt_s8  hd_x, hd_y0, hd_y1;
     tt_u8  lock_cells[4][2];   /* where the last brick locked (x, y) */
+    tt_u32 grid_rows;          /* bit y: grid row y changed (the front end redraws it, then clears this) */
 } tt_board;
 
 /* shape cell k (0..3) of a brick in a rotation state */

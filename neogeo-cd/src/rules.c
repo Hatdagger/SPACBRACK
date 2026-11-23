@@ -289,7 +289,7 @@ static void apply_garbage(tt_board *b)
             b->g_n--;
         }
     }
-    if (landed) b->ev |= TT_EV_GARBAGE;
+    if (landed) { b->ev |= TT_EV_GARBAGE; b->grid_rows = 0xffffffffUL; }
     if (!b->alive) top_out(b);
 }
 
@@ -327,6 +327,7 @@ static void collapse(tt_board *b)
     }
     for (; to >= 0; to--) for (x = 0; x < TT_COLS; x++) b->grid[to][x] = 0;
     b->clear_rows = 0;
+    b->grid_rows = 0xffffffffUL;
 }
 
 static void lock(tt_board *b)
@@ -338,7 +339,7 @@ static void lock(tt_board *b)
     for (k = 0; k < 4; k++) {
         x = b->x + TT_SHAPE[b->type][b->rot][k][0];
         y = b->y + TT_SHAPE[b->type][b->rot][k][1];
-        if (y >= 0) b->grid[y][x] = b->type;
+        if (y >= 0) { b->grid[y][x] = b->type; b->grid_rows |= 1UL << y; }
         if (y >= TT_HIDDEN) hidden = 0;
         b->lock_cells[k][0] = (tt_u8)x;
         b->lock_cells[k][1] = (tt_u8)(y < 0 ? 0 : y);

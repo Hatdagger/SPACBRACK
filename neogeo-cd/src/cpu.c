@@ -64,17 +64,38 @@ static int fits(const tt_u16 *rows, int type, int rot, int x, int y)
 }
 
 /* score one placement x100; returns 0 if impossible (out: 1 = valid) */
-static long score_place(const tt_u16 *field, int type, int rot, int x, int y0, int *ok)
+static long score_place(const tt_cpu *c, int type, int rot, int x, int y0, int *ok)
 {
+    const tt_u16 *field = c->rows;
+    const tt_u8 *top = c->top;
     tt_u16 r[TT_ROWS], covered = 0, fresh;
-    int k, y, cy, lines = 0, holes = 0, agg = 0, bump = 0, maxh = 0, above = 1, to;
+    int k, y, cx, cy, d, deep = 0, lines = 0, holes = 0, agg = 0, bump = 0, maxh = 0, above = 1, to, first;
     int h[TT_COLS];
     long s;
     *ok = 0;
     if (!fits(field, type, rot, x, y0)) return 0;
-    y = y0;
-    while (fits(field, type, rot, x, y + 1)) y++;
-    for (k = 0; k < TT_ROWS; k++) r[k] = field[k];
+    /* a straight drop stops on the highest filled cell under each part of the
+       brick: one step instead of testing every row on the way down */
+    y = TT_ROWS;
+    for (k = 0; k < 4; k++) {
+        cx = x + TT_SHAPE[type][rot][k][0];
+        cy = TT_SHAPE[type][rot][k][1];
+        if (y0 + cy >= top[cx]) deep = 1;
+        d = top[cx] - 1 - cy;
+        if (d < y) y = d;
+    }
+    if (deep) {                       /* starts under an overhang: the slow way */
+        y = y0;
+        while (fits(field, type, rot, x, y + 1)) y++;
+    }
+    /* rows above both the stack and the brick stay empty: start below them */
+    first = c->top_min;
+    for (k = 0; k < 4; k++) {
+        cy = y + TT_SHAPE[type][rot][k][1];
+        if (cy < first) first = cy;
+    }
+    if (first < 0) first = 0;
+    for (k = first; k < TT_ROWS; k++) r[k] = field[k];
     for (k = 0; k < 4; k++) {
         cy = y + TT_SHAPE[type][rot][k][1];
         if (cy >= 0) r[cy] |= (tt_u16)(1 << (x + TT_SHAPE[type][rot][k][0]));
@@ -83,13 +104,13 @@ static long score_place(const tt_u16 *field, int type, int rot, int x, int y0, i
     if (above) return 0;
     /* clear full rows */
     to = TT_ROWS - 1;
-    for (k = TT_ROWS - 1; k >= 0; k--) {
+    for (k = TT_ROWS - 1; k >= first; k--) {
         if (r[k] == FULL_ROW) { lines++; continue; }
         r[to--] = r[k];
     }
-    while (to >= 0) r[to--] = 0;
+    while (to >= first) r[to--] = 0;
     for (k = 0; k < TT_COLS; k++) h[k] = 0;
-    for (y = 0; y < TT_ROWS; y++) {
+    for (y = first; y < TT_ROWS; y++) {
         fresh = (tt_u16)(r[y] & ~covered);
         if (fresh) for (k = 0; k < TT_COLS; k++) if ((fresh >> k) & 1) h[k] = TT_ROWS - y;
         covered |= r[y];
@@ -124,7 +145,7 @@ static void search_step(tt_cpu *c, const tt_board *b)
         } else type = b->type;
         if (type == TT_O && C_ROT(n)) continue;
         quota--;
-        s = score_place(c->rows, type, C_ROT(n), C_X(n), 1, &ok);
+        s = score_place(c, type, C_ROT(n), C_X(n), 1, &ok);
         if (ok) keep_best(c, s, (tt_u8)n);
     }
 }
@@ -158,6 +179,12 @@ void cpu_frame(tt_cpu *c, tt_board *b)
             c->rows[y] = 0;
             for (x = 0; x < TT_COLS; x++) if (b->grid[y][x]) c->rows[y] |= (tt_u16)(1 << x);
         }
+        for (x = 0; x < TT_COLS; x++) {
+            for (y = 0; y < TT_ROWS && !((c->rows[y] >> x) & 1); y++) ;
+            c->top[x] = (tt_u8)y;
+        }
+        c->top_min = TT_ROWS;
+        for (x = 0; x < TT_COLS; x++) if (c->top[x] < c->top_min) c->top_min = c->top[x];
         c->ci = 0; c->nc = 0;
         c->timer = LV[c->level][0];
         c->state = CS_SEARCH;

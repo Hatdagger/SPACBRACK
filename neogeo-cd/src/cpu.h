@@ -27,6 +27,8 @@ typedef struct {
     long   sc[8];                 /* best few scores, kept sorted */
     tt_u8  cand[8];               /* ...and their candidate numbers */
     tt_u16 rows[TT_ROWS];         /* the field as bit rows */
+    tt_u8  top[TT_COLS];          /* highest filled row in each column (TT_ROWS if empty) */
+    tt_u8  top_min;               /* rows above this are empty */
     /* plan */
     tt_u8  use_hold, trot;
     tt_s8  tx;

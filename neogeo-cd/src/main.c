@@ -113,6 +113,12 @@ typedef struct {
     char    name[4];
     BYTE    name_pos;
     BYTE    wins;
+    /* what is on screen now, so a frame only draws what changed */
+    BYTE    fd_full, fd_state, fd_paused, fd_go;
+    DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
+    BYTE    ov_key, mini_key[2 + TT_NEXT];
+    WORD    gauge_key, call_key, call_gen;
+    DWORD   st_key[3];
 } Side;
 
 static Side  side[2];
@@ -122,6 +128,8 @@ static BYTE  opt_player = 0, opt_sel = 0, save_rec_due = 0, save_opt_due = 0;
 static BYTE  surv_human = 0;
 static WORD  surv_kos = 0, surv_wait = 0;
 static DWORD frames = 0, seed_mix = 0x1234567UL, vs_time = 0;
+static DWORD ctr_key1, ctr_key2;
+static WORD  rec_gen = 0;           /* records changed (the BEST shown in the middle) */
 static picture bg;
 
 /* ======================================================================
@@ -276,7 +284,23 @@ static void fill(int x, int y, int w, int h, WORD word)
     for (j = 0; j < h; j++) for (i = 0; i < w; i++) fx_put(x + i, y + j, word);
 }
 
-static void cls(void) { fill(0, 0, FIX_COLS, FIX_ROWS, BLANK); }
+/* the screen was wiped: everything is drawn again */
+static void invalidate(void)
+{
+    int k, j;
+    for (k = 0; k < 2; k++) {
+        Side *s = &side[k];
+        s->fd_full = 1;
+        s->ov_key = 0xff;
+        s->mini_key[0] = 0xff;
+        s->gauge_key = 0xffff;
+        s->call_key = 0xffff;
+        for (j = 0; j < 3; j++) s->st_key[j] = 0xffffffffUL;
+    }
+    ctr_key1 = 0xffffffffUL;
+}
+
+static void cls(void) { fill(0, 0, FIX_COLS, FIX_ROWS, BLANK); invalidate(); }
 
 static void txt(int x, int y, BYTE pal, const char *s)
 {
@@ -314,30 +338,60 @@ static void led(int x, int y, BYTE pal, const char *s)
 
 static char nb[16];
 
+/* the 68000 has no 32-bit divide (each / or % is a slow library call), so
+   digits come from subtracting powers of ten */
+static const DWORD P10[9] = { 1UL, 10UL, 100UL, 1000UL, 10000UL, 100000UL, 1000000UL, 10000000UL, 100000000UL };
+
 static const char *num(DWORD v, int width, char pad)
 {
     int k;
-    nb[width] = 0;
-    for (k = width - 1; k >= 0; k--) {
-        nb[k] = (v || k == width - 1) ? (char)('0' + (int)(v % 10)) : pad;
-        v /= 10;
+    char d, lead = 1;
+    DWORD p;
+    if (v >= P10[width]) v %= P10[width];        /* keep the last width digits (rare) */
+    for (k = 0; k < width; k++) {
+        p = P10[width - 1 - k];
+        d = '0';
+        while (v >= p) { v -= p; d++; }
+        if (d != '0' || k == width - 1) lead = 0;
+        nb[k] = lead ? pad : d;
     }
+    nb[width] = 0;
     return nb;
 }
 
 /* frames -> "M:SS.CC" (cent = 1) or "M:SS.T" or "M:SS" */
+static const BYTE CENTI[60] = {   /* frame of a second -> hundredths */
+     0,  1,  3,  5,  6,  8, 10, 11, 13, 15, 16, 18, 20, 21, 23, 25, 26, 28, 30, 31,
+    33, 35, 36, 38, 40, 41, 43, 45, 46, 48, 50, 51, 53, 55, 56, 58, 60, 61, 63, 65,
+    66, 68, 70, 71, 73, 75, 76, 78, 80, 81, 83, 85, 86, 88, 90, 91, 93, 95, 96, 98
+};
+
+/* *v (0..99) -> its tens digit, leaving the units in *v */
+static WORD tens(WORD *v)
+{
+    WORD t = 0;
+    while (*v >= 10) { *v -= 10; t++; }
+    return t;
+}
+
 static const char *fmt_time(DWORD f, int dec)
 {
-    DWORD s = f / 60, m = s / 60, cs = (f % 60) * 100 / 60;
+    WORD m = 0, s = 0, fr, cs;
     int k = 0;
+    while (f >= 36000UL) { f -= 36000UL; m += 10; }   /* no 32-bit divide: see num() */
+    while (f >= 3600UL) { f -= 3600UL; m++; }
+    fr = (WORD)f;
+    while (fr >= 600) { fr -= 600; s += 10; }
+    while (fr >= 60) { fr -= 60; s++; }
+    cs = CENTI[fr];
     if (m > 99) m = 99;
-    if (m >= 10) nb[k++] = (char)('0' + m / 10);
-    nb[k++] = (char)('0' + m % 10);
+    if (m >= 10) nb[k++] = (char)('0' + tens(&m));
+    nb[k++] = (char)('0' + m);
     nb[k++] = ':';
-    nb[k++] = (char)('0' + (s % 60) / 10);
-    nb[k++] = (char)('0' + s % 10);
-    if (dec >= 1) { nb[k++] = '.'; nb[k++] = (char)('0' + cs / 10); }
-    if (dec >= 2) nb[k++] = (char)('0' + cs % 10);
+    nb[k++] = (char)('0' + tens(&s));
+    nb[k++] = (char)('0' + s);
+    if (dec >= 1) { nb[k++] = '.'; nb[k++] = (char)('0' + tens(&cs)); }
+    if (dec >= 2) nb[k++] = (char)('0' + cs);
     nb[k] = 0;
     return nb;
 }
@@ -455,6 +509,7 @@ static void say(Side *s, const char *a, const char *b)
     for (k = 0; k < 12 && b[k]; k++) s->call2[k] = b[k];
     s->call2[k] = 0;
     s->call_t = CALL_FRAMES;
+    s->call_gen++;
 }
 
 static void begin_side(Side *s, DWORD seed, WORD count)
@@ -472,6 +527,7 @@ static void begin_side(Side *s, DWORD seed, WORD count)
     s->trail_t = s->flash_t = 0;
     s->das_dir = 0;
     s->rank = -1;
+    s->fd_full = 1;
     if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? (tt_u8)(1 + surv_kos / 2 > 8 ? 8 : 1 + surv_kos / 2) : cpu_level, fresh_seed());
 }
 
@@ -689,46 +745,104 @@ static void draw_mini(int x, int y, BYTE type, BYTE pal)
         }
 }
 
+/* rows (bit y) that a brick at row y covers */
+static DWORD brick_rows(int type, int rot, int y)
+{
+    DWORD m = 0;
+    int k, cy;
+    for (k = 0; k < 4; k++) {
+        cy = y + TT_SHAPE[type][rot][k][1];
+        if (cy >= 0 && cy < TT_ROWS) m |= 1UL << cy;
+    }
+    return m;
+}
+
+#define ROWS_SEEN (((1UL << TT_ROWS) - 1) & ~((1UL << TT_HIDDEN) - 1))
+
+/*
+ * The field is only drawn when something on it changed, and then only the
+ * rows that changed: rows of settled bricks the rules touched (grid_rows),
+ * and the rows the falling brick, its ghost, the drop trail and the lock
+ * flash are on now or were on last time.
+ */
 static void draw_field(Side *s)
 {
     tt_board *b = &s->b;
-    int fc = FIELD_COL[s->i], x, y, k, gy = -1, cx, cy;
-    BYTE ghost[TT_ROWS][TT_COLS];
-    WORD wd;
-    if (paused) { fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK)); return; }
-    for (y = 0; y < TT_ROWS; y++) for (x = 0; x < TT_COLS; x++) ghost[y][x] = 0;
-    /* 1 ghost, 2 brick, 3 trail, 4 lock flash */
-    if (s->trail_t && s->state == S_PLAY)
+    int fc = FIELD_COL[s->i], x, y, k, gy = -1, cx, cy, full;
+    BYTE play = (BYTE)(s->state == S_PLAY), go = (BYTE)(s->go_t != 0), c;
+    BYTE clearing = (BYTE)(b->clear_t != 0);
+    DWORD sig, ov = 0, rows, bit;
+    const tt_u8 *row;
+    WORD trail_w;
+
+    sig = ((DWORD)(b->x + 4) & 15) | ((DWORD)(b->y & 31) << 4) | ((DWORD)b->rot << 9) |
+          ((DWORD)b->type << 11) | ((DWORD)b->active << 14) | ((DWORD)play << 15) |
+          ((DWORD)opt_ghost << 16) | ((DWORD)(s->flash_t != 0) << 17) |
+          ((DWORD)(s->trail_t ? 1 + (s->trail_t >> 2 & 1) : 0) << 18) |
+          ((DWORD)(b->clear_t ? 1 + (b->clear_t >> 1 & 1) : 0) << 20);   /* what shows, not the timers */
+    full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go;
+    if (!full && sig == s->fd_sig && !b->grid_rows) return;
+    s->fd_full = 0; s->fd_paused = paused; s->fd_state = s->state; s->fd_go = go;
+    s->fd_sig = sig;
+    if (paused) { fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK)); s->fd_ov = 0; b->grid_rows = 0; return; }
+
+    if (s->trail_t && play)
+        for (y = s->tr_y0 < 0 ? 0 : s->tr_y0; y <= s->tr_y1 + 3 && y < TT_ROWS; y++) ov |= 1UL << y;
+    if (b->active && play) {
+        ov |= brick_rows(b->type, b->rot, b->y);
+        if (opt_ghost) { gy = tt_ghost_y(b); ov |= brick_rows(b->type, b->rot, gy); }
+    }
+    if (s->flash_t) for (k = 0; k < 4; k++) ov |= 1UL << b->lock_cells[k][1];
+    if (clearing) ov |= b->clear_rows;
+    rows = full ? ROWS_SEEN : ((ov | s->fd_ov | b->grid_rows) & ROWS_SEEN);
+    s->fd_ov = ov;
+    b->grid_rows = 0;
+
+    /* settled bricks (and the flashing rows of a line clear) */
+    for (y = TT_HIDDEN, bit = 1UL << TT_HIDDEN; y < TT_ROWS; y++, bit <<= 1) {
+        if (!(rows & bit)) continue;
+        row = b->grid[y];
+        if (clearing && (b->clear_rows & bit)) {
+            for (x = 0; x < TT_COLS; x++) {
+                c = row[x];
+                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN,
+                       (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : tw(PAL_OF(c ? c : TT_GARBAGE), T_BRICK));
+            }
+        } else
+            for (x = 0; x < TT_COLS; x++) {
+                c = row[x];
+                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, c ? tw(PAL_OF(c), T_BRICK) : tw(PAL_WHITE, T_EMPTY));
+            }
+    }
+    /* on top, lowest first: drop trail, ghost, lock flash, falling brick */
+    if (s->trail_t && play) {
+        trail_w = tw(PAL_OF(s->tr_type), (WORD)(T_TRAIL + (s->trail_t >> 2 & 1)));
         for (k = 0; k < 4; k++) {
             cx = s->tr_x + TT_SHAPE[s->tr_type][s->tr_rot][k][0];
+            if (cx < 0 || cx >= TT_COLS) continue;
             for (y = s->tr_y0 + TT_SHAPE[s->tr_type][s->tr_rot][k][1]; y < s->tr_y1 + TT_SHAPE[s->tr_type][s->tr_rot][k][1]; y++)
-                if (y >= 0 && y < TT_ROWS && cx >= 0 && cx < TT_COLS) ghost[y][cx] = 3;
+                if (y >= TT_HIDDEN && y < TT_ROWS && !b->grid[y][cx] && !(clearing && (b->clear_rows & (1UL << y))))
+                    fx_put(fc + cx, FIELD_ROW + y - TT_HIDDEN, trail_w);
         }
-    if (b->active && s->state == S_PLAY) {
-        if (opt_ghost) gy = tt_ghost_y(b);
+    }
+    if (gy >= 0)
         for (k = 0; k < 4; k++) {
             cx = b->x + TT_SHAPE[b->type][b->rot][k][0];
-            if (gy >= 0) { cy = gy + TT_SHAPE[b->type][b->rot][k][1]; if (cy >= 0) ghost[cy][cx] = 1; }
+            cy = gy + TT_SHAPE[b->type][b->rot][k][1];
+            if (cy >= TT_HIDDEN && !b->grid[cy][cx]) fx_put(fc + cx, FIELD_ROW + cy - TT_HIDDEN, tw(PAL_OF(b->type), T_GHOST));
         }
+    if (s->flash_t)
+        for (k = 0; k < 4; k++) {
+            cx = b->lock_cells[k][0];
+            cy = b->lock_cells[k][1];
+            if (cy >= TT_HIDDEN && b->grid[cy][cx] && !(clearing && (b->clear_rows & (1UL << cy))))
+                fx_put(fc + cx, FIELD_ROW + cy - TT_HIDDEN, tw(PAL_WHITE, T_BRICK));
+        }
+    if (b->active && play)
         for (k = 0; k < 4; k++) {
             cx = b->x + TT_SHAPE[b->type][b->rot][k][0];
             cy = b->y + TT_SHAPE[b->type][b->rot][k][1];
-            if (cy >= 0) ghost[cy][cx] = 2;
-        }
-    }
-    if (s->flash_t) for (k = 0; k < 4; k++) ghost[b->lock_cells[k][1]][b->lock_cells[k][0]] = 4;
-    for (y = TT_HIDDEN; y < TT_ROWS; y++)
-        for (x = 0; x < TT_COLS; x++) {
-            BYTE c = b->grid[y][x], g = ghost[y][x];
-            if (b->clear_t && (b->clear_rows & (1UL << y)))
-                wd = (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : tw(PAL_OF(c ? c : TT_GARBAGE), T_BRICK);
-            else if (g == 2) wd = tw(PAL_OF(b->type), T_BRICK);
-            else if (g == 4 && c) wd = tw(PAL_WHITE, T_BRICK);
-            else if (c) wd = tw(PAL_OF(c), T_BRICK);
-            else if (g == 1) wd = tw(PAL_OF(b->type), T_GHOST);
-            else if (g == 3) wd = tw(PAL_OF(s->tr_type), (WORD)(T_TRAIL + (s->trail_t >> 2 & 1)));
-            else wd = tw(PAL_WHITE, T_EMPTY);
-            fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, wd);
+            if (cy >= TT_HIDDEN) fx_put(fc + cx, FIELD_ROW + cy - TT_HIDDEN, tw(PAL_OF(b->type), T_BRICK));
         }
 }
 
@@ -737,8 +851,12 @@ static void draw_gauge(Side *s)
 {
     int fc = FIELD_COL[s->i], n = tt_pending(&s->b), ready = tt_pending_ready(&s->b), y;
     BYTE hot = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_WHITE);
+    WORD key;
     if (n > 20) n = 20;
     if (ready > 20) ready = 20;
+    key = (WORD)(0x8000 | n | (ready << 5) | ((ready && hot == PAL_RED) << 10));
+    if (key == s->gauge_key) return;
+    s->gauge_key = key;
     for (y = 0; y < 20; y++) {
         int from_bottom = 19 - y;
         WORD wd;
@@ -760,20 +878,27 @@ static void draw_overlay(Side *s)
 {
     int fc = FIELD_COL[s->i];
     const char *a = 0, *b2 = 0;
-    BYTE pa = PAL_WHITE;
-    if (paused) return;
+    BYTE pa = PAL_WHITE, enter;
+    if (paused) { s->ov_key = 0xff; return; }
+    enter = (BYTE)(s->ov_key != s->state);
+    s->ov_key = s->state;
     switch (s->state) {
     case S_OFF:
-        fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_EMPTY));
-        banner(s, 11, 4);
-        txt_c(fc, 10, 12, PAL_AMBER, s->i ? "2P" : "1P");
+        if (enter) {
+            fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_EMPTY));
+            banner(s, 11, 4);
+            txt_c(fc, 10, 12, PAL_AMBER, s->i ? "2P" : "1P");
+            txt_c(fc, 10, 14, PAL_WHITE, "START");
+        }
         if ((frames >> 5) & 1) txt_c(fc, 10, 13, PAL_WHITE, "PRESS");
-        txt_c(fc, 10, 14, PAL_WHITE, "START");
+        else fill(fc, 13, 10, 1, tw(PAL_WHITE, T_BLACK));
         return;
     case S_ASK:
-        fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_EMPTY));
-        banner(s, 10, 6);
-        txt_c(fc, 10, 11, PAL_AMBER, s->i ? "2P JOINS" : "1P JOINS");
+        if (enter) {
+            fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_EMPTY));
+            banner(s, 10, 6);
+            txt_c(fc, 10, 11, PAL_AMBER, s->i ? "2P JOINS" : "1P JOINS");
+        }
         txt(fc, 13, s->ask_sel == 0 ? PAL_YELLOW : PAL_GREY, s->ask_sel == 0 ? ">SOLO" : " SOLO");
         txt(fc, 14, s->ask_sel == 1 ? PAL_YELLOW : PAL_GREY, s->ask_sel == 1 ? ">VERSUS" : " VERSUS");
         return;
@@ -811,71 +936,130 @@ static void draw_overlay(Side *s)
     }
 }
 
+static void draw_stats(Side *s)
+{
+    int x0 = FIELD_COL[s->i] - 1;
+    tt_board *b = &s->b;
+    DWORD m = 0x80000000UL | ((DWORD)mode << 28), k0, k1, k2, who;
+    if (s->state == S_OFF || s->state == S_ASK) {
+        if (s->st_key[0]) { fill(x0, STAT_ROW, 12, 3, BLANK); s->st_key[0] = s->st_key[1] = s->st_key[2] = 0; }
+        return;
+    }
+    who = s->cpu_on ? 0x100UL | s->cpu.level : 0x200UL | s->i;
+    switch (mode) {
+    case M_MARATHON:
+        k0 = m | (who << 16) | b->lines;
+        k1 = m | (b->score & 0x0fffffffUL);
+        k2 = m | ((DWORD)b->level << 20) | (s->time / 6);
+        break;
+    case M_SPRINT:
+        k0 = m | (who << 16) | b->lines;
+        k1 = m | (s->time & 0x0fffffffUL);
+        k2 = m | b->pieces;
+        break;
+    default:
+        k0 = m | (who << 16);
+        k1 = m | b->lines;
+        k2 = m | ((DWORD)b->sent << 8) | s->wins;
+        break;
+    }
+    if (k0 != s->st_key[0]) {
+        s->st_key[0] = k0;
+        fill(x0, STAT_ROW, 12, 1, BLANK);
+        if (s->cpu_on) {
+            txt(x0, STAT_ROW, PAL_PINK, "CPU");
+            txt(x0 + 4, STAT_ROW, PAL_GREY, "LV");
+            led(x0 + 7, STAT_ROW, PAL_AMBER, num(s->cpu.level, 1, '0'));
+        } else txt(x0, STAT_ROW, s->i ? PAL_CYAN : PAL_YELLOW, s->i ? "2P" : "1P");
+        if (mode == M_MARATHON) {
+            txt(x0 + 3, STAT_ROW, PAL_GREY, "LINES");
+            led(x0 + 9, STAT_ROW, PAL_AMBER, num(b->lines, 3, '0'));
+        } else if (mode == M_SPRINT) {
+            txt(x0 + 3, STAT_ROW, PAL_GREY, "LINES");
+            led(x0 + 9, STAT_ROW, PAL_AMBER, num(b->lines > 40 ? 0 : 40 - b->lines, 2, '0'));
+        }
+    }
+    if (k1 != s->st_key[1]) {
+        s->st_key[1] = k1;
+        fill(x0, STAT_ROW + 1, 12, 1, BLANK);
+        if (mode == M_MARATHON) {
+            txt(x0, STAT_ROW + 1, PAL_GREY, "SCORE");
+            led(x0 + 5, STAT_ROW + 1, PAL_AMBER, num(b->score, 7, '0'));
+        } else if (mode == M_SPRINT) led(x0 + 2, STAT_ROW + 1, PAL_GREEN, fmt_time(s->time, 2));
+        else {
+            txt(x0, STAT_ROW + 1, PAL_GREY, "LINES");
+            led(x0 + 6, STAT_ROW + 1, PAL_AMBER, num(b->lines, 3, '0'));
+        }
+    }
+    if (k2 != s->st_key[2]) {
+        s->st_key[2] = k2;
+        fill(x0, STAT_ROW + 2, 12, 1, BLANK);
+        if (mode == M_MARATHON) {
+            txt(x0, STAT_ROW + 2, PAL_GREY, "LV");
+            led(x0 + 2, STAT_ROW + 2, PAL_AMBER, num(b->level, 2, '0'));
+            led(x0 + 5, STAT_ROW + 2, PAL_GREEN, fmt_time(s->time, 1));
+        } else if (mode == M_SPRINT) {
+            txt(x0, STAT_ROW + 2, PAL_GREY, "PCS");
+            led(x0 + 4, STAT_ROW + 2, PAL_AMBER, num(b->pieces, 3, '0'));
+        } else {
+            txt(x0, STAT_ROW + 2, PAL_GREY, "SENT");
+            led(x0 + 5, STAT_ROW + 2, PAL_AMBER, num(b->sent, 3, '0'));
+            if (mode == M_VS) {
+                txt(x0 + 9, STAT_ROW + 2, PAL_GREY, "W");
+                led(x0 + 10, STAT_ROW + 2, PAL_AMBER, num(s->wins, 2, '0'));
+            }
+        }
+    }
+}
+
 static void draw_side(Side *s)
 {
-    int fc = FIELD_COL[s->i], pc = PANEL_COL[s->i], k, x0 = fc - 1;
+    int pc = PANEL_COL[s->i], k, x0 = FIELD_COL[s->i] - 1;
     tt_board *b = &s->b;
     BYTE live = (BYTE)(s->state == S_COUNT || s->state == S_PLAY || s->state == S_DONE || s->state == S_NAME);
+    BYTE key[2 + TT_NEXT], show = (BYTE)(live && !paused), changed = 0;
+    WORD ck;
     /* field */
     if (live) draw_field(s);
     draw_overlay(s);
     draw_gauge(s);
-    /* hold and next */
-    if (live && !paused) {
-        draw_mini(pc, HOLD_ROW, b->hold, b->hold_used ? PAL_STEEL : PAL_OF(b->hold));
-        for (k = 0; k < TT_NEXT; k++) draw_mini(pc, NEXT_ROW + k * 3, b->queue[k], PAL_OF(b->queue[k]));
-    } else {
-        fill(pc, HOLD_ROW, 4, 2, tw(PAL_WHITE, T_INSET));
-        fill(pc, NEXT_ROW, 4, 15, tw(PAL_WHITE, T_INSET));
+    /* hold and next, when they change */
+    key[0] = (BYTE)(show ? 1 + b->hold_used : 0);
+    key[1] = (BYTE)(show ? b->hold : 0);
+    for (k = 0; k < TT_NEXT; k++) key[2 + k] = (BYTE)(show ? b->queue[k] : 0);
+    for (k = 0; k < 2 + TT_NEXT; k++) if (key[k] != s->mini_key[k]) { s->mini_key[k] = key[k]; changed = 1; }
+    if (changed) {
+        if (show) {
+            draw_mini(pc, HOLD_ROW, b->hold, b->hold_used ? PAL_STEEL : PAL_OF(b->hold));
+            for (k = 0; k < TT_NEXT; k++) draw_mini(pc, NEXT_ROW + k * 3, b->queue[k], PAL_OF(b->queue[k]));
+        } else {
+            fill(pc, HOLD_ROW, 4, 2, tw(PAL_WHITE, T_INSET));
+            fill(pc, NEXT_ROW, 4, 15, tw(PAL_WHITE, T_INSET));
+        }
     }
     /* callouts above the board */
-    fill(x0, 1, 12, 2, BLANK);
-    if (s->call_t && !paused) {
-        txt_c(x0, 12, 1, PAL_YELLOW, s->call1);
-        txt_c(x0, 12, 2, PAL_WHITE, s->call2);
+    ck = (WORD)(s->call_t && !paused ? 0x8000 | (s->call_gen & 0x7fff) : 0);
+    if (ck != s->call_key) {
+        s->call_key = ck;
+        fill(x0, 1, 12, 2, BLANK);
+        if (ck) {
+            txt_c(x0, 12, 1, PAL_YELLOW, s->call1);
+            txt_c(x0, 12, 2, PAL_WHITE, s->call2);
+        }
     }
     /* stats under the board */
-    fill(x0, STAT_ROW, 12, 3, BLANK);
-    if (s->state == S_OFF || s->state == S_ASK) return;
-    if (s->cpu_on) {
-        txt(x0, STAT_ROW, PAL_PINK, "CPU");
-        txt(x0 + 4, STAT_ROW, PAL_GREY, "LV");
-        led(x0 + 7, STAT_ROW, PAL_AMBER, num(s->cpu.level, 1, '0'));
-    } else txt(x0, STAT_ROW, s->i ? PAL_CYAN : PAL_YELLOW, s->i ? "2P" : "1P");
-    switch (mode) {
-    case M_MARATHON:
-        txt(x0 + 3, STAT_ROW, PAL_GREY, "LINES");
-        led(x0 + 9, STAT_ROW, PAL_AMBER, num(b->lines, 3, '0'));
-        txt(x0, STAT_ROW + 1, PAL_GREY, "SCORE");
-        led(x0 + 5, STAT_ROW + 1, PAL_AMBER, num(b->score, 7, '0'));
-        txt(x0, STAT_ROW + 2, PAL_GREY, "LV");
-        led(x0 + 2, STAT_ROW + 2, PAL_AMBER, num(b->level, 2, '0'));
-        led(x0 + 5, STAT_ROW + 2, PAL_GREEN, fmt_time(s->time, 1));
-        break;
-    case M_SPRINT:
-        txt(x0 + 3, STAT_ROW, PAL_GREY, "LINES");
-        led(x0 + 9, STAT_ROW, PAL_AMBER, num(b->lines > 40 ? 0 : 40 - b->lines, 2, '0'));
-        led(x0 + 2, STAT_ROW + 1, PAL_GREEN, fmt_time(s->time, 2));
-        txt(x0, STAT_ROW + 2, PAL_GREY, "PCS");
-        led(x0 + 4, STAT_ROW + 2, PAL_AMBER, num(b->pieces, 3, '0'));
-        break;
-    default:
-        txt(x0, STAT_ROW + 1, PAL_GREY, "LINES");
-        led(x0 + 6, STAT_ROW + 1, PAL_AMBER, num(b->lines, 3, '0'));
-        txt(x0, STAT_ROW + 2, PAL_GREY, "SENT");
-        led(x0 + 5, STAT_ROW + 2, PAL_AMBER, num(b->sent, 3, '0'));
-        if (mode == M_VS) {
-            txt(x0 + 9, STAT_ROW + 2, PAL_GREY, "W");
-            led(x0 + 10, STAT_ROW + 2, PAL_AMBER, num(s->wins, 2, '0'));
-        }
-        break;
-    }
+    draw_stats(s);
 }
 
 static void draw_center(void)
 {
     static const char *MODE_NAME[4] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL" };
     int x = CENTER_COL;
+    DWORD k1 = 0x80000000UL | mode | ((DWORD)paused << 4) | ((DWORD)rec_gen << 8), k2 = 0;
+    if (mode == M_VS) k2 = (vs_time / 60) | ((DWORD)side[0].b.level << 24);
+    else if (mode == M_SURV) k2 = ((DWORD)surv_kos << 20) ^ (side[surv_human].time / 60);
+    if (k1 == ctr_key1 && k2 == ctr_key2) return;
+    ctr_key1 = k1; ctr_key2 = k2;
     fill(14, 0, 12, 1, BLANK);
     txt_c(14, 12, 0, PAL_WHITE, MODE_NAME[mode]);
     fill(x, 4, 6, 20, BLANK);
@@ -952,6 +1136,7 @@ static void name_input(Side *s, BYTE edge)
             else if (mode == M_SPRINT) spr_insert(s->rank, s->name, s->time);
             else srv_insert(s->rank, s->name, surv_kos);
             save_rec_due = 1;
+            rec_gen++;
             s->state = S_DONE;
         }
     }
