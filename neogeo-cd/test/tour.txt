@@ -370,4 +370,54 @@ wait 1200
 check 2 fired 1
 dump 26_cpu_card
 bot 1 0
+# ---- Launch Key: a tap of the card button starts a 10-count while you're ahead ----
+p1 START
+until 1 PLAY 300
+cpu 2
+setcard 1 4
+setcard 2 0
+wait 60
+# not ahead: nothing starts
+lines 1 0
+lines 2 0
+p1 D2
+wait 2
+check 1 launch 0
+# ahead: the count starts; the CPU catching up breaks it
+lines 1 30
+wait 2
+dump 27_launch_ready
+p1 D2
+wait 2
+check 1 launch 1
+wait 120
+dump 28_launch_count
+lines 2 30
+wait 2
+check 1 launch 0
+dump 29_launch_broken
+# once a match
+lines 1 40
+p1 D2
+wait 2
+check 1 launch 0
+# a fresh count, run out: lift off
+setcard 1 4
+p1 D2
+wait 2
+check 1 launch 1
+lines 2 0
+wait 610
+check 1 result 6
+check 2 result 7
+dump 30_lift_off
+# the CPU with the key starts its own count when well ahead, and builds without clearing
+p1 START
+until 1 PLAY 300
+setcard 2 4
+bot 1 1
+lines 2 20
+wait 1500
+check 2 fired 1
+dump 31_cpu_launch
 end

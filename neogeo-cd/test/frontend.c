@@ -24,8 +24,10 @@
  *   meter P N [COOL]  set player P's card meter (and cooldown frames)
  *   check P WHAT N    fail unless player P's WHAT is N (meter, aim, card,
  *                     alive, fx0..fx5 on/off) or at least N (cool, rocks,
- *                     pending, fired = abilities fired)
- *   setcard P N       give player P card N (0 Cyclops .. 3 Giant Bat ..)
+ *                     pending, fired = abilities fired); launch (1 = this
+ *                     player's Launch Countdown runs), result (R_ code), wins
+ *   setcard P N       give player P card N (0 Cyclops .. 3 Giant Bat, 4 Launch
+ *                     Key ..) and a fresh Launch Countdown
  *   garbage P N       send player P N rows of garbage
  *   cards P N         fail unless player P has pressed the card button N times
  *   paused N          fail unless the game is paused (1) or not (0)
@@ -347,12 +349,15 @@ void waitVBlank(void)
             else if (!strcmp(a2, "card")) v = cs->card;
             else if (!strcmp(a2, "alive")) v = cs->b.alive;
             else if (!strcmp(a2, "fired")) { v = cs->fired; ge = 1; }
+            else if (!strcmp(a2, "launch")) v = launch_by == cs->i;
+            else if (!strcmp(a2, "result")) v = cs->result;
+            else if (!strcmp(a2, "wins")) v = cs->wins;
             else { fprintf(stderr, "unknown check %s\n", a2); exit(2); }
             if (ge ? v < want : v != want) {
                 fprintf(stderr, "frame %ld: player %s %s is %ld, expected %s%ld\n", frame, a1, a2, v, ge ? ">= " : "", want);
                 exit(4);
             }
-        } else if (!strcmp(cmd, "setcard")) side[atoi(a1) - 1].card = (BYTE)atoi(a2);
+        } else if (!strcmp(cmd, "setcard")) { side[atoi(a1) - 1].card = (BYTE)atoi(a2); side[atoi(a1) - 1].launch_used = 0; }
         else if (!strcmp(cmd, "garbage")) tt_receive(&side[atoi(a1) - 1].b, (tt_u8)atoi(a2));
         else if (!strcmp(cmd, "meter")) {
             side[atoi(a1) - 1].b.meter = (tt_u8)atoi(a2);

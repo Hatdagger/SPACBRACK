@@ -105,12 +105,14 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define FX_SONAR      600
 #define AIM_FRAMES    240            /* Eye Beam: aiming too long fires where it points */
 #define CPU_CARD_EVERY 60            /* a CPU thinks about its card once a second */
+#define LAUNCH_FRAMES 600            /* Launch Key: the 10-count */
+#define BROKEN_FRAMES 108            /* COUNT BROKEN shows this long */
 
 static const BYTE TRAIL_LEN[TRAIL_FRAMES + 1] = { 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 };
 
 enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME, S_GAP };
 enum { M_MARATHON, M_SPRINT, M_VS, M_SURV };
-enum { R_NONE, R_CLEAR, R_TOPOUT, R_WIN, R_LOSE, R_DRAW };
+enum { R_NONE, R_CLEAR, R_TOPOUT, R_WIN, R_LOSE, R_DRAW, R_LIFTOFF, R_LATE };   /* LIFTOFF / LATE: a Launch Countdown ran out */
 enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_PICK, SCR_OPTIONS };
 enum { MENU_MARATHON, MENU_SPRINT, MENU_VS, MENU_SURV, MENU_RECORDS, MENU_OPTIONS, MENU_N };
 
@@ -151,6 +153,7 @@ typedef struct {
     signed char aim_x;
     WORD    aim_t, cpu_card_t;
     WORD    fired;                   /* abilities fired (the harness checks them) */
+    BYTE    launch_used, launch_ready; /* Launch Key: the count was used / ready was announced */
     /* what is on screen now, so a frame only draws what changed */
     BYTE    fd_full, fd_state, fd_paused, fd_go, fd_aim, fd_dark;
     WORD    fx_key;
@@ -169,6 +172,8 @@ static BYTE  pick_on[2], pick_done[2], pick_t;
 static WORD  pick_key[2];
 static DWORD frames = 0, seed_mix = 0x1234567UL, vs_time = 0;
 static DWORD ctr_key1, ctr_key2;
+static signed char launch_by = -1;  /* Launch Countdown running for side[launch_by] */
+static WORD  launch_t, launch_at, broken_t, launch_key;
 static WORD  rec_gen = 0;           /* records changed (the BEST shown in the middle) */
 static picture bg;
 
@@ -611,6 +616,8 @@ static void begin_side(Side *s, DWORD seed, WORD count)
     s->join = 0;
     s->ready = 0;
     s->card_mode = s->card_dir = s->aim = 0;
+    s->launch_used = s->launch_ready = 0;
+    s->fired = 0;
     s->cpu_card_t = 0;
     if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? surv_level(s) : cpu_level, fresh_seed());
 }
@@ -620,6 +627,7 @@ static void begin_match(void)
 {
     DWORD seed = fresh_seed();
     vs_time = 0;
+    launch_by = -1; broken_t = 0;
     side[0].kos = side[1].kos = 0;
     begin_side(&side[0], seed, COUNT_FRAMES);
     begin_side(&side[1], seed, COUNT_FRAMES);
@@ -630,6 +638,7 @@ static void pick_open(BYTE who);
 static BYTE cards_on(void);
 static BYTE carries(Side *s);
 static BYTE ghost_on(const Side *s);
+static BYTE can_launch(Side *s);
 static BYTE previews(const Side *s);
 
 /* a fresh Versus or Survival match: with cards on, players in who (bits) pick first */
@@ -648,6 +657,7 @@ static void start_game(BYTE m, BYTE p)
     mode = m;
     screen = SCR_GAME;
     paused = 0;
+    launch_by = -1; broken_t = 0;
     gs_clear(GS_LOGO, 18);
     cls();
     for (k = 0; k < 2; k++) {
@@ -778,7 +788,7 @@ static void side_finish(Side *s, BYTE result)
         s->name[0] = 'A'; s->name[1] = 'A'; s->name[2] = 'A'; s->name[3] = 0;
         s->name_pos = 0;
     }
-    sfx(s, (BYTE)(result == R_TOPOUT || result == R_LOSE ? SND_TOPOUT : SND_GO));
+    sfx(s, (BYTE)(result == R_TOPOUT || result == R_LOSE || result == R_LATE ? SND_TOPOUT : SND_GO));
 }
 
 /* ======================================================================
@@ -1065,7 +1075,15 @@ static void draw_meter(Side *s)
 {
     int fc = FIELD_COL[s->i], k, n = s->b.meter;
     BYTE on = cards_on(), col = (BYTE)(s->b.cool ? PAL_GREY : n >= TT_METER_MAX ? PAL_YELLOW : PAL_CYAN);
-    WORD key = (WORD)(0x8000 | (on << 14) | (col << 8) | n);
+    WORD key;
+    /* Launch Key: the bar is the count.  Grey until you're ahead, flashing when
+       you can start it, draining (red for the last 3) while it runs, empty once used */
+    if (on && s->card == CARD_LAUNCH) {
+        if (launch_by == s->i) { n = (launch_t + 59) / 60; col = (BYTE)(n <= 3 ? PAL_RED : PAL_AMBER); }
+        else if (s->launch_used) n = 0;
+        else { n = TT_METER_MAX; col = (BYTE)(can_launch(s) ? ((frames >> 3) & 1 ? PAL_YELLOW : PAL_AMBER) : PAL_GREY); }
+    }
+    key = (WORD)(0x8000 | (on << 14) | (col << 8) | n);
     if (key == s->meter_key) return;
     s->meter_key = key;
     for (k = 0; k < 10; k++) {
@@ -1148,6 +1166,8 @@ static void draw_overlay(Side *s)
         case R_TOPOUT: a = mode == M_SURV ? "GAME OVER" : "BRICKED UP"; pa = PAL_RED; break;
         case R_WIN:    a = "WINNER!"; pa = PAL_YELLOW; break;
         case R_LOSE:   a = "BRICKED UP"; pa = PAL_RED; break;
+        case R_LIFTOFF: a = "LIFT OFF!"; pa = PAL_YELLOW; break;
+        case R_LATE:   a = "TOO LATE"; pa = PAL_RED; break;
         default:       a = "DRAW"; pa = PAL_WHITE; break;
         }
         banner(s, 10, 6);
@@ -1289,14 +1309,14 @@ static BYTE surv_speed(void)
     return (BYTE)(side[0].b.level > side[1].b.level ? side[0].b.level : side[1].b.level);
 }
 
-static void draw_center(void)
+static BYTE draw_center(void)
 {
     static const char *MODE_NAME[4] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL" };
     int x = CENTER_COL;
     DWORD k1 = 0x80000000UL | mode | ((DWORD)paused << 4) | ((DWORD)rec_gen << 8), k2 = 0;
     if (mode == M_VS) k2 = (vs_time / 60) | ((DWORD)side[0].b.level << 24);
     else if (mode == M_SURV) k2 = (vs_time / 60) | ((DWORD)surv_speed() << 24);
-    if (k1 == ctr_key1 && k2 == ctr_key2) return;
+    if (k1 == ctr_key1 && k2 == ctr_key2) return 0;
     ctr_key1 = k1; ctr_key2 = k2;
     fill(14, 0, 12, 1, BLANK);
     txt_c(14, 12, 0, PAL_WHITE, MODE_NAME[mode]);
@@ -1340,6 +1360,35 @@ static void draw_center(void)
         txt_c(x, 6, 18, PAL_GREY, "QUIT");
         big(FIELD_COL[0], 6, PAL_YELLOW, "PAUSE");
         big(FIELD_COL[1], 6, PAL_YELLOW, "PAUSE");
+    }
+    return 1;
+}
+
+/* Launch Countdown in the centre console: who, and the seconds left */
+static void draw_launch(BYTE redrawn)
+{
+    int x = CENTER_COL;
+    WORD key = 0;
+    BYTE col;
+    Side *p;
+    if (!paused) {
+        if (launch_by >= 0) key = (WORD)(0x8000 | (launch_by << 8) | ((launch_t + 59) / 60) | ((frames >> 4 & 1) << 9));
+        else if (broken_t) key = 0x4000;
+    }
+    if (key == launch_key && !redrawn) return;
+    launch_key = key;
+    if (paused) return;
+    fill(x, 13, 6, 4, BLANK);
+    if (key & 0x8000) {
+        p = &side[launch_by];
+        col = (BYTE)((launch_t + 59) / 60 <= 3 ? PAL_RED : PAL_AMBER);
+        if (p->cpu_on) txt_c(x, 6, 13, PAL_PINK, "CPU");
+        else txt_c(x, 6, 13, p->i ? PAL_CYAN : PAL_YELLOW, p->i ? "2P" : "1P");
+        if ((frames >> 4) & 1) txt_c(x, 6, 14, col, "LAUNCH");
+        led(x + 2, 15, col, num((launch_t + 59) / 60, 2, '0'));
+    } else if (key) {
+        txt_c(x, 6, 14, PAL_RED, "COUNT");
+        txt_c(x, 6, 15, PAL_RED, "BROKEN");
     }
 }
 
@@ -1425,6 +1474,7 @@ static void surv_next(Side *s)
     s->kos = 0;
     s->card = s->cpu_on ? random_card() : pick_card[s->i];
     begin_side(s, fresh_seed(), SURV_READY);
+    o->launch_used = 0;                        /* a new opponent: a new Launch Countdown */
     s->ready = 1;
     s->b.level = o->b.level < 1 ? 1 : o->b.level;
     s->b.gravity = tt_gravity_for(s->b.level);
@@ -1543,6 +1593,76 @@ static BYTE card_fire(Side *s, BYTE dir)
     return 1;
 }
 
+/* ---------- Launch Key: Launch Countdown (once a match) ---------- */
+static BYTE can_launch(Side *s)
+{
+    Side *o = other(s);
+    return (BYTE)(has_card(s, CARD_LAUNCH) && launch_by < 0 && !s->launch_used &&
+                  s->state == S_PLAY && o->state == S_PLAY && s->b.alive && s->b.lines > o->b.lines);
+}
+
+static void try_launch(Side *s)
+{
+    if (launch_by >= 0) return;
+    if (!can_launch(s)) {
+        say(s, "LAUNCH KEY", s->launch_used ? "COUNT SPENT" : "GET AHEAD");
+        sfx(s, SND_DENY);
+        return;
+    }
+    s->launch_used = 1;
+    s->fired++;
+    launch_by = (signed char)s->i;
+    launch_t = LAUNCH_FRAMES;
+    launch_at = s->b.lines;
+    broken_t = 0;
+    if (s->cpu_on) s->cpu.avoid = 1;
+    say(s, "COUNTDOWN!", "NO LINES NOW");
+    sfx(s, SND_CAST);
+}
+
+static void launch_stop(void)
+{
+    side[launch_by].cpu.avoid = 0;
+    launch_by = -1;
+}
+
+/* once a frame: the count goes on, breaks (you cleared a line, or they caught up) or wins */
+static void launch_tick(void)
+{
+    Side *p, *o;
+    int k;
+    if (broken_t) broken_t--;
+    for (k = 0; k < 2; k++) {                    /* tell a player once when they can start it */
+        Side *q = &side[k];
+        BYTE r = can_launch(q);
+        if (r && !q->launch_ready && !q->cpu_on) { say(q, "LAUNCH KEY", "READY"); sfx(q, SND_MENU); }
+        q->launch_ready = r;
+    }
+    if (launch_by < 0) return;
+    p = &side[launch_by];
+    o = other(p);
+    if (p->state != S_PLAY || o->state != S_PLAY) { launch_stop(); return; }
+    if (p->b.lines > launch_at || o->b.lines >= p->b.lines) {
+        launch_stop();
+        broken_t = BROKEN_FRAMES;
+        say(p, "COUNT", "BROKEN");
+        sfx(p, SND_DENY);
+        return;
+    }
+    if (--launch_t == 0) {
+        launch_stop();
+        say(p, "LIFT OFF!", "");
+        if (mode == M_SURV) {                    /* a K.O. like any other */
+            o->b.alive = 0; o->b.active = 0;
+            surv_topout(o);
+        } else {
+            p->wins++;
+            side_finish(p, R_LIFTOFF);
+            side_finish(o, R_LATE);
+        }
+    } else if (launch_t % 60 == 0) sfx(0, SND_BEEP);
+}
+
 /*
  * A player's card button during play.  Returns 1 when it took this frame's
  * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
@@ -1559,7 +1679,11 @@ static BYTE card_ctl(Side *s, BYTE cur)
         if ((edge & JOY_RIGHT) && s->aim_x < TT_COLS - 2) { s->aim_x++; sfx(s, SND_MOVE); }
         if ((edge & others) || s->card_hit || (c->up_drop && (edge & JOY_UP)) || !--s->aim_t) beam_fire(s);
     } else {
-        if (!cards_on() || s->card >= CARD_MONSTERS) return 0;
+        if (!cards_on()) return 0;
+        if (s->card >= CARD_MONSTERS) {          /* boss cards: a tap runs the perk */
+            if (s->card_hit && s->card == CARD_LAUNCH) try_launch(s);
+            return 0;
+        }
         if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
         if (!s->card_mode) return 0;
         if (edge & others) { s->card_mode = 0; s->call_t = 0; return 0; }
@@ -1596,8 +1720,18 @@ static const BYTE CPU_CARD_RATE[CPU_MAX_LEVEL + 1] = { 0, 5, 10, 15, 20, 30, 40,
 static void cpu_card(Side *s)
 {
     BYTE ready[4], n = 0, k;
-    if (!cards_on() || s->card >= CARD_MONSTERS || ++s->cpu_card_t < CPU_CARD_EVERY) return;
+    int lead;
+    if (!cards_on() || ++s->cpu_card_t < CPU_CARD_EVERY) return;
     s->cpu_card_t = 0;
+    if (s->card == CARD_LAUNCH) {
+        /* when comfortably ahead, sometimes start the count (weaker CPUs want a bigger lead) */
+        lead = s->b.lines - other(s)->b.lines;
+        if (can_launch(s) && s->b.lines >= 8 && lead >= (s->cpu.level <= 3 ? 3 : 2) &&
+            (BYTE)(fresh_seed() % 100) < 3 * s->cpu.level)
+            try_launch(s);
+        return;
+    }
+    if (s->card >= CARD_MONSTERS) return;
     for (k = 0; k < 4; k++) if (card_ready(s, k)) ready[n++] = k;
     if (n && (BYTE)(fresh_seed() % 100) < CPU_CARD_RATE[s->cpu.level]) card_fire(s, ready[fresh_seed() % n]);
 }
@@ -1768,12 +1902,13 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
                         }
                 }
             }
+            if (mode >= M_VS && cards_on()) launch_tick();
             if (mode == M_SURV) surv_check_end();
             for (k = 0; k < 2; k++) if (side[k].call_t) side[k].call_t--;
         }
     }
     for (k = 0; k < 2; k++) { draw_side(&side[k]); draw_count(&side[k]); }
-    draw_center();
+    draw_launch(draw_center());
 }
 
 /* ======================================================================

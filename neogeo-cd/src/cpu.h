@@ -17,6 +17,7 @@
 typedef struct {
     tt_u8  level;
     tt_u8  ease;                  /* someone is waiting for this seat: play a bit worse */
+    tt_u8  avoid;                 /* its own Launch Countdown runs: build without clearing lines */
     tt_u8  state;
     tt_u16 timer;
     tt_u32 rng;

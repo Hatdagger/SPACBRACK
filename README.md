@@ -49,7 +49,10 @@ The card button can also go on Select or Start: then the other one pauses.
 | Werewolf (your garbage has slashed gaps) | Claw 5: send 3 slashed rows | Pound 3: your bottom 3 rows go | Howl 6: foe falls 3x faster for 6 s | Full Moon 10: your next 3 bricks are I |
 | Giant Bat (+1 next brick) | Nightfall 4: send 1 row, foe's field goes dark for 5 s | Echo Wall 3: garbage waiting for you bounces back, and so does more for 6 s | Sonar 4: 5 next bricks for 10 s | Swarm 10: send 3 rows, dark for 8 s |
 
-Lines your own abilities clear don't count, score or fill the meter. With cards on you see 3 next bricks (the web game's number), 4 with the Giant Bat. Effects on a board show as a word under its NEXT column (GLAR, SONR, HOWL, SHVR, DARK, ECHO). CPUs fire an ability they can afford now and then, more often at higher levels. The six boss cards' house rules and perks are still being added.
+Lines your own abilities clear don't count, score or fill the meter. With cards on you see 3 next bricks (the web game's number), 4 with the Giant Bat. Effects on a board show as a word under its NEXT column (GLAR, SONR, HOWL, SHVR, DARK, ECHO). CPUs fire an ability they can afford now and then, more often at higher levels. **Boss cards**: a tap of the card button runs the card's perk.
+- **Launch Key** (Launch Countdown): while you have more lines than the other board, tap to start a 10-count, once a match (in Survival, once per opponent). Clear a line yourself or let them catch up and the count breaks; still ahead at zero and you win (LIFT OFF!; in Survival it's a K.O.). The bar in your right bezel is the count: grey until you're ahead, flashing when you can start it, draining while it runs, empty once used. The centre console shows whose count it is. A CPU with the key starts it when well ahead and then builds without clearing lines.
+
+The other five boss cards (Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) are still being added.
 
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 

@@ -132,7 +132,8 @@ static long score_place(const tt_cpu *c, int type, int rot, int x, int y0, int *
     }
     for (k = 0; k < TT_COLS; k++) { agg += h[k]; if (h[k] > maxh) maxh = h[k]; }
     for (k = 0; k < TT_COLS - 1; k++) bump += h[k] > h[k + 1] ? h[k] - h[k + 1] : h[k + 1] - h[k];
-    s = -51L * agg + (maxh > 14 ? 152L : 76L) * lines - 36L * holes - 18L * bump;
+    /* during its own Launch Countdown a line breaks the count: avoid them unless the stack is high */
+    s = -51L * agg + (maxh > 14 ? 152L : c->avoid ? -600L : 76L) * lines - 36L * holes - 18L * bump;
     *ok = 1;
     return s;
 }
