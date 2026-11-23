@@ -1277,6 +1277,15 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
 {
     tt_board *b = &s->b;
     (void)edge;
+    if (mode == M_VS && s->cpu_on && start && s->state != S_OFF) {
+        /* 2P takes the CPU's place: a new Versus match */
+        sfx(s, SND_MENU);
+        s->cpu_on = 0;
+        side[0].wins = side[1].wins = 0;
+        s->prev = 0xff;
+        begin_match();
+        return;
+    }
     switch (s->state) {
     case S_COUNT:
         if (mode == M_SURV && s->cpu_on && start) surv_claim(s);

@@ -75,6 +75,11 @@ dump 12_versus
 until 2 DONE 20000
 wait 3
 dump 13_versus_done
+# 2P takes the CPU's seat: a fresh match, player vs player
+p2 START
+wait 3
+human 2
+state 2 COUNT
 p1 SELECT
 wait 3
 p1 SELECT
