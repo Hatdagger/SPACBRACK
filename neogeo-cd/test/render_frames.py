@@ -18,6 +18,7 @@ MAG = (255, 0, 255)
 FIX = Image.open(os.path.join(GFX, 'fix', 'tiles.png')).convert('RGB')
 BG = Image.open(os.path.join(GFX, 'bg.png')).convert('RGB')
 GLY = Image.open(os.path.join(GFX, 'glyphs.png')).convert('RGB')
+CARDS = Image.open(os.path.join(GFX, 'cards.png')).convert('RGB')
 ROLE = {c: r for r, c in enumerate(make_art.REF) if c}
 SWAP = {3: 12, 12: 3}                 # the harness swaps these two palette slots
 BG_KEYS = {c: 1 + k for k, c in enumerate(make_art.BG_PHASE)}
@@ -59,8 +60,9 @@ def render(path):
     for x, y, tiles in sprs:
         for row, (t, a) in enumerate(tiles):
             idx = t & 0x3ff
-            col, r = idx // 2, idx % 2
-            tile = GLY.crop((col * 16, r * 16, col * 16 + 16, r * 16 + 16))
+            src_im, th = (CARDS, 4) if (t >> 10) == 3 else (GLY, 2)   # fake map: picture id << 10
+            col, r = idx // th, idx % th
+            tile = src_im.crop((col * 16, r * 16, col * 16 + 16, r * 16 + 16))
             mask = Image.eval(tile.convert('L'), lambda v: 255)
             px = tile.load()
             m = mask.load()

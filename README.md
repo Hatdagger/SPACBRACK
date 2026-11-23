@@ -38,6 +38,8 @@ Note: the falling blocks are called **bricks** everywhere in this game.
 
 The card button can also go on Select or Start: then the other one pauses.
 
+**Cards** (Versus and Survival, can be turned off in Options): before a match each player picks one card on the PICK A CARD screen (Left/Right to look through all 10, A or Start to pick, B to change your mind; Start on the CPU's pad joins the pick). Four monster cards (Cyclops, Skeleton, Werewolf, Giant Bat) each have a passive and four abilities, used by holding the card button and pressing a direction; six boss cards (Launch Key, Phantom Reel, Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) bring a house rule and a perk. Everything is unlocked. CPUs pick at random. A rematch keeps the cards. The abilities themselves are still being added.
+
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 
 **Options** (opened by the player who picks it, so each player has their own): DAS, ARR (0 = instant), soft drop speed, which button does rotate left, rotate right, hold and hard drop (a button already in use swaps), whether Up hard drops, and the card button (A-D, Select or Start). Shared: ghost on/off, line clear delay, music on/off, cards on/off in Versus and Survival. Options saved by an older version still load; a pad that used D for hard drop with Up hard drop on moves to the new layout. Records and options are saved in the console's backup memory.

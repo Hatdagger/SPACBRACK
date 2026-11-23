@@ -64,10 +64,21 @@ wait 3
 p1 SELECT
 bot 1 0
 wait 60
-# Versus vs CPU level 5
+# Versus vs CPU level 5: pick a card first (cards are on by default)
 p1 D
 p1 R
 p1 A
+wait 20
+dump 12a_pick
+state 1 OFF
+p1 R
+p1 R
+p1 R
+wait 4
+dump 12b_pick_bat
+p1 A
+wait 2
+dump 12c_pick_ready
 until 1 PLAY 200
 bot 1 8
 wait 1500
@@ -82,7 +93,13 @@ dump 13_versus_done
 p2 START
 wait 3
 human 2
-state 2 COUNT
+state 2 OFF
+p2 L
+wait 4
+dump 13a_pick_2p
+p2 A
+until 2 COUNT 60
+state 1 COUNT
 p1 SELECT
 wait 3
 p1 SELECT
@@ -90,6 +107,8 @@ bot 1 0
 wait 60
 # Survival
 p1 D
+p1 A
+wait 10
 p1 A
 until 1 PLAY 200
 bot 1 8

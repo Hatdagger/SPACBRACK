@@ -25,6 +25,9 @@
         <pict id="tt_glyphs">
           <file>assets\gfx\glyphs.png</file>
         </pict>
+        <pict id="tt_cards">
+          <file>assets\gfx\cards.png</file>
+        </pict>
       </chardata>
       <fixdata>
         <chardata>

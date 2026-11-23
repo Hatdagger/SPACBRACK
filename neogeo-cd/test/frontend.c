@@ -61,12 +61,14 @@ unsigned char stub_in[8];
 ushort LSPCmode;
 
 /* ---- fake art: tile word = picture id << 10 | tile index ---- */
-static ushort bg_map[20 * 14 * 2], gl_map[38 * 2 * 2];
+static ushort bg_map[20 * 14 * 2], gl_map[38 * 2 * 2], cd_map[40 * 4 * 2];
 paletteInfo tt_bg_Palettes = { 1, { 0 } };
 paletteInfo tt_glyphs_Palettes = { 1, { 0 } };
 paletteInfo tt_fix_Palettes = { 1, { 0 } };
+paletteInfo tt_cards_Palettes = { 1, { 0 } };
 const pictureInfo tt_bg = { 14 * 4, 20, 14, &tt_bg_Palettes, { bg_map, bg_map, bg_map, bg_map } };
 const pictureInfo tt_glyphs = { 2 * 4, 38, 2, &tt_glyphs_Palettes, { gl_map, gl_map, gl_map, gl_map } };
+const pictureInfo tt_cards = { 4 * 4, 40, 4, &tt_cards_Palettes, { cd_map, cd_map, cd_map, cd_map } };
 
 static WORD ng(const unsigned char *c) { return ng5((WORD)(c[0] >> 3), (WORD)(c[1] >> 3), (WORD)(c[2] >> 3)); }
 
@@ -147,6 +149,7 @@ void initGfx(void)
     int k;
     for (k = 0; k < 20 * 14; k++) { bg_map[k * 2] = (ushort)((1 << 10) | k); bg_map[k * 2 + 1] = 0; }
     for (k = 0; k < 38 * 2; k++) { gl_map[k * 2] = (ushort)((2 << 10) | k); gl_map[k * 2 + 1] = 0; }
+    for (k = 0; k < 40 * 4; k++) { cd_map[k * 2] = (ushort)((3 << 10) | k); cd_map[k * 2 + 1] = 0; }
     fake_palettes();
 }
 void clearFixLayer(void) { int k; for (k = 0; k < 0x500; k++) vram[0x7000 + k] = 0x0020; }

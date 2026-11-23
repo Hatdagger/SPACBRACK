@@ -6,7 +6,7 @@ set -e
 cd "$(dirname "$0")/.."
 B=${1:-build-pc}
 mkdir -p "$B"
-cp src/main.c src/sound.c src/sound.h src/sound_ids.h src/save.c src/save.h src/rules.h src/cpu.h src/art_keys.h "$B/"
+cp src/main.c src/sound.c src/sound.h src/sound_ids.h src/save.c src/save.h src/rules.h src/cpu.h src/art_keys.h src/cards.h "$B/"
 CF="-std=c89 -pedantic -Wall -Wextra -Werror -O2 -Itest/stubs"
 gcc $CF -c src/rules.c -o "$B/rules.o"
 gcc $CF -c src/cpu.c -o "$B/cpu.o"

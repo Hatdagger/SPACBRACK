@@ -70,6 +70,8 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define PAL_VIOLET 6
 #define PAL_OF(t)  ((BYTE)((t) + 1))  /* brick type -> palette (I=2 .. Z=8, garbage=9) */
 
+#include "cards.h"
+
 #define FIXBANK    0x300
 #define BLANK      ((WORD)(FIXBANK | ' '))
 
@@ -80,6 +82,8 @@ static const BYTE PANEL_COL[2] = { 1, 35 };
 #define SPR_G0        64             /* chrome letters: 2 sprites each */
 #define G_SLOTS       40             /* sprites in the chrome pool */
 #define GS_LOGO       0              /* 18 sprites */
+#define SPR_PAL_CARD  40
+#define SPR_CARD      104            /* card portraits: 4 sprites each, 2 cards */
 
 /* timings (frames) */
 #define COUNT_FRAMES  120
@@ -96,7 +100,7 @@ static const BYTE TRAIL_LEN[TRAIL_FRAMES + 1] = { 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 }
 enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME, S_GAP };
 enum { M_MARATHON, M_SPRINT, M_VS, M_SURV };
 enum { R_NONE, R_CLEAR, R_TOPOUT, R_WIN, R_LOSE, R_DRAW };
-enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_OPTIONS };
+enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_PICK, SCR_OPTIONS };
 enum { MENU_MARATHON, MENU_SPRINT, MENU_VS, MENU_SURV, MENU_RECORDS, MENU_OPTIONS, MENU_N };
 
 typedef struct {
@@ -129,6 +133,8 @@ typedef struct {
     WORD    gap_t;                   /* S_GAP: frames left of the K.O. pause */
     BYTE    join;                    /* this pad's player takes the seat next */
     BYTE    ready;                   /* this count-in shows READY, not 3 2 1 */
+    /* cards */
+    BYTE    card;                    /* CARD_CYCLOPS.. (when cards are on) */
     /* what is on screen now, so a frame only draws what changed */
     BYTE    fd_full, fd_state, fd_paused, fd_go;
     DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
@@ -141,6 +147,9 @@ static Side  side[2];
 static BYTE  screen = SCR_TITLE, mode = M_MARATHON, paused = 0;
 static BYTE  menu_sel = 0, cpu_level = 4, track_on = 0;
 static BYTE  opt_player = 0, opt_sel = 0, save_rec_due = 0, save_opt_due = 0;
+static BYTE  pick_card[2] = { CARD_CYCLOPS, CARD_SKELETON };   /* each pad's last pick */
+static BYTE  pick_on[2], pick_done[2], pick_t;
+static WORD  pick_key[2];
 static DWORD frames = 0, seed_mix = 0x1234567UL, vs_time = 0;
 static DWORD ctr_key1, ctr_key2;
 static WORD  rec_gen = 0;           /* records changed (the BEST shown in the middle) */
@@ -247,6 +256,7 @@ static void resend_static_palettes(void)
 {
     palJobPut(2, 14, &fixpal[32]);
     palJobPut(SPR_PAL_GLYPH, tt_glyphs_Palettes.count, tt_glyphs_Palettes.data);
+    palJobPut(SPR_PAL_CARD, tt_cards_Palettes.count, tt_cards_Palettes.data);
 }
 
 /* ======================================================================
@@ -467,6 +477,35 @@ static void gs_word(int k, short x, short y, const char *s, int maxlen)
 
 static void gs_clear(int k, int n) { while (n--) gs_hide(k++); }
 
+/* ---------- card portraits: 64x64, 4 sprites of 4 tiles; slot 0 or 1 ---------- */
+static BYTE card_shown[2] = { 0xff, 0xff };
+
+static void card_show(int slot, int card, short x, short y)
+{
+    int j, t;
+    WORD sp;
+    const ushort *m;
+    for (j = 0; j < 4; j++) {
+        sp = (WORD)(SPR_CARD + slot * 4 + j);
+        SC234Put(VRAM_SHRINK_ADDR(sp), 0xfff);
+        SC234Put(VRAM_POSY_ADDR(sp), VRAM_POSY(y, SPR_UNLINK, 4));
+        SC234Put(VRAM_POSX_ADDR(sp), VRAM_POSX(x + 16 * j));
+        if (card_shown[slot] == card) continue;
+        m = tt_cards.maps[0] + (card * 4 + j) * tt_cards.tileHeight * 2;
+        for (t = 0; t < 4; t++) {
+            SC234Put(VRAM_SPR_ADDR(sp) + t * 2, m[t * 2]);
+            SC234Put(VRAM_SPR_ADDR(sp) + t * 2 + 1, (WORD)(m[t * 2 + 1] + (SPR_PAL_CARD << 8)));
+        }
+    }
+    card_shown[slot] = (BYTE)card;
+}
+
+static void card_hide(int slot)
+{
+    int j;
+    for (j = 0; j < 4; j++) SC234Put(VRAM_POSY_ADDR(SPR_CARD + slot * 4 + j), VRAM_POSY(224, SPR_UNLINK, 0));
+}
+
 /* big letters on the fix layer (2x2 tiles each): the fix layer is drawn over
    every sprite, so anything shown over a board has to live there */
 static void big(int x, int y, BYTE pal, const char *s)
@@ -568,7 +607,18 @@ static void begin_match(void)
 }
 
 static void draw_static(void);
+static void pick_open(BYTE who);
+static BYTE cards_on(void);
 static BYTE carries(Side *s);
+
+/* a fresh Versus or Survival match: with cards on, players in who (bits) pick first */
+static void new_match(BYTE who)
+{
+    if (cards_on()) pick_open(who);
+    else begin_match();
+}
+
+static BYTE random_card(void) { return (BYTE)(fresh_seed() % CARD_COUNT); }
 static void surv_gap(Side *s);
 
 static void start_game(BYTE m, BYTE p)
@@ -589,12 +639,13 @@ static void start_game(BYTE m, BYTE p)
         s->call_t = 0;
     }
     bg_accent((BYTE)(1 + (m > 3 ? 3 : m)));
+    music(mode_track());
     if (m == M_VS || m == M_SURV) {
         side[p ^ 1].cpu_on = 1;
+        if (cards_on()) { pick_open((BYTE)(1 << p)); return; }
         begin_match();
     } else begin_side(&side[p], fresh_seed(), COUNT_FRAMES);
     draw_static();
-    music(mode_track());
 }
 
 static void to_title(void)
@@ -602,6 +653,7 @@ static void to_title(void)
     screen = SCR_TITLE;
     paused = 0;
     gs_clear(0, G_SLOTS);
+    card_hide(0); card_hide(1);
     cls();
     bg_accent(0);
     music(2);
@@ -1273,6 +1325,7 @@ static void surv_next(Side *s)
     Side *o = other(s);
     s->cpu_on = (BYTE)!s->join;
     s->kos = 0;
+    s->card = s->cpu_on ? random_card() : pick_card[s->i];
     begin_side(s, fresh_seed(), SURV_READY);
     s->ready = 1;
     s->b.level = o->b.level < 1 ? 1 : o->b.level;
@@ -1320,7 +1373,7 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         s->cpu_on = 0;
         side[0].wins = side[1].wins = 0;
         s->prev = 0xff;
-        begin_match();
+        new_match((BYTE)(1 << s->i));
         return;
     }
     switch (s->state) {
@@ -1358,7 +1411,7 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
             sfx(s, SND_MENU);
             s->cpu_on = 0;
             other(s)->cpu_on = 1;
-            begin_match();
+            new_match((BYTE)(1 << s->i));
             break;
         }
         if (s->cpu_on) break;
@@ -1385,8 +1438,8 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
             /* 2P takes the CPU's place: a new Versus match */
             other(s)->cpu_on = 0;
             mode = M_VS;
-            begin_match();
             music(mode_track());
+            new_match((BYTE)(1 << s->i));
         } else { s->state = S_ASK; s->ask_sel = 0; }
         break;
     case S_ASK:
@@ -1401,8 +1454,8 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
                 side[0].cpu_on = side[1].cpu_on = 0;
                 side[0].wins = side[1].wins = 0;
                 bg_accent(3);
-                begin_match();
                 music(mode_track());
+                new_match((BYTE)(1 << s->i));
             }
         }
         break;
@@ -1452,10 +1505,11 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
             return;
         }
         if (select[0] || select[1]) { paused = 1; side[0].card_hit = side[1].card_hit = 0; }
-        for (k = 0; k < 2 && !paused; k++) {
+        for (k = 0; k < 2 && !paused && screen == SCR_GAME; k++) {
             side[k].b.ev = 0;
             side_play(&side[k], cur[k], edge[k], start[k]);
         }
+        if (screen != SCR_GAME) return;           /* off to pick cards */
         if (!paused) {
             /* garbage changes hands after both boards moved */
             if (mode >= M_VS) {
@@ -1567,6 +1621,111 @@ static void records_frame(const BYTE *edge, BYTE ps)
     }
     if (save_answer) { txt(2, 22, PAL_RED, "NOT SAVED: ERROR "); led(19, 22, PAL_RED, num(save_answer, 3, '0')); }
     txt_c(0, 40, 26, PAL_STEEL, "A: BACK");
+}
+
+/* ---------- pick a card: 1P on the left half, 2P or the CPU on the right ---------- */
+static void pick_open(BYTE who)
+{
+    int k;
+    screen = SCR_PICK;
+    paused = 0;
+    gs_clear(0, G_SLOTS);
+    cls();
+    for (k = 0; k < 2; k++) {
+        Side *s = &side[k];
+        s->state = S_OFF;
+        pick_key[k] = 0xffff;
+        pick_on[k] = (BYTE)(!s->cpu_on && (who >> k) & 1);
+        pick_done[k] = (BYTE)!pick_on[k];
+        if (s->cpu_on) s->card = random_card();
+        else s->card = pick_card[k];
+    }
+    pick_t = 0;
+}
+
+static void pick_draw(int k)
+{
+    Side *s = &side[k];
+    const CardDef *c = &CARDS[s->card];
+    int hx = k * 20, j;
+    BYTE blink = (BYTE)((frames >> 4) & 1);
+    WORD key = (WORD)(0x8000 | s->card | (pick_done[k] << 4) | (pick_on[k] << 5) | (s->cpu_on << 6) | (blink << 7));
+    static const char DIRC[4] = { '<', '>', '\\', '^' };   /* font: \\ is the down arrow */
+    char d[2];
+    if (key == pick_key[k]) return;
+    pick_key[k] = key;
+    fill(hx, 3, 20, 23, BLANK);
+    if (s->cpu_on) txt_c(hx, 20, 3, PAL_PINK, "CPU");
+    else txt_c(hx, 20, 3, k ? PAL_CYAN : PAL_YELLOW, k ? "2P" : "1P");
+    txt_c(hx, 20, 4, c->pal, c->name);
+    card_show(k, s->card, (short)(hx * 8 + 48), 48);
+    /* a bezel round the portrait (the fix layer is over the sprites) */
+    fx_put(hx + 5, 5, tw(PAL_WHITE, T_BEZ + 0));
+    fill(hx + 6, 5, 8, 1, tw(PAL_WHITE, T_BEZ + 1));
+    fx_put(hx + 14, 5, tw(PAL_WHITE, T_BEZ + 2));
+    for (j = 0; j < 8; j++) {
+        fx_put(hx + 5, 6 + j, tw(PAL_WHITE, T_BEZ_PLAIN));
+        fx_put(hx + 14, 6 + j, tw(PAL_WHITE, T_BEZ + 4));
+    }
+    fx_put(hx + 5, 14, tw(PAL_WHITE, T_BEZ + 5));
+    fill(hx + 6, 14, 8, 1, tw(PAL_WHITE, T_BEZ + 6));
+    fx_put(hx + 14, 14, tw(PAL_WHITE, T_BEZ + 7));
+    if (pick_on[k] && !pick_done[k]) {
+        txt(hx + 3, 9, PAL_WHITE, "<");
+        txt(hx + 16, 9, PAL_WHITE, ">");
+        led(hx + 8, 15, PAL_GREY, num(s->card + 1, 2, ' '));
+        txt(hx + 10, 15, PAL_GREY, "/10");
+    }
+    txt_c(hx, 20, 16, c->pal, c->pas);
+    for (j = 0; j < 3; j++) if (c->line[j]) txt_c(hx, 20, 17 + j, PAL_WHITE, c->line[j]);
+    if (s->card < CARD_MONSTERS) {
+        d[1] = 0;
+        for (j = 0; j < 4; j++) {
+            d[0] = DIRC[j];
+            txt(hx + 2, 21 + j, PAL_AMBER, d);
+            txt(hx + 4, 21 + j, PAL_WHITE, c->act[j]);
+            led(hx + 15, 21 + j, PAL_AMBER, num(c->cost[j], 2, ' '));
+        }
+    } else txt_c(hx, 20, 22, PAL_WHITE, "BOSS CARD");
+    if (pick_done[k]) txt_c(hx, 20, 26, PAL_GREEN, "READY!");
+    else if (blink) txt_c(hx, 20, 26, PAL_WHITE, "A: PICK");
+}
+
+static void pick_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
+{
+    int k, n;
+    BYTE st;
+    if (ps & (P1_SELECT | P2_SELECT)) { card_hide(0); card_hide(1); to_title(); return; }
+    for (k = 0; k < 2; k++) {
+        Side *s = &side[k];
+        st = (BYTE)(ps & (k ? P2_START : P1_START));
+        if (s->cpu_on && st) {
+            /* a player takes the CPU's seat and picks too */
+            s->cpu_on = 0; pick_on[k] = 1; pick_done[k] = 0; s->card = pick_card[k];
+            side[0].wins = side[1].wins = 0;
+            sfx(0, SND_MENU);
+            continue;
+        }
+        if (!pick_on[k]) continue;
+        if (!pick_done[k]) {
+            n = (rp[k] & JOY_RIGHT) ? 1 : (rp[k] & JOY_LEFT) ? -1 : 0;
+            if (n) { s->card = (BYTE)((s->card + CARD_COUNT + n) % CARD_COUNT); sfx(0, SND_MOVE); }
+            if ((edge[k] & JOY_A) || st) { pick_done[k] = 1; pick_card[k] = s->card; sfx(0, SND_MENU); }
+        } else if (edge[k] & JOY_B) { pick_done[k] = 0; sfx(0, SND_MENU); }
+    }
+    txt_c(0, 40, 1, PAL_WHITE, "PICK A CARD");
+    for (k = 0; k < 2; k++) pick_draw(k);
+    txt_c(0, 40, 27, PAL_STEEL, "LEFT/RIGHT: CARD  A: PICK  B: BACK");
+    if (pick_done[0] && pick_done[1]) {
+        if (++pick_t >= 30) {
+            card_hide(0); card_hide(1);
+            screen = SCR_GAME;
+            cls();
+            for (k = 0; k < 2; k++) side[k].prev = 0xff;
+            begin_match();
+            draw_static();
+        }
+    } else pick_t = 0;
 }
 
 /* ---------- options: speed and buttons per player, shared settings ---------- */
@@ -1710,6 +1869,7 @@ int main(void)
         case SCR_TITLE:   title_frame(edge, rp, ps); break;
         case SCR_GAME:    game_frame(cur, edge, ps, psc); break;
         case SCR_RECORDS: records_frame(edge, ps); break;
+        case SCR_PICK:    pick_frame(edge, rp, ps); break;
         default:          options_frame(edge, rp, ps); break;
         }
         fx_flush();

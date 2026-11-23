@@ -100,6 +100,7 @@ T_HALF_LR = 134     # right half of one brick, left half of the next
 T_TRAIL = 135       # hard drop trail (two frames: 135, 136)
 T_BEZ = 140         # TL T TR L R BL B BR  (140..147)
 T_BEZ_GAUGE = 148   # left bezel with the incoming-garbage bar lit
+T_BEZ_PLAIN = 149   # left bezel without the gauge track (card frame)
 T_BLACK = 150
 T_STEEL = 151
 T_METER = 152       # right bezel with the card meter: track top/bottom, lit top/bottom (152..155)
@@ -206,6 +207,9 @@ def make_fix():
         if kind == 'L':                                  # empty garbage gauge track
             for y in range(8):
                 for x in (3, 4, 5): put(n, x, y, 15)
+    for y in range(8):
+        for x in range(8):
+            px[tile_origin(T_BEZ_PLAIN)[0] + x, tile_origin(T_BEZ_PLAIN)[1] + y] = px[tile_origin(T_BEZ + 4)[0] + 7 - x, tile_origin(T_BEZ + 4)[1] + y]
     n = T_BEZ_GAUGE
     for y in range(8):
         for x in range(8):
@@ -319,6 +323,37 @@ def make_glyphs():
     im.convert('RGBA').save(os.path.join(GFX, 'glyphs.png'))
 
 
+# ---------------------------------------------------------------- card portraits
+CARDS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cards.json')))['cards']
+CARD_PX = 64        # a 16x16 portrait at 4x: 4 sprites of 4 tiles each
+
+
+def make_cards():
+    """cards.png: one 64x64 card window per card, left to right (as js/gfx.js drawCard 'lg')"""
+    im = Image.new('RGB', (CARD_PX * len(CARDS), CARD_PX), MAG)
+    px = im.load()
+    for n, card in enumerate(CARDS):
+        col = hexc(card['color'])
+        pal = {'k': (0, 0, 0), 'a': col, 'd': shade(col, -.45), 'l': shade(col, .45), 'w': hexc('#efe6cc'),
+               'e': hexc('#fff8ec'), 'r': hexc('#ff3b47'), 'y': hexc('#ffdc2e')}
+        ox = n * CARD_PX
+        for y in range(CARD_PX):
+            for x in range(CARD_PX): px[ox + x, y] = snap(hexc('#0a0816'))
+        bands = [shade(col, .3), col, shade(col, -.3), shade(col, -.55)]
+        for b in range(4):
+            for r in range(4):
+                row = b * 4 + r
+                for x in range(row, CARD_PX): px[ox + x, CARD_PX - 24 + row] = snap(bands[b])
+        for st in range(6):
+            px[ox + (st * 37 + len(card['id']) * 11) % CARD_PX, (st * 23) % (CARD_PX >> 1)] = snap(hexc('#8c8aa0'))
+        for ry, row in enumerate(card['portrait']):
+            for rx, ch in enumerate(row):
+                if ch in pal:
+                    for sy in range(4):
+                        for sx in range(4): px[ox + rx * 4 + sx, ry * 4 + sy] = snap(pal[ch])
+    im.convert('RGBA').save(os.path.join(GFX, 'cards.png'))
+
+
 # ---------------------------------------------------------------- header
 def write_header():
     def c3(c): return '{ %3d, %3d, %3d }' % c
@@ -328,7 +363,7 @@ def write_header():
     for name, val in [('T_LED', T_LED), ('T_BRICK', T_BRICK), ('T_GHOST', T_GHOST), ('T_EMPTY', T_EMPTY),
                       ('T_INSET', T_INSET), ('T_HALF_L', T_HALF_L), ('T_HALF_R', T_HALF_R),
                       ('T_HALF_LR', T_HALF_LR), ('T_TRAIL', T_TRAIL), ('T_BEZ', T_BEZ),
-                      ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL), ('T_METER', T_METER),
+                      ('T_BEZ_GAUGE', T_BEZ_GAUGE), ('T_BEZ_PLAIN', T_BEZ_PLAIN), ('T_BLACK', T_BLACK), ('T_STEEL', T_STEEL), ('T_METER', T_METER),
                       ('T_BIG', T_BIG)]:
         out.append('#define %-12s %d' % (name, val))
     out += ['', '/* role colours painted in fix/tiles.png (index = role) */',
@@ -353,5 +388,6 @@ if __name__ == '__main__':
     make_fix()
     make_bg()
     make_glyphs()
+    make_cards()
     write_header()
     print('made fix/tiles.png, bg.png, glyphs.png and art_keys.h')
