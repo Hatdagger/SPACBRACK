@@ -363,6 +363,7 @@ void waitVBlank(void)
             else if (!strcmp(a2, "foldq")) v = tt_fold_queued(&cs->b);
             else if (!strcmp(a2, "recv")) { v = cs->b.recv; ge = 1; }
             else if (!strcmp(a2, "bank")) v = cs->b.bank;
+            else if (!strcmp(a2, "marked")) v = cs->b.marked;
             else { fprintf(stderr, "unknown check %s\n", a2); exit(2); }
             if (ge ? v < want : v != want) {
                 fprintf(stderr, "frame %ld: player %s %s is %ld, expected %s%ld\n", frame, a1, a2, v, ge ? ">= " : "", want);

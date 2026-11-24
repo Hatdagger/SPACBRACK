@@ -83,6 +83,10 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_BANK_CAP    10      /* Gold Ledger: at most 10 rows banked... */
 #define TT_INTEREST    600     /* ...earning 1 row every 10 s */
 
+#define TT_CAP_LINES   10      /* Time Capsule: marking opens at 10 lines; a jump per 10 lines... */
+#define TT_CAP_MAX     3       /* ...at most 3 */
+enum { TT_CAP_OK, TT_CAP_OFF, TT_CAP_AT10, TT_CAP_NOMARK, TT_CAP_NOJUMPS };   /* tt_cap_* refusals */
+
 /* tt_fold_early refusals */
 enum { TT_FOLD_OK, TT_FOLD_OFF, TT_FOLD_AT10, TT_FOLD_NOCHARGE, TT_FOLD_NOTHING, TT_FOLD_QUEUED };
 
@@ -165,6 +169,13 @@ typedef struct {
     tt_u8  bank_on;            /* this board's garbage is banked (set by the front end) */
     tt_u8  bank;               /* rows banked, 0..TT_BANK_CAP */
     tt_u16 interest_t;         /* frames toward the next row of interest */
+
+    /* Time Capsule (save states) */
+    tt_u8  cap_on;             /* this board can mark and jump (set by the front end) */
+    tt_u8  marked;             /* mark[] holds a saved field */
+    tt_u8  jumps_used;         /* jumps since cap_from */
+    tt_u16 cap_from;           /* lines when the jump count started (Survival: per opponent) */
+    tt_u8  mark[TT_ROWS][TT_COLS];
 
     /* last frame's events */
     tt_u32 ev;
@@ -255,6 +266,19 @@ void tt_fold_restart(tt_board *b);                      /* a fresh count from th
  * theirs is sent.  Perk: Withdraw sends the whole bank as garbage.
  */
 int  tt_withdraw(tt_board *b);              /* empties the bank: the rows to send (0 = empty) */
+
+/*
+ * Time Capsule: with cap_on, from 10 lines on you can mark (save) the field;
+ * a jump (earned at 10, 20 and 30 lines) brings the marked field back and
+ * wipes all waiting garbage.  The brick in hand, the held brick, the lines
+ * and the score stay.  A mark is used up by its jump.
+ */
+int  tt_cap_jumps(const tt_board *b);       /* jumps left */
+int  tt_cap_mark(tt_board *b);              /* TT_CAP_OK and marked, or why not */
+int  tt_cap_jump(tt_board *b);              /* TT_CAP_OK and jumped, or why not */
+void tt_cap_restart(tt_board *b);           /* a fresh jump count from the lines now */
+/* the field's holes, tallest column and total column height (CPU judgements) */
+void tt_field_stats(const tt_board *b, int *holes, int *max_h, int *agg);
 
 /*
  * tt_attack_route: the front end hands it a board's attack for the other

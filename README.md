@@ -58,7 +58,9 @@ Lines your own abilities clear don't count, score or fill the meter. With cards 
 
 - **Gold Ledger** (Interest): the garbage your clears make goes into your vault instead of out (10 rows at most), and the vault earns a row every 10 s. The other board's attacks eat into your vault before anything of theirs gets through. Tap to Withdraw: the whole vault goes over as garbage. The right bezel bar is the vault (white when interest pays, red when it's hit); the other board's left gauge shows your vault in yellow; BANK shows under NEXT. A CPU with the ledger cashes out around 5 rows (a little later at higher levels), at the cap, or early when you're stacked high.
 
-The other two boss cards (Time Capsule, Ace of Stars) are still being added.
+- **Time Capsule** (Save States): from 10 lines on, tap the card button to mark (save) your field; hold it for 0.4 s to jump back to the mark. A jump is earned at 10, 20 and 30 lines (in Survival, 3 per opponent; marking stays open). Jumping brings the marked field back exactly and wipes all waiting garbage (folds on their way too); your brick in hand, held brick, lines and score stay, and the mark is used up. While you hold the button the marked field shows in blue outline. The right bezel bar fills over 10 lines to the next jump (full when one is ready, flashing while a mark is saved too); MARK shows under NEXT while you have one. A CPU with the capsule marks a clean, low field and jumps back when it gets buried.
+
+The last boss card (Ace of Stars) is still being added.
 
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 

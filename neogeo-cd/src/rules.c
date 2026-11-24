@@ -961,3 +961,68 @@ int tt_withdraw(tt_board *b)
     b->interest_t = 0;
     return n;
 }
+
+/* ======================================================================
+ * Time Capsule: save states
+ * ==================================================================== */
+
+int tt_cap_jumps(const tt_board *b)
+{
+    int n;
+    if (!b->cap_on || b->lines < b->cap_from) return 0;
+    n = (b->lines - b->cap_from) / TT_CAP_LINES;
+    if (n > TT_CAP_MAX) n = TT_CAP_MAX;
+    n -= b->jumps_used;
+    return n > 0 ? n : 0;
+}
+
+int tt_cap_mark(tt_board *b)
+{
+    int x, y;
+    if (!b->cap_on || !b->alive) return TT_CAP_OFF;
+    if (b->lines < TT_CAP_LINES) return TT_CAP_AT10;
+    settle(b);
+    for (y = 0; y < TT_ROWS; y++) for (x = 0; x < TT_COLS; x++) b->mark[y][x] = b->grid[y][x];
+    b->marked = 1;
+    return TT_CAP_OK;
+}
+
+int tt_cap_jump(tt_board *b)
+{
+    int x, y, t = 0;
+    if (!b->cap_on || !b->alive) return TT_CAP_OFF;
+    if (!b->marked) return b->lines < TT_CAP_LINES ? TT_CAP_AT10 : TT_CAP_NOMARK;
+    if (tt_cap_jumps(b) <= 0) return TT_CAP_NOJUMPS;
+    settle(b);
+    for (y = 0; y < TT_ROWS; y++) for (x = 0; x < TT_COLS; x++) b->grid[y][x] = b->mark[y][x];
+    b->marked = 0;
+    b->jumps_used++;
+    b->g_n = 0;                    /* all waiting garbage is wiped, folds coming in too */
+    b->fi_n = 0;
+    b->fold_rows = 0;
+    b->grid_rows = 0xffffffffUL;
+    if (b->active) {
+        while (hits(b, b->type, b->rot, b->x, b->y) && t < 3) { b->y--; t++; }
+        if (hits(b, b->type, b->rot, b->x, b->y)) { top_out(b); return TT_CAP_OK; }
+        b->lock_t = 0;
+    }
+    return TT_CAP_OK;
+}
+
+void tt_cap_restart(tt_board *b)
+{
+    b->cap_from = b->lines;
+    b->jumps_used = 0;
+}
+
+void tt_field_stats(const tt_board *b, int *holes, int *max_h, int *agg)
+{
+    int x, y, top;
+    *holes = *max_h = *agg = 0;
+    for (x = 0; x < TT_COLS; x++) {
+        for (top = 0; top < TT_ROWS && !b->grid[top][x]; top++) ;
+        if (TT_ROWS - top > *max_h) *max_h = TT_ROWS - top;
+        *agg += TT_ROWS - top;
+        for (y = top + 1; y < TT_ROWS; y++) if (!b->grid[y][x]) (*holes)++;
+    }
+}

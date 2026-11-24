@@ -556,6 +556,43 @@ static void test_bank(void)
     CHECK(tt_withdraw(&a) == 0, "nothing without the card");
 }
 
+/* Time Capsule: mark at 10 lines, a jump per 10 lines brings the marked field back */
+static void test_capsule(void)
+{
+    static const char *two[3] = { "########..", "########..", "####.#####" };
+    tt_board b;
+    int h, m, a;
+    tt_init(&b, 41, 1, 0, 0, 1);
+    b.clear_delay = 0;
+    b.cap_on = 1;
+    CHECK(tt_cap_mark(&b) == TT_CAP_AT10 && tt_cap_jump(&b) == TT_CAP_AT10, "nothing before 10 lines");
+    b.lines = 10;
+    field(&b, two, 3);
+    tt_field_stats(&b, &h, &m, &a);
+    CHECK(h == 1 && m == 3 && a == 26, "field stats: 1 hole, 3 high, 26 cells of height");
+    CHECK(tt_cap_jump(&b) == TT_CAP_NOMARK, "no jump without a mark");
+    CHECK(tt_cap_mark(&b) == TT_CAP_OK && b.marked, "marked");
+    tt_receive(&b, 5);
+    b.g_wait[0] = 0;
+    drop_o(&b, 0);
+    CHECK(b.recv == 5, "garbage landed after the mark");
+    tt_receive(&b, 3);
+    CHECK(tt_cap_jumps(&b) == 1, "one jump at 10 lines");
+    CHECK(tt_cap_jump(&b) == TT_CAP_OK, "jump");
+    tt_field_stats(&b, &h, &m, &a);
+    CHECK(m == 3 && h == 1 && tt_pending(&b) == 0, "the marked field is back and waiting garbage is gone");
+    CHECK(b.lines == 10 && !b.marked && b.active, "lines stay, the mark is used up, the brick is still in play");
+    CHECK(!tt_collides(&b, b.type, b.rot, b.x, b.y), "the brick doesn't overlap");
+    tt_cap_mark(&b);
+    CHECK(tt_cap_jump(&b) == TT_CAP_NOJUMPS, "the next jump comes at 20 lines");
+    b.lines = 40;
+    CHECK(tt_cap_jumps(&b) == 2, "3 jumps at most");
+    tt_cap_restart(&b);
+    CHECK(tt_cap_jumps(&b) == 0 && tt_cap_mark(&b) == TT_CAP_OK, "a fresh jump count; marking stays open");
+    b.cap_on = 0;
+    CHECK(tt_cap_mark(&b) == TT_CAP_OFF, "nothing without the card");
+}
+
 /* a CPU with Origami Crane against one without: folds land, and the match ends */
 static void test_fold_versus(void)
 {
@@ -639,6 +676,8 @@ static void test_fuzz(void)
         else if (k == 12 && (r & 0xf00000) == 0x500000) tt_fx_on(&b, (int)((r >> 8) % TT_FX_N), 300);
         else if (k == 12 && (r & 0xf00000) == 0x600000) b.lines = (tt_u16)(b.lines + 10);
         else if (k == 13 && (r & 0x300000) == 0x100000) tt_holo_freeze(&b);
+        else if (k == 14 && (r & 0x300000) == 0x100000) { b.cap_on = 1; tt_cap_mark(&b); }
+        else if (k == 14 && (r & 0x300000) == 0x200000) tt_cap_jump(&b);
         else if (k == 13 && (r & 0x300000) == 0x200000 && b.fi_n < TT_FMAX) {
             b.fi[b.fi_n].rows = (tt_u8)(1 + (r >> 8) % 4); b.fi[b.fi_n].h = (tt_u8)((r >> 12) % 20);
             b.fi[b.fi_n].hole = (tt_u8)((r >> 4) % 10); b.fi[b.fi_n].pat = (tt_u8)((r >> 16) & 3); b.fi_n++;
@@ -667,6 +706,7 @@ int main(void)
     test_holo();
     test_fold();
     test_bank();
+    test_capsule();
     test_fuzz();
     test_cpu();
     test_cpu_holo();

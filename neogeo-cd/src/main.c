@@ -155,8 +155,13 @@ typedef struct {
     WORD    fired;                   /* abilities fired (the harness checks them) */
     BYTE    launch_used, launch_ready; /* Launch Key: the count was used / ready was announced */
     BYTE    bank_t, bank_col;        /* Gold Ledger: the bar flashes (interest white, hit red) */
+    BYTE    cap_t, cap_fired, cap_ready; /* Time Capsule: frames the button is held, the hold jumped, 10 lines announced */
+    BYTE    jump_t;                  /* ...the field flashes after a jump */
+    BYTE    cpu_mark;                /* ...a CPU's mark: its field then had max height cpu_mh, holes cpu_mo, total cpu_ma */
+    BYTE    cpu_mh, cpu_mo;
+    WORD    cpu_ma;
     /* what is on screen now, so a frame only draws what changed */
-    BYTE    fd_full, fd_state, fd_paused, fd_go, fd_aim, fd_dark;
+    BYTE    fd_full, fd_state, fd_paused, fd_go, fd_aim, fd_dark, fd_cap;
     WORD    fx_key;
     DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
     BYTE    ov_key, mini_key[2 + TT_NEXT];
@@ -633,6 +638,8 @@ static void begin_side(Side *s, DWORD seed, WORD count)
     s->ready = 0;
     s->card_mode = s->card_dir = s->aim = 0;
     s->launch_used = s->launch_ready = 0;
+    s->bank_t = s->cap_t = s->cap_fired = s->cap_ready = s->jump_t = 0;
+    s->cpu_mh = s->cpu_mo = 0; s->cpu_ma = 0;
     s->fired = 0;
     s->cpu_card_t = 0;
     if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? surv_level(s) : cpu_level, fresh_seed());
@@ -915,6 +922,8 @@ static void draw_field(Side *s)
     BYTE clearing = (BYTE)(b->clear_t != 0), ghost = ghost_on(s);
     BYTE dark = (BYTE)(b->fx[TT_FX_DARK] && play);
     BYTE aimk = (BYTE)(s->aim && play ? 0x80 | (s->aim_x << 1) | ((frames >> 3) & 1) : 0);
+    /* Time Capsule: 1 = the card button is held, the marked field shows; 2 = a jump's flash */
+    BYTE capk = (BYTE)(play ? ((s->cap_t >= 6 && !s->cap_fired && b->marked) ? 1 : (s->jump_t & 4) ? 2 : 0) : 0);
     DWORD sig, ov = 0, rows, bit;
     const tt_u8 *row;
     WORD trail_w;
@@ -927,10 +936,10 @@ static void draw_field(Side *s)
           ((DWORD)b->holo << 22) | ((DWORD)(b->holo && (frames >> 3 & 1)) << 23) |
           ((DWORD)(b->fold_t ? 1 + (b->fold_t >> 2 & 1) : 0) << 24);   /* Origami Crane: a fold landing */
     full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go ||
-           aimk != s->fd_aim || dark != s->fd_dark;
+           aimk != s->fd_aim || dark != s->fd_dark || capk != s->fd_cap;
     if (!full && sig == s->fd_sig && !b->grid_rows) return;
     s->fd_full = 0; s->fd_paused = paused; s->fd_state = s->state; s->fd_go = go;
-    s->fd_sig = sig; s->fd_aim = aimk; s->fd_dark = dark;
+    s->fd_sig = sig; s->fd_aim = aimk; s->fd_dark = dark; s->fd_cap = capk;
     if (paused) { fill(fc, FIELD_ROW, 10, 20, tw(PAL_WHITE, T_BLACK)); s->fd_ov = 0; b->grid_rows = 0; return; }
     /* Nightfall / Swarm: the whole field goes dark */
     if (dark) {
@@ -965,6 +974,13 @@ static void draw_field(Side *s)
                 fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN,
                        (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : cell_w(c ? c : TT_GARBAGE));
             }
+        } else if (capk == 1) {
+            /* holding to jump: the marked field in outline */
+            for (x = 0; x < TT_COLS; x++)
+                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, b->mark[y][x] ? tw(PAL_BLUE, T_GHOST) : tw(PAL_WHITE, T_EMPTY));
+        } else if (capk == 2) {
+            for (x = 0; x < TT_COLS; x++)
+                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, row[x] ? tw(PAL_BLUE, T_BRICK) : tw(PAL_WHITE, T_EMPTY));
         } else if (b->fold_t && (b->fold_rows & bit)) {
             /* stamped by a fold: lime and white while it plays */
             for (x = 0; x < TT_COLS; x++)
@@ -1119,6 +1135,7 @@ static void draw_fx(Side *s, BYTE show)
         if (b->fi_n) { tag[n] = "FOLD"; id[n] = 17; pal[n++] = PAL_RED; }
         else if (b->fh_n) { tag[n] = "FOLD"; id[n] = 17; pal[n++] = PAL_LIME; }
         if (b->bank) { tag[n] = "BANK"; id[n] = 18; pal[n++] = PAL_YELLOW; }
+        if (b->marked) { tag[n] = "MARK"; id[n] = 19; pal[n++] = PAL_BLUE; }
     }
     if (n) {
         k = (int)((frames / 40) % n);
@@ -1164,6 +1181,17 @@ static void draw_meter(Side *s)
             if (!n) n = 1;
             col = (BYTE)((frames >> 3) & 1 ? PAL_YELLOW : PAL_LIME);
         }
+    }
+    /* Time Capsule: the bar fills over 10 lines to the next jump; full when one
+       is ready (flashing blue and white while a mark is saved too); empty after 3 */
+    if (on && s->card == CARD_CAPSULE) {
+        tt_board *b = &s->b;
+        col = PAL_BLUE;
+        if (tt_cap_jumps(b) > 0) {
+            n = TT_METER_MAX;
+            if (b->marked) col = (BYTE)((frames >> 3) & 1 ? PAL_BLUE : PAL_WHITE);
+        } else if (b->jumps_used >= TT_CAP_MAX) n = 0;
+        else n = b->lines < b->cap_from ? 0 : (b->lines - b->cap_from) % TT_CAP_LINES;
     }
     /* Gold Ledger: the bar is the bank (10 rows); white when interest pays, red when it's hit */
     if (on && s->card == CARD_LEDGER) {
@@ -1567,6 +1595,7 @@ static void surv_next(Side *s)
     o->launch_used = 0;                        /* a new opponent: a new Launch Countdown */
     tt_holo_restart(&o->b);                    /* ...and a fresh 3 holograms */
     tt_fold_restart(&o->b);                    /* ...and a fresh fold count */
+    tt_cap_restart(&o->b);                     /* ...and fresh jumps */
     s->ready = 1;
     s->b.level = o->b.level < 1 ? 1 : o->b.level;
     s->b.gravity = tt_gravity_for(s->b.level);
@@ -1834,6 +1863,46 @@ static void ledger_withdraw(Side *s)
     s->fired++;
 }
 
+/* ---------- Time Capsule: tap to mark the field, hold to jump back to it ---------- */
+#define CAP_HOLD 24                  /* frames held = a jump (0.4 s) */
+
+static void cap_mark(Side *s)
+{
+    int why = tt_cap_mark(&s->b);
+    if (why != TT_CAP_OK) { say(s, "TIME CAPSULE", "AT 10 LINES"); sfx(s, SND_DENY); return; }
+    say(s, "MARKED", s->cpu_on ? "TIME CAPSULE" : "HOLD: JUMP");
+    sfx(s, SND_MARK);
+}
+
+static BYTE cap_jump(Side *s)
+{
+    int why = tt_cap_jump(&s->b);
+    if (why != TT_CAP_OK) {
+        say(s, "TIME CAPSULE", why == TT_CAP_AT10 ? "AT 10 LINES" : why == TT_CAP_NOMARK ? "NO MARK YET" : "NO JUMPS LEFT");
+        sfx(s, SND_DENY);
+        return 0;
+    }
+    say(s, "JUMP!", count_txt((WORD)tt_cap_jumps(&s->b), tt_cap_jumps(&s->b) == 1 ? " JUMP LEFT" : " JUMPS LEFT"));
+    sfx(s, SND_JUMP);
+    s->jump_t = 30;
+    s->fd_full = 1;
+    s->fired++;
+    return 1;
+}
+
+/* the card button: a tap (let go before 0.4 s) marks, holding it jumps */
+static void capsule_ctl(Side *s)
+{
+    if (s->card_hit) { s->cap_t = 0; s->cap_fired = 0; }
+    if (s->card_down) {
+        if (s->cap_t < 255) s->cap_t++;
+        if (!s->cap_fired && s->cap_t >= CAP_HOLD) { s->cap_fired = 1; cap_jump(s); }
+    } else if (s->cap_t) {
+        if (!s->cap_fired) cap_mark(s);
+        s->cap_t = 0;
+    }
+}
+
 /*
  * A player's card button during play.  Returns 1 when it took this frame's
  * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
@@ -1856,6 +1925,7 @@ static BYTE card_ctl(Side *s, BYTE cur)
             if (s->card_hit && s->card == CARD_REEL) reel_freeze(s);
             if (s->card_hit && s->card == CARD_ORIGAMI) crane_early(s);
             if (s->card_hit && s->card == CARD_LEDGER) ledger_withdraw(s);
+            if (s->card == CARD_CAPSULE) capsule_ctl(s);
             return 0;
         }
         if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
@@ -1916,6 +1986,21 @@ static void cpu_card(Side *s)
             if ((BYTE)(fresh_seed() % 100) < 5 * s->cpu.level + 10) crane_early(s);
         return;
     }
+    if (s->card == CARD_CAPSULE) {
+        /* mark a clean, low field; jump back when the stack gets bad - js/ai.js chrono */
+        int ho, mh, ag;
+        tt_board *b = &s->b;
+        if (b->lines < TT_CAP_LINES || (BYTE)(fresh_seed() % 100) >= 25 + 8 * s->cpu.level) return;
+        tt_field_stats(b, &ho, &mh, &ag);
+        if (!ho && mh >= 2 && mh <= 7 && (!b->marked || ag > s->cpu_ma || s->cpu_mh > 7)) {
+            cap_mark(s);
+            s->cpu_mh = (BYTE)mh; s->cpu_mo = (BYTE)ho; s->cpu_ma = (WORD)ag;
+            return;
+        }
+        if (b->marked && tt_cap_jumps(b) > 0 && (mh >= 13 || ho >= s->cpu_mo + 5) && s->cpu_mh + 3 < mh)
+            cap_jump(s);
+        return;
+    }
     if (s->card == CARD_LEDGER) {
         /* cash out around 5 rows (stronger CPUs wait a little longer for interest),
            at the cap, or early when the opponent is tall - js/ai.js bank */
@@ -1958,11 +2043,18 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         b->holo_on = has_card(s, CARD_REEL);
         b->fold_on = has_card(s, CARD_ORIGAMI);
         b->bank_on = has_card(s, CARD_LEDGER);
+        b->cap_on = has_card(s, CARD_CAPSULE);
+        if (s->jump_t) s->jump_t--;
         if (s->bank_t) s->bank_t--;
         if (s->cpu_on || HARNESS_BOT(s)) { cpu_frame(&s->cpu, b); if (s->cpu_on) cpu_card(s); }
         else if (!card_ctl(s, cur)) side_input(s, cur, 1);
         tt_tick(b);
         side_events(s);
+        /* Time Capsule: marking opens */
+        if (b->cap_on && !s->cap_ready && b->lines >= TT_CAP_LINES) {
+            s->cap_ready = 1;
+            if (!s->cpu_on) { say(s, "TIME CAPSULE", "TAP: MARK"); sfx(s, SND_MENU); }
+        }
         s->time++;
         if (s->trail_t) s->trail_t--;
         if (s->flash_t) s->flash_t--;

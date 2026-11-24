@@ -33,7 +33,8 @@ ASSETS = os.path.join(SRC, 'assets')
 SFX = ['move', 'rotate', 'kick', 'lock', 'hard', 'hold', 'clear1', 'clear2', 'clear3', 'clear4',
        'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go',
        'cast', 'boulder', 'beam', 'echo', 'deny', 'holo', 'freeze', 'holoset',
-       'fold', 'earlyfold', 'foldin', 'interest', 'bankhit', 'withdraw']
+       'fold', 'earlyfold', 'foldin', 'interest', 'bankhit', 'withdraw',
+       'mark', 'jump']
 # (file, song, semitones)
 TRACKS = [('track02_title', 'title', 0), ('track03_marathon', 'battle', 0), ('track04_sprint', 'boss', 0),
           ('track05_versus', 'battle', 3), ('track06_survival', 'boss', -2)]
@@ -257,6 +258,12 @@ def render_sfx(name):
         b.noise(d=.08, v=.2, typ='bandpass', f=2500, q=3)
         b.tone(2093, d=.5, v=.1, typ='square', at=.08); b.tone(2637, d=.6, v=.08, typ='square', at=.12)
         b.tone(120, to=60, d=.4, v=.2, typ='triangle', at=.15)
+    # Time Capsule (js/audio.js perk_mark, jump)
+    elif name == 'mark':                     # camera shutter
+        b.noise(d=.03, v=.25, typ='highpass', f=3000); b.noise(d=.05, v=.2, typ='bandpass', f=1500, q=2, at=.07)
+        b.tone(2000, d=.08, v=.06, at=.12)
+    elif name == 'jump':                     # rewind
+        b.tone(1800, to=150, d=.4, v=.12, typ='sawtooth'); b.noise(d=.4, v=.08, typ='bandpass', f=4000, to=300, q=4)
     x = b.buf * 4.5
     x = filt(x, 'lowpass', 6000, SFX_RATE)
     pk = np.abs(x).max()

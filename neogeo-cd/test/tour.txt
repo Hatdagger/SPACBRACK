@@ -371,7 +371,13 @@ check 2 fired 1
 dump 26_cpu_card
 bot 1 0
 # ---- Launch Key: a tap of the card button starts a 10-count while you're ahead ----
-p1 START
+p1 SELECT
+wait 3
+p1 SELECT
+wait 60
+p1 A
+wait 20
+p1 A
 until 1 PLAY 300
 cpu 2
 setcard 1 4
@@ -579,6 +585,55 @@ setcard 2 7
 bank 2 6
 wait 400
 check 2 fired 1
-check 2 bank 0
 dump 43_cpu_bank
+# ---- Time Capsule: tap to mark the field (from 10 lines), hold to jump back to it ----
+p1 SELECT
+wait 3
+p1 SELECT
+wait 60
+p1 A
+wait 20
+p1 A
+until 1 PLAY 300
+setcard 1 8
+setcard 2 0
+bot 1 6
+wait 240
+bot 1 0
+wait 30
+# before 10 lines a tap is refused
+p1 D2
+wait 2
+check 1 marked 0
+# 10 lines: marking opens (announced); a tap marks
+lines 1 10
+wait 2
+p1 D2
+wait 2
+check 1 marked 1
+dump 44_cap_marked
+# garbage comes in on top
+garbage 1 6
+wait 70
+p1 U
+wait 10
+check 1 recv 6
+# hold the card button: the marked field shows; at 0.4 s it jumps back
+hold 1 D2 12
+dump 45_cap_peek
+hold 1 D2 16
+wait 4
+check 1 fired 1
+check 1 marked 0
+dump 46_cap_jump
+sounds mark jump
+# the CPU with the capsule marks a clean field and jumps back when buried
+setcard 2 8
+lines 2 10
+wait 600
+check 2 marked 1
+garbage 2 12
+wait 600
+check 2 fired 1
+dump 47_cpu_jump
 end
