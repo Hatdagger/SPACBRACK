@@ -372,6 +372,7 @@ void waitVBlank(void)
         } else if (!strcmp(cmd, "setcard")) { side[atoi(a1) - 1].card = (BYTE)atoi(a2); side[atoi(a1) - 1].launch_used = 0; }
         else if (!strcmp(cmd, "garbage")) tt_receive(&side[atoi(a1) - 1].b, (tt_u8)atoi(a2));
         else if (!strcmp(cmd, "bank")) side[atoi(a1) - 1].b.bank = (tt_u8)atoi(a2);     /* Gold Ledger */
+        else if (!strcmp(cmd, "spinres")) side[atoi(a1) - 1].b.spin_res = (tt_u8)atoi(a2);   /* Ace of Stars: rig the reels */
         else if (!strcmp(cmd, "attack")) side[atoi(a1) - 1].b.out = (tt_u16)atoi(a2);   /* rows P sends now */
         else if (!strcmp(cmd, "fold")) {
             /* fold P ROWS H: P holds a chunk of ROWS cleared at height H (Origami Crane) */

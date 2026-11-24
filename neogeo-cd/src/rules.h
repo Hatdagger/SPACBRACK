@@ -71,6 +71,7 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_EV_FOLDIN   0x10000UL  /* folded garbage landed on this board */
 #define TT_EV_FOLDCLR  0x20000UL  /* ...and completed lines (they clear and count) */
 #define TT_EV_INTEREST 0x40000UL  /* Gold Ledger: the bank earned a row */
+#define TT_EV_LEVER    0x80000UL  /* Ace of Stars: the reels stopped (see spin_res) */
 
 #define TT_HOLO_LINES  10      /* Phantom Reel: one hologram per 10 lines... */
 #define TT_HOLO_MAX    3       /* ...at most 3 */
@@ -86,6 +87,11 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_CAP_LINES   10      /* Time Capsule: marking opens at 10 lines; a jump per 10 lines... */
 #define TT_CAP_MAX     3       /* ...at most 3 */
 enum { TT_CAP_OK, TT_CAP_OFF, TT_CAP_AT10, TT_CAP_NOMARK, TT_CAP_NOJUMPS };   /* tt_cap_* refusals */
+
+#define TT_LEVER_LINES 10      /* Ace of Stars: one spin per 10 lines, they stack */
+#define TT_SPIN_FRAMES 72      /* the reels turn 1.2 s */
+enum { TT_LEVER_NONE, TT_LEVER_JACKPOT, TT_LEVER_CHERRIES, TT_LEVER_BUST };   /* spin results */
+enum { TT_PULL_OK, TT_PULL_OFF, TT_PULL_BUSY, TT_PULL_AT10, TT_PULL_NONE };   /* tt_lever_pull refusals */
 
 /* tt_fold_early refusals */
 enum { TT_FOLD_OK, TT_FOLD_OFF, TT_FOLD_AT10, TT_FOLD_NOCHARGE, TT_FOLD_NOTHING, TT_FOLD_QUEUED };
@@ -176,6 +182,14 @@ typedef struct {
     tt_u8  jumps_used;         /* jumps since cap_from */
     tt_u16 cap_from;           /* lines when the jump count started (Survival: per opponent) */
     tt_u8  mark[TT_ROWS][TT_COLS];
+
+    /* Ace of Stars (pull the lever) */
+    tt_u8  lever_on;           /* this board can spin (set by the front end) */
+    tt_u8  spin_t;             /* frames the reels still turn */
+    tt_u8  spin_res;           /* TT_LEVER_x: decided at the pull, paid when they stop */
+    tt_u8  spins_used;         /* spins since spin_from */
+    tt_u16 spin_from;          /* lines when the count started (Survival: per opponent) */
+    tt_u8  lever_out;          /* jackpot rows for the opponent (the front end takes them) */
 
     /* last frame's events */
     tt_u32 ev;
@@ -279,6 +293,16 @@ int  tt_cap_jump(tt_board *b);              /* TT_CAP_OK and jumped, or why not 
 void tt_cap_restart(tt_board *b);           /* a fresh jump count from the lines now */
 /* the field's holes, tallest column and total column height (CPU judgements) */
 void tt_field_stats(const tt_board *b, int *holes, int *max_h, int *agg);
+
+/*
+ * Ace of Stars: with lever_on, a spin is earned every 10 lines (they stack).
+ * Pulling the lever turns the reels for 1.2 s, then pays one result:
+ * JACKPOT (30%) 3 garbage rows to the opponent (lever_out), CHERRIES (45%)
+ * your bottom row goes (it doesn't count), BUST (25%) 2 garbage rows to you.
+ */
+int  tt_lever_spins(const tt_board *b);     /* spins ready */
+int  tt_lever_pull(tt_board *b);            /* TT_PULL_OK and spinning, or why not */
+void tt_lever_restart(tt_board *b);         /* a fresh spin count from the lines now */
 
 /*
  * tt_attack_route: the front end hands it a board's attack for the other

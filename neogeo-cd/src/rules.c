@@ -558,6 +558,7 @@ int tt_spend(tt_board *b, int cost)
 }
 
 static void fold_done(tt_board *b);
+static void lever_pay(tt_board *b);
 
 void tt_tick(tt_board *b)
 {
@@ -570,6 +571,8 @@ void tt_tick(tt_board *b)
     for (k = 0; k < b->g_n; k++) if (b->g_wait[k]) b->g_wait[k]--;
     if (b->cool) b->cool--;
     for (k = 0; k < TT_FX_N; k++) if (b->fx[k]) b->fx[k]--;
+    /* Ace of Stars: the reels stop */
+    if (b->spin_t && --b->spin_t == 0) lever_pay(b);
     /* Gold Ledger: interest */
     if (b->bank && b->bank < TT_BANK_CAP) {
         if (++b->interest_t >= TT_INTEREST) { b->interest_t = 0; b->bank++; b->ev |= TT_EV_INTEREST; }
@@ -1025,4 +1028,60 @@ void tt_field_stats(const tt_board *b, int *holes, int *max_h, int *agg)
         *agg += TT_ROWS - top;
         for (y = top + 1; y < TT_ROWS; y++) if (!b->grid[y][x]) (*holes)++;
     }
+}
+
+/* ======================================================================
+ * Ace of Stars: pull the lever
+ * ==================================================================== */
+
+int tt_lever_spins(const tt_board *b)
+{
+    int n;
+    if (!b->lever_on || b->lines < b->spin_from) return 0;
+    n = (b->lines - b->spin_from) / TT_LEVER_LINES - b->spins_used;
+    return n > 0 ? n : 0;
+}
+
+int tt_lever_pull(tt_board *b)
+{
+    int r;
+    if (!b->lever_on || !b->alive) return TT_PULL_OFF;
+    if (b->spin_t) return TT_PULL_BUSY;
+    if (tt_lever_spins(b) <= 0) return b->lines < b->spin_from + TT_LEVER_LINES ? TT_PULL_AT10 : TT_PULL_NONE;
+    b->spins_used++;
+    r = (int)(tt_rand(b) % 100);
+    b->spin_res = (tt_u8)(r < 30 ? TT_LEVER_JACKPOT : r < 75 ? TT_LEVER_CHERRIES : TT_LEVER_BUST);
+    b->spin_t = TT_SPIN_FRAMES;
+    return TT_PULL_OK;
+}
+
+/* the reels stopped: pay the result */
+static void lever_pay(tt_board *b)
+{
+    int x, y, any = 0;
+    b->ev |= TT_EV_LEVER;
+    switch (b->spin_res) {
+    case TT_LEVER_JACKPOT:
+        b->lever_out = (tt_u8)(b->lever_out + 3);
+        break;
+    case TT_LEVER_CHERRIES:              /* the bottom row goes; everything drops a row */
+        settle(b);
+        for (x = 0; x < TT_COLS; x++) any |= b->grid[TT_ROWS - 1][x];
+        if (!any) break;
+        for (y = TT_ROWS - 1; y > 0; y--)
+            for (x = 0; x < TT_COLS; x++) b->grid[y][x] = b->grid[y - 1][x];
+        for (x = 0; x < TT_COLS; x++) b->grid[0][x] = 0;
+        b->fold_rows = 0;
+        b->grid_rows = 0xffffffffUL;
+        break;
+    case TT_LEVER_BUST:
+        tt_receive_pat(b, 2, TT_PAT_STD);
+        break;
+    }
+}
+
+void tt_lever_restart(tt_board *b)
+{
+    b->spin_from = b->lines;
+    b->spins_used = 0;
 }

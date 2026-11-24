@@ -34,7 +34,7 @@ SFX = ['move', 'rotate', 'kick', 'lock', 'hard', 'hold', 'clear1', 'clear2', 'cl
        'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go',
        'cast', 'boulder', 'beam', 'echo', 'deny', 'holo', 'freeze', 'holoset',
        'fold', 'earlyfold', 'foldin', 'interest', 'bankhit', 'withdraw',
-       'mark', 'jump']
+       'mark', 'jump', 'spin', 'jackpot', 'cherries', 'bust']
 # (file, song, semitones)
 TRACKS = [('track02_title', 'title', 0), ('track03_marathon', 'battle', 0), ('track04_sprint', 'boss', 0),
           ('track05_versus', 'battle', 3), ('track06_survival', 'boss', -2)]
@@ -264,6 +264,16 @@ def render_sfx(name):
         b.tone(2000, d=.08, v=.06, at=.12)
     elif name == 'jump':                     # rewind
         b.tone(1800, to=150, d=.4, v=.12, typ='sawtooth'); b.noise(d=.4, v=.08, typ='bandpass', f=4000, to=300, q=4)
+    # Ace of Stars (js/audio.js perk_spin, lever)
+    elif name == 'spin':                     # lever clunk, then the reels clicking until they stop (1.2 s)
+        b.tone(140, to=70, d=.15, v=.25, typ='triangle'); b.noise(d=.1, v=.15, f=900)
+        for i in range(16): b.noise(d=.02, v=.09, typ='highpass', f=3000, at=.15 + i * (.05 + i * .002))
+    elif name == 'jackpot':
+        for k, n in enumerate(['C6', 'E6', 'G6', 'C7', 'G6', 'C7']): b.tone(mtof(note(n)), d=.12, v=.1, at=k * .07)
+    elif name == 'cherries':
+        b.tone(mtof(note('A6')), d=.2, v=.1); b.tone(mtof(note('E7')), d=.3, v=.08, at=.08)
+    elif name == 'bust':
+        b.tone(150, d=.45, v=.14, typ='sawtooth', sus=True); b.tone(142, d=.45, v=.14, typ='sawtooth', sus=True)
     x = b.buf * 4.5
     x = filt(x, 'lowpass', 6000, SFX_RATE)
     pk = np.abs(x).max()

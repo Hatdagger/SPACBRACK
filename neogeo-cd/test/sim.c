@@ -593,6 +593,45 @@ static void test_capsule(void)
     CHECK(tt_cap_mark(&b) == TT_CAP_OFF, "nothing without the card");
 }
 
+/* Ace of Stars: a spin per 10 lines; jackpot, cherries or bust when the reels stop */
+static void test_lever(void)
+{
+    static const char *two[3] = { "########..", "########..", "####.#####" };
+    tt_board b;
+    int f, k, res[4] = { 0, 0, 0, 0 };
+    tt_init(&b, 51, 1, 0, 0, 1);
+    b.lever_on = 1;
+    CHECK(tt_lever_pull(&b) == TT_PULL_AT10, "no spin before 10 lines");
+    b.lines = 25;
+    CHECK(tt_lever_spins(&b) == 2, "spins stack: 2 at 25 lines");
+    field(&b, two, 3);
+    CHECK(tt_lever_pull(&b) == TT_PULL_OK && b.spin_t == TT_SPIN_FRAMES, "pull: the reels turn");
+    CHECK(tt_lever_pull(&b) == TT_PULL_BUSY, "one spin at a time");
+    b.spin_res = TT_LEVER_CHERRIES;
+    for (f = 0; f < TT_SPIN_FRAMES; f++) { b.ev = 0; tt_tick(&b); }
+    CHECK((b.ev & TT_EV_LEVER) && !b.spin_t, "they stop after 1.2 s");
+    CHECK(filled(&b) == 16, "cherries: the bottom row (9 cells of 25) is gone");
+    CHECK(b.lines == 25, "...and it doesn't count");
+    tt_lever_pull(&b);
+    b.spin_res = TT_LEVER_JACKPOT;
+    for (f = 0; f < TT_SPIN_FRAMES; f++) tt_tick(&b);
+    CHECK(b.lever_out == 3, "jackpot: 3 rows for the opponent");
+    CHECK(tt_lever_pull(&b) == TT_PULL_NONE, "no spins left");
+    b.lines = 30;
+    tt_lever_pull(&b);
+    b.spin_res = TT_LEVER_BUST;
+    for (f = 0; f < TT_SPIN_FRAMES; f++) tt_tick(&b);
+    CHECK(tt_pending(&b) == 2, "bust: 2 rows for you");
+    /* the odds: about 30 / 45 / 25 */
+    for (k = 0; k < 2000; k++) { b.spin_t = 0; b.spins_used = 0; tt_lever_pull(&b); res[b.spin_res]++; }
+    printf("  lever odds over 2000 pulls: jackpot %d, cherries %d, bust %d\n", res[1], res[2], res[3]);
+    CHECK(res[1] > 500 && res[1] < 700 && res[2] > 800 && res[2] < 1000 && res[3] > 400 && res[3] < 600, "odds about 30/45/25");
+    tt_lever_restart(&b);
+    CHECK(tt_lever_spins(&b) == 0, "a fresh count");
+    b.lever_on = 0;
+    CHECK(tt_lever_pull(&b) == TT_PULL_OFF, "nothing without the card");
+}
+
 /* a CPU with Origami Crane against one without: folds land, and the match ends */
 static void test_fold_versus(void)
 {
@@ -678,6 +717,7 @@ static void test_fuzz(void)
         else if (k == 13 && (r & 0x300000) == 0x100000) tt_holo_freeze(&b);
         else if (k == 14 && (r & 0x300000) == 0x100000) { b.cap_on = 1; tt_cap_mark(&b); }
         else if (k == 14 && (r & 0x300000) == 0x200000) tt_cap_jump(&b);
+        else if (k == 14 && (r & 0x300000) == 0x300000) { b.lever_on = 1; tt_lever_pull(&b); b.lever_out = 0; }
         else if (k == 13 && (r & 0x300000) == 0x200000 && b.fi_n < TT_FMAX) {
             b.fi[b.fi_n].rows = (tt_u8)(1 + (r >> 8) % 4); b.fi[b.fi_n].h = (tt_u8)((r >> 12) % 20);
             b.fi[b.fi_n].hole = (tt_u8)((r >> 4) % 10); b.fi[b.fi_n].pat = (tt_u8)((r >> 16) & 3); b.fi_n++;
@@ -707,6 +747,7 @@ int main(void)
     test_fold();
     test_bank();
     test_capsule();
+    test_lever();
     test_fuzz();
     test_cpu();
     test_cpu_holo();

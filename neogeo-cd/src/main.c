@@ -160,6 +160,7 @@ typedef struct {
     BYTE    cpu_mark;                /* ...a CPU's mark: its field then had max height cpu_mh, holes cpu_mo, total cpu_ma */
     BYTE    cpu_mh, cpu_mo;
     WORD    cpu_ma;
+    BYTE    spins_seen;              /* Ace of Stars: spins ready last announced */
     /* what is on screen now, so a frame only draws what changed */
     BYTE    fd_full, fd_state, fd_paused, fd_go, fd_aim, fd_dark, fd_cap;
     WORD    fx_key;
@@ -640,6 +641,7 @@ static void begin_side(Side *s, DWORD seed, WORD count)
     s->launch_used = s->launch_ready = 0;
     s->bank_t = s->cap_t = s->cap_fired = s->cap_ready = s->jump_t = 0;
     s->cpu_mh = s->cpu_mo = 0; s->cpu_ma = 0;
+    s->spins_seen = 0;
     s->fired = 0;
     s->cpu_card_t = 0;
     if (s->cpu_on) cpu_init(&s->cpu, mode == M_SURV ? surv_level(s) : cpu_level, fresh_seed());
@@ -751,6 +753,28 @@ static void side_input(Side *s, BYTE cur, BYTE live)
     if (live && ((edge & btn_bit(c->btn[ACT_HARD])) || (c->up_drop && (edge & JOY_UP)))) tt_hard_drop(b);
 }
 
+/* ---------- Ace of Stars: the reels ---------- */
+static const char REEL_SYM[5] = { '7', '*', 'C', '$', 'X' };
+
+/* the callout while the reels turn: [7][*][C], each reel stopping in turn on the result */
+static void reels(Side *s)
+{
+    tt_board *b = &s->b;
+    static const char WIN[4][3] = { { 'X', '$', 'C' }, { '7', '7', '7' }, { 'C', 'C', 'C' }, { '7', 'X', 'C' } };
+    char c[10];
+    int k, t = TT_SPIN_FRAMES - b->spin_t, stop;
+    if (t % 4 && b->spin_t) return;
+    for (k = 0; k < 3; k++) {
+        stop = (k + 1) * TT_SPIN_FRAMES / 4 + (k == 2 ? TT_SPIN_FRAMES / 4 : 0);   /* 18, 36, 72 */
+        c[k * 3] = '[';
+        c[k * 3 + 1] = t >= stop || !b->spin_t ? WIN[b->spin_res][k] : REEL_SYM[(t / 4 + k * 2) % 5];
+        c[k * 3 + 2] = ']';
+    }
+    c[9] = 0;
+    say(s, b->spin_t ? "ACE OF STARS" : b->spin_res == TT_LEVER_JACKPOT ? "JACKPOT!" :
+        b->spin_res == TT_LEVER_CHERRIES ? "CHERRIES!" : "BUST!", c);
+}
+
 /* ---------- what happened this frame: sounds and callouts ---------- */
 static const char *LINE_NAME[5] = { "", "SINGLE", "DOUBLE", "TRIPLE", "QUAD!" };
 
@@ -801,6 +825,11 @@ static void side_events(Side *s)
     if (ev & TT_EV_FREEZE) { if (s->cpu_on) say(s, "FREEZE!", "PHANTOM REEL"); sfx(s, SND_FREEZE); }
     if (ev & TT_EV_HOLOSET) sfx(s, SND_HOLOSET);
     /* Origami Crane: folded garbage landed here */
+    /* Ace of Stars */
+    if (ev & TT_EV_LEVER) {
+        reels(s);
+        sfx(s, (BYTE)(b->spin_res == TT_LEVER_JACKPOT ? SND_JACKPOT : b->spin_res == TT_LEVER_CHERRIES ? SND_CHERRIES : SND_BUST));
+    }
     /* Gold Ledger */
     if (ev & TT_EV_INTEREST) { s->bank_t = 30; s->bank_col = PAL_WHITE; sfx(s, SND_INTEREST); }
     if (ev & TT_EV_FOLDIN) { say(s, "FOLDED IN!", count_txt(b->fold_n, b->fold_n == 1 ? " ROW" : " ROWS")); sfx(s, SND_FOLDIN); }
@@ -1122,8 +1151,9 @@ static void draw_fx(Side *s, BYTE show)
 {
     static const char *FX_TAG[TT_FX_N] = { "GLAR", "SONR", "HOWL", "SHVR", "DARK", "ECHO" };
     static const BYTE FX_PAL[TT_FX_N] = { PAL_YELLOW, PAL_CYAN, PAL_RED, PAL_WHITE, PAL_VIOLET, PAL_VIOLET };
-    const char *tag[TT_FX_N + 4];
-    BYTE pal[TT_FX_N + 4], id[TT_FX_N + 4], n = 0;
+    const char *tag[TT_FX_N + 6];
+    static char spins[4] = { '7', 'X', '2', 0 };
+    BYTE pal[TT_FX_N + 6], id[TT_FX_N + 6], n = 0;
     tt_board *b = &s->b;
     int k;
     WORD key = 0;
@@ -1136,6 +1166,12 @@ static void draw_fx(Side *s, BYTE show)
         else if (b->fh_n) { tag[n] = "FOLD"; id[n] = 17; pal[n++] = PAL_LIME; }
         if (b->bank) { tag[n] = "BANK"; id[n] = 18; pal[n++] = PAL_YELLOW; }
         if (b->marked) { tag[n] = "MARK"; id[n] = 19; pal[n++] = PAL_BLUE; }
+        if (b->spin_t) { tag[n] = "SPIN"; id[n] = 20; pal[n++] = PAL_PINK; }
+        else if (tt_lever_spins(b) > 1) {            /* spins stacked: 7X2 */
+            k = tt_lever_spins(b);
+            spins[2] = (char)('0' + (k > 9 ? 9 : k));
+            tag[n] = spins; id[n] = (BYTE)(21 + k); pal[n++] = PAL_PINK;
+        }
     }
     if (n) {
         k = (int)((frames / 40) % n);
@@ -1192,6 +1228,14 @@ static void draw_meter(Side *s)
             if (b->marked) col = (BYTE)((frames >> 3) & 1 ? PAL_BLUE : PAL_WHITE);
         } else if (b->jumps_used >= TT_CAP_MAX) n = 0;
         else n = b->lines < b->cap_from ? 0 : (b->lines - b->cap_from) % TT_CAP_LINES;
+    }
+    /* Ace of Stars: the bar fills over 10 lines to the next spin; full and
+       flashing pink and yellow while one is ready */
+    if (on && s->card == CARD_ACE) {
+        tt_board *b = &s->b;
+        col = PAL_PINK;
+        if (tt_lever_spins(b) > 0) { n = TT_METER_MAX; col = (BYTE)((frames >> 3) & 1 ? PAL_PINK : PAL_YELLOW); }
+        else n = b->lines < b->spin_from ? 0 : (b->lines - b->spin_from) % TT_LEVER_LINES;
     }
     /* Gold Ledger: the bar is the bank (10 rows); white when interest pays, red when it's hit */
     if (on && s->card == CARD_LEDGER) {
@@ -1596,6 +1640,7 @@ static void surv_next(Side *s)
     tt_holo_restart(&o->b);                    /* ...and a fresh 3 holograms */
     tt_fold_restart(&o->b);                    /* ...and a fresh fold count */
     tt_cap_restart(&o->b);                     /* ...and fresh jumps */
+    tt_lever_restart(&o->b);                   /* ...and fresh spins */
     s->ready = 1;
     s->b.level = o->b.level < 1 ? 1 : o->b.level;
     s->b.gravity = tt_gravity_for(s->b.level);
@@ -1903,6 +1948,26 @@ static void capsule_ctl(Side *s)
     }
 }
 
+/* ---------- Ace of Stars: pull the lever ---------- */
+static void ace_pull(Side *s)
+{
+    int why = tt_lever_pull(&s->b);
+    if (why == TT_PULL_BUSY) return;
+    if (why != TT_PULL_OK) {
+        if (why == TT_PULL_AT10) {
+            char c[13];
+            str_cpy(c, "AT ");
+            str_cpy(c + 3, count_txt((WORD)(s->b.spin_from + TT_LEVER_LINES * (s->b.spins_used + 1)), " LINES"));
+            say(s, "ACE OF STARS", c);
+        } else say(s, "ACE OF STARS", "NO SPINS LEFT");
+        sfx(s, SND_DENY);
+        return;
+    }
+    sfx(s, SND_SPIN);
+    s->fired++;
+    reels(s);
+}
+
 /*
  * A player's card button during play.  Returns 1 when it took this frame's
  * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
@@ -1926,6 +1991,7 @@ static BYTE card_ctl(Side *s, BYTE cur)
             if (s->card_hit && s->card == CARD_ORIGAMI) crane_early(s);
             if (s->card_hit && s->card == CARD_LEDGER) ledger_withdraw(s);
             if (s->card == CARD_CAPSULE) capsule_ctl(s);
+            if (s->card_hit && s->card == CARD_ACE) ace_pull(s);
             return 0;
         }
         if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
@@ -1986,6 +2052,13 @@ static void cpu_card(Side *s)
             if ((BYTE)(fresh_seed() % 100) < 5 * s->cpu.level + 10) crane_early(s);
         return;
     }
+    if (s->card == CARD_ACE) {
+        /* pull now and then when a spin is ready; more eager when the stack is tall
+           (cherries help), stronger CPUs sooner - js/ai.js lever */
+        if (s->b.spin_t || tt_lever_spins(&s->b) <= 0) return;
+        if ((BYTE)(fresh_seed() % 100) < 6 + 3 * s->cpu.level + (tt_stack_height(&s->b) >= 10 ? 20 : 0)) ace_pull(s);
+        return;
+    }
     if (s->card == CARD_CAPSULE) {
         /* mark a clean, low field; jump back when the stack gets bad - js/ai.js chrono */
         int ho, mh, ag;
@@ -2044,12 +2117,19 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         b->fold_on = has_card(s, CARD_ORIGAMI);
         b->bank_on = has_card(s, CARD_LEDGER);
         b->cap_on = has_card(s, CARD_CAPSULE);
+        b->lever_on = has_card(s, CARD_ACE);
         if (s->jump_t) s->jump_t--;
         if (s->bank_t) s->bank_t--;
         if (s->cpu_on || HARNESS_BOT(s)) { cpu_frame(&s->cpu, b); if (s->cpu_on) cpu_card(s); }
         else if (!card_ctl(s, cur)) side_input(s, cur, 1);
         tt_tick(b);
         side_events(s);
+        /* Ace of Stars: the reels turn; a spin is ready */
+        if (b->spin_t) reels(s);
+        if (b->lever_on && tt_lever_spins(b) > s->spins_seen) {
+            if (!s->cpu_on && !b->spin_t) { say(s, "ACE OF STARS", "TAP: SPIN"); sfx(s, SND_MENU); }
+        }
+        s->spins_seen = (BYTE)tt_lever_spins(b);
         /* Time Capsule: marking opens */
         if (b->cap_on && !s->cap_ready && b->lines >= TT_CAP_LINES) {
             s->cap_ready = 1;
@@ -2188,6 +2268,7 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
                         f->b.out = 0;
                     }
                     if (f->b.fold_due) { f->b.fold_due = 0; fold_over(f, 0); }
+                    if (f->b.lever_out) { deliver(f, t, f->b.lever_out, pat_of(f), 0); f->b.lever_out = 0; }   /* Ace of Stars: jackpot */
                 }
                 if (side[0].state == S_PLAY || side[1].state == S_PLAY) {
                     vs_time++;

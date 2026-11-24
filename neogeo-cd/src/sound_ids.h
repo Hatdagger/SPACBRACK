@@ -38,11 +38,15 @@ enum {
     SND_WITHDRAW,
     SND_MARK,
     SND_JUMP,
+    SND_SPIN,
+    SND_JACKPOT,
+    SND_CHERRIES,
+    SND_BUST,
     SND_COUNT
 };
 
 #define SND_CMD_BASE 0x20
 #define SND_CMD(id, pan) ((BYTE)(SND_CMD_BASE + (id) * 3 + (pan)))   /* pan 0 left, 1 centre, 2 right */
-#define SND_NAMES "move", "rotate", "kick", "lock", "hard", "hold", "clear1", "clear2", "clear3", "clear4", "tspin", "combo", "garbage", "level", "topout", "menu", "beep", "go", "cast", "boulder", "beam", "echo", "deny", "holo", "freeze", "holoset", "fold", "earlyfold", "foldin", "interest", "bankhit", "withdraw", "mark", "jump"   /* file names, for the PC harness */
+#define SND_NAMES "move", "rotate", "kick", "lock", "hard", "hold", "clear1", "clear2", "clear3", "clear4", "tspin", "combo", "garbage", "level", "topout", "menu", "beep", "go", "cast", "boulder", "beam", "echo", "deny", "holo", "freeze", "holoset", "fold", "earlyfold", "foldin", "interest", "bankhit", "withdraw", "mark", "jump", "spin", "jackpot", "cherries", "bust"   /* file names, for the PC harness */
 
 #endif

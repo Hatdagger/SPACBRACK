@@ -636,4 +636,54 @@ garbage 2 12
 wait 600
 check 2 fired 1
 dump 47_cpu_jump
+# ---- Ace of Stars: a spin per 10 lines (they stack); a tap pulls the lever ----
+p1 SELECT
+wait 3
+p1 SELECT
+wait 60
+p1 A
+wait 20
+p1 A
+until 1 PLAY 300
+setcard 1 9
+setcard 2 0
+bot 1 6
+wait 240
+bot 1 0
+wait 30
+# before 10 lines: refused
+p1 D2
+wait 2
+check 1 fired 0
+# 20 lines: 2 spins ready
+lines 1 20
+wait 4
+dump 48_ace_ready
+# pull: the reels turn 1.2 s (rigged for a jackpot: 3 rows to the CPU)
+p1 D2
+wait 1
+spinres 1 1
+check 1 fired 1
+wait 40
+dump 49_ace_spin
+wait 40
+check 2 pending 3
+dump 50_ace_jackpot
+# a second pull, cherries: the bottom row goes
+p1 D2
+wait 1
+spinres 1 2
+wait 80
+check 1 fired 2
+# no spins left now
+p1 D2
+wait 2
+check 1 fired 2
+sounds spin jackpot cherries deny
+# the CPU with the ace pulls when a spin is ready
+setcard 2 9
+lines 2 10
+wait 600
+check 2 fired 1
+dump 51_cpu_spin
 end
