@@ -411,6 +411,13 @@ void waitVBlank(void)
             m[63] = s;
             card_has[3] = 1;
             save_load();
+        } else if (!strcmp(cmd, "menu")) menu_sel = (BYTE)atoi(a1);              /* title menu item */
+        else if (!strcmp(cmd, "screen")) {                                        /* check the screen */
+            if (screen != atoi(a1)) { fprintf(stderr, "frame %ld: screen %d, wanted %s\n", frame, screen, a1); exit(4); }
+        } else if (!strcmp(cmd, "demo")) {
+            if (demo != atoi(a1)) { fprintf(stderr, "frame %ld: demo %d, wanted %s\n", frame, demo, a1); exit(4); }
+        } else if (!strcmp(cmd, "track")) {
+            if (track_on != atoi(a1)) { fprintf(stderr, "frame %ld: CD track %d, wanted %s\n", frame, track_on, a1); exit(4); }
         } else if (!strcmp(cmd, "lines")) side[atoi(a1) - 1].b.lines = (tt_u16)atoi(a2);
         else if (!strcmp(cmd, "sounds")) {
             char *w;

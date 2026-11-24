@@ -686,4 +686,70 @@ lines 2 10
 wait 600
 check 2 fired 1
 dump 51_cpu_spin
+# ---- extras: sound test, card guide, attract mode ----
+p1 SELECT
+wait 3
+p1 SELECT
+wait 30
+screen 0
+menu 5
+p1 A
+wait 4
+screen 4
+# options: down to SOUND TEST (13)
+p1 U
+p1 U
+p1 U
+p1 U
+wait 4
+p1 A
+wait 4
+screen 5
+p1 R
+p1 R
+p1 A
+wait 20
+track 4
+dump 52_sound_test
+p1 D
+p1 L
+p1 L
+p1 A
+wait 4
+sounds bust
+p1 B
+wait 10
+screen 4
+track 2
+# CARD GUIDE (14)
+p1 D
+wait 4
+p1 A
+wait 10
+screen 6
+dump 53_guide_cyclops
+p1 L
+wait 10
+dump 54_guide_ace
+p1 L
+p1 L
+wait 10
+dump 55_guide_ledger
+p1 B
+wait 10
+screen 4
+p1 B
+wait 30
+screen 0
+# 20 s on the title: the demo starts, two CPUs play
+wait 1210
+demo 1
+screen 1
+wait 700
+dump 56_demo
+p1 C
+wait 10
+demo 0
+screen 0
+dump 57_title_after_demo
 end

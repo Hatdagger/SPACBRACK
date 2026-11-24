@@ -113,7 +113,7 @@ static const BYTE TRAIL_LEN[TRAIL_FRAMES + 1] = { 0, 1, 1, 1, 2, 2, 2, 3, 3, 3 }
 enum { S_OFF, S_ASK, S_COUNT, S_PLAY, S_DONE, S_NAME, S_GAP };
 enum { M_MARATHON, M_SPRINT, M_VS, M_SURV };
 enum { R_NONE, R_CLEAR, R_TOPOUT, R_WIN, R_LOSE, R_DRAW, R_LIFTOFF, R_LATE };   /* LIFTOFF / LATE: a Launch Countdown ran out */
-enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_PICK, SCR_OPTIONS };
+enum { SCR_TITLE, SCR_GAME, SCR_RECORDS, SCR_PICK, SCR_OPTIONS, SCR_SOUND, SCR_GUIDE };
 enum { MENU_MARATHON, MENU_SPRINT, MENU_VS, MENU_SURV, MENU_RECORDS, MENU_OPTIONS, MENU_N };
 
 typedef struct {
@@ -175,6 +175,9 @@ static Side  side[2];
 static BYTE  screen = SCR_TITLE, mode = M_MARATHON, paused = 0;
 static BYTE  menu_sel = 0, cpu_level = 4, track_on = 0;
 static BYTE  opt_player = 0, opt_sel = 0, save_rec_due = 0, save_opt_due = 0;
+static BYTE  demo = 0;                    /* attract mode: two CPUs play, any button goes back */
+static WORD  idle_t = 0, demo_t = 0, demo_end = 0;
+static BYTE  snd_sel = 0, snd_track = 0, snd_id = 0, guide_card = 0;
 static BYTE  pick_card[2] = { CARD_CYCLOPS, CARD_SKELETON };   /* each pad's last pick */
 static BYTE  pick_on[2], pick_done[2], pick_t;
 static WORD  pick_key[2];
@@ -704,9 +707,30 @@ static void start_game(BYTE m, BYTE p)
     draw_static();
 }
 
+/* attract mode: the title sat idle, so two CPUs play a Versus match (cards if they're on) */
+static void start_demo(void)
+{
+    int k;
+    start_game(M_VS, 0);
+    demo = 1;
+    demo_t = demo_end = 0;
+    side[0].cpu_on = side[1].cpu_on = 1;
+    if (screen == SCR_PICK) {                   /* the CPUs need no pick screen */
+        for (k = 0; k < 2; k++) side[k].card = random_card();
+        card_hide(0); card_hide(1);
+        screen = SCR_GAME;
+        cls();
+    }
+    begin_match();
+    for (k = 0; k < 2; k++) cpu_init(&side[k].cpu, (tt_u8)(4 + fresh_seed() % 5), fresh_seed());
+    draw_static();
+}
+
 static void to_title(void)
 {
     screen = SCR_TITLE;
+    demo = 0;
+    idle_t = 0;
     paused = 0;
     gs_clear(0, G_SLOTS);
     card_hide(0); card_hide(1);
@@ -1475,13 +1499,13 @@ static BYTE draw_center(void)
 {
     static const char *MODE_NAME[4] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL" };
     int x = CENTER_COL;
-    DWORD k1 = 0x80000000UL | mode | ((DWORD)paused << 4) | ((DWORD)rec_gen << 8), k2 = 0;
+    DWORD k1 = 0x80000000UL | mode | ((DWORD)paused << 4) | ((DWORD)rec_gen << 8) | ((DWORD)demo << 20), k2 = 0;
     if (mode == M_VS) k2 = (vs_time / 60) | ((DWORD)side[0].b.level << 24);
     else if (mode == M_SURV) k2 = (vs_time / 60) | ((DWORD)surv_speed() << 24);
     if (k1 == ctr_key1 && k2 == ctr_key2) return 0;
     ctr_key1 = k1; ctr_key2 = k2;
     fill(14, 0, 12, 1, BLANK);
-    txt_c(14, 12, 0, PAL_WHITE, MODE_NAME[mode]);
+    txt_c(14, 12, 0, demo ? PAL_YELLOW : PAL_WHITE, demo ? "DEMO PLAY" : MODE_NAME[mode]);
     fill(x, 4, 6, 20, BLANK);
     switch (mode) {
     case M_MARATHON:
@@ -2307,6 +2331,9 @@ static BYTE repeat_dirs(Rep *p, BYTE cur)
     return out;
 }
 
+#define DEMO_IDLE   1200             /* 20 s on the title starts the demo */
+#define DEMO_LENGTH 3600             /* a demo match runs at most 60 s */
+
 static void title_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
 {
     static const char *ITEM[MENU_N] = { "MARATHON", "SPRINT", "VERSUS", "SURVIVAL", "RECORDS", "OPTIONS" };
@@ -2314,6 +2341,8 @@ static void title_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
                                         "TOP OUT CPU AFTER CPU", "BEST SCORES AND TIMES", "SPEED, BUTTONS, SOUND" };
     BYTE r = (BYTE)(rp[0] | rp[1]), go;
     int k;
+    if (edge[0] | edge[1] | ps) idle_t = 0;
+    else if (++idle_t >= DEMO_IDLE) { start_demo(); return; }
     go = (BYTE)(((edge[0] & JOY_A) || (ps & P1_START)) ? 1 : ((edge[1] & JOY_A) || (ps & P2_START)) ? 2 : 0);
     if (r & (JOY_UP | JOY_DOWN)) {
         menu_sel = (BYTE)((menu_sel + ((r & JOY_UP) ? MENU_N - 1 : 1)) % MENU_N);
@@ -2480,7 +2509,8 @@ static void pick_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
 }
 
 /* ---------- options: speed and buttons per player, shared settings ---------- */
-enum { O_DAS, O_ARR, O_SOFT, O_ROTL, O_ROTR, O_HOLD, O_HARD, O_UP, O_CARD, O_GHOST, O_CLEAR, O_MUSIC, O_CARDS, O_DEFAULTS, O_EXIT, O_N };
+enum { O_DAS, O_ARR, O_SOFT, O_ROTL, O_ROTR, O_HOLD, O_HARD, O_UP, O_CARD, O_GHOST, O_CLEAR, O_MUSIC, O_CARDS,
+       O_SOUND, O_GUIDE, O_DEFAULTS, O_EXIT, O_N };
 
 static void opt_button(PadCfg *c, int act, int d)
 {
@@ -2505,7 +2535,7 @@ static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
 {
     static const char *LABEL[O_N] = { "DAS (FRAMES)", "ARR (FRAMES)", "SOFT DROP", "ROTATE LEFT", "ROTATE RIGHT",
                                       "HOLD", "HARD DROP", "UP HARD DROPS", "CARD", "GHOST", "LINE CLEAR",
-                                      "MUSIC", "CARDS VS/SURV", "DEFAULTS", "SAVE AND EXIT" };
+                                      "MUSIC", "CARDS VS/SURV", "SOUND TEST", "CARD GUIDE", "DEFAULTS", "SAVE AND EXIT" };
     static const char *CARD_BTN[CARD_N] = { "A", "B", "C", "D", "SELECT", "START" };
     static const char *BTN = "ABCD-";
     PadCfg *c = &pad_cfg[opt_player];
@@ -2536,12 +2566,14 @@ static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
     if ((e & JOY_A) || (ps & (opt_player ? P2_START : P1_START))) {
         if (opt_sel == O_DEFAULTS) { save_defaults_pad(c); opt_ghost = 1; opt_clear = 8; opt_cards = 1; sfx(0, SND_MENU); }
         else if (opt_sel == O_EXIT) { save_opt_due = 1; sfx(0, SND_MENU); to_title(); return; }
+        else if (opt_sel == O_SOUND) { sfx(0, SND_MENU); screen = SCR_SOUND; snd_sel = 0; cls(); return; }
+        else if (opt_sel == O_GUIDE) { sfx(0, SND_MENU); screen = SCR_GUIDE; cls(); return; }
     }
     if (e & JOY_B) { save_opt_due = 1; sfx(0, SND_MENU); to_title(); return; }
 
     txt_c(0, 40, 1, PAL_WHITE, opt_player ? "OPTIONS  2P" : "OPTIONS  1P");
     for (k = 0; k < O_N; k++) {
-        BYTE on = (BYTE)(k == opt_sel), y = (BYTE)(4 + k + (k >= O_GHOST) + (k >= O_DEFAULTS));
+        BYTE on = (BYTE)(k == opt_sel), y = (BYTE)(4 + k + (k >= O_GHOST) + (k >= O_SOUND) + (k >= O_DEFAULTS));
         v[0] = 0;
         if (k == O_DAS) str_cpy(v, num(c->das, 2, ' '));
         else if (k == O_ARR) str_cpy(v, num(c->arr, 2, ' '));
@@ -2561,8 +2593,178 @@ static void options_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
     }
     txt(6, 3, PAL_CYAN, "THIS PLAYER");
     txt(6, 13, PAL_CYAN, "EVERYONE");
-    txt_c(0, 40, 25, PAL_STEEL, "LEFT/RIGHT: CHANGE   B: SAVE AND EXIT");
+    txt(6, 18, PAL_CYAN, "EXTRAS");
+    txt_c(0, 40, 25, PAL_STEEL, opt_sel == O_SOUND || opt_sel == O_GUIDE ? "        A: OPEN   B: SAVE AND EXIT    "
+                                                                         : "LEFT/RIGHT: CHANGE   B: SAVE AND EXIT");
     txt_c(0, 40, 26, PAL_STEEL, "BUTTONS SWAP IF ALREADY USED");
+}
+
+
+/* back to the options from the sound test or the guide */
+static void to_options(void)
+{
+    screen = SCR_OPTIONS;
+    card_hide(0);
+    cls();
+    if (!opt_music && track_on) music_pause();  /* the sound test plays even with music off */
+    track_on = 0;
+    music(2);                                   /* the title song again (or silence, music off) */
+}
+
+/* ---------- sound test: every CD song and every sound effect ---------- */
+static void sound_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
+{
+    static const char *SONG[6] = { "TITLE", "MARATHON", "SPRINT", "VERSUS", "SURVIVAL", "STOP" };
+    static const char *SND[SND_COUNT] = { SND_NAMES };
+    BYTE r = (BYTE)(rp[0] | rp[1]), e = (BYTE)(edge[0] | edge[1]);
+    int d = (r & JOY_RIGHT) ? 1 : (r & JOY_LEFT) ? -1 : 0, k;
+    char nm[12];
+    if ((e & JOY_B) || (ps & (P1_SELECT | P2_SELECT))) { sfx(0, SND_MENU); to_options(); return; }
+    if (r & (JOY_UP | JOY_DOWN)) { snd_sel ^= 1; sfx(0, SND_MOVE); }
+    if (d && !snd_sel) snd_track = (BYTE)((snd_track + 6 + d) % 6);
+    if (d && snd_sel) snd_id = (BYTE)((snd_id + SND_COUNT + d) % SND_COUNT);
+    if ((e & JOY_A) || (ps & (P1_START | P2_START))) {
+        if (snd_sel) snd_play(snd_id, SND_CENTRE);
+        else if (snd_track == 5) { music_pause(); track_on = 0; }
+        else { track_on = (BYTE)(2 + snd_track); music_play(track_on); }   /* plays even with music off */
+    }
+    txt_c(0, 40, 1, PAL_WHITE, "SOUND TEST");
+    for (k = 0; k < 2; k++) {
+        BYTE y = (BYTE)(8 + k * 6), on = (BYTE)(k == snd_sel);
+        fx_put(6, y, on ? tw(PAL_YELLOW, '>') : BLANK);
+        txt(8, y, on ? PAL_WHITE : PAL_GREY, k ? "SOUND" : "SONG");
+        fill(15, y, 20, 1, BLANK);
+        fx_put(15, y, on ? tw(PAL_PINK, '<') : BLANK);
+        if (k) {
+            const char *p = SND[snd_id];
+            int j = 0;
+            while (*p && j < 11) { char c = *p++; nm[j++] = (char)(c >= 'a' && c <= 'z' ? c - 32 : c); }
+            nm[j] = 0;
+            led(17, y, PAL_AMBER, num(snd_id + 1, 2, '0'));
+            txt(20, y, PAL_AMBER, nm);
+        } else {
+            if (snd_track < 5) { txt(17, y, PAL_STEEL, "CD"); led(20, y, PAL_AMBER, num(snd_track + 2, 2, '0')); }
+            txt(23, y, PAL_AMBER, SONG[snd_track]);
+        }
+        fx_put(33, y, on ? tw(PAL_PINK, '>') : BLANK);
+    }
+    fill(0, 18, 40, 2, BLANK);
+    if (track_on >= 2) { txt_c(0, 40, 18, PAL_GREEN, "NOW PLAYING:"); txt_c(0, 40, 19, PAL_GREEN, SONG[track_on - 2]); }
+    txt_c(0, 40, 24, PAL_STEEL, "UP/DOWN: SONG/SOUND  LEFT/RIGHT: PICK");
+    txt_c(0, 40, 25, PAL_STEEL, "A: PLAY   B: BACK");
+    txt_c(0, 40, 26, PAL_STEEL, "YOUR OWN SONGS: SEE MUSIC/README");
+}
+
+/* ---------- card guide: what every card and ability does ---------- */
+typedef struct { const char *l[14]; } Guide;
+static const Guide ABIL[CARD_MONSTERS] = {
+    { { "A 2X2 ROCK LANDS", "ON THE FOE",
+        "AIM L/R, FIRE WITH", "A: EMPTIES 2 COLS",
+        "FOE SEES NO NEXT", "BRICKS FOR 8 S",
+        "THREE BOULDERS", 0 } },
+    { { "FOE'S BRICK SLIPS", "A COLUMN",
+        "YOUR BRICKS FALL", "STRAIGHT DOWN",
+        "FOE'S BRICK SLIPS", "EVERY SECOND, 6 S",
+        "SEND 4 RIB ROWS", 0 } },
+    { { "SEND 3 SLASHED", "ROWS",
+        "YOUR BOTTOM 3 ROWS", "GO",
+        "FOE FALLS 3X", "FASTER FOR 6 S",
+        "YOUR NEXT 3 BRICKS", "ARE I BRICKS" } },
+    { { "SEND 1 ROW, FOE'S", "FIELD DARK FOR 5 S",
+        "WAITING GARBAGE", "BOUNCES BACK, 6 S",
+        "5 NEXT BRICKS", "FOR 10 S",
+        "SEND 3 ROWS, DARK", "FOR 8 S" } }
+};
+static const Guide BOSS[CARD_COUNT - CARD_MONSTERS] = {
+    { { "WHILE YOU HAVE MORE", "LINES THAN THE FOE,", "TAP TO START A", "10-COUNT. ONCE A", "MATCH (SURVIVAL:",
+        "ONCE PER FOE).", "", "CLEAR A LINE, OR", "LET THEM CATCH UP,", "AND IT BREAKS.", "",
+        "STILL AHEAD AT 0:", "YOU WIN. LIFT OFF!", 0 } },
+    { { "EVERY 10 LINES (3", "A MATCH) YOUR NEXT", "BRICK IS A HOLOGRAM", "(WHITE IN NEXT).", "",
+        "IT PASSES THROUGH", "BRICKS, FILLS ONLY", "EMPTY CELLS (HOLES", "TOO) AND CAN'T BE", "HELD.", "",
+        "TAP: FREEZE IT", "WHERE IT IS.", 0 } },
+    { { "YOUR GARBAGE IS", "HELD, NOT SENT.", "", "EVERY 8 LINES IT", "FOLDS OVER, AT THE",
+        "HEIGHT YOU CLEARED", "AT: INTO THEIR", "STACK.", "",
+        "TAP: EARLY FOLD,", "1 CHARGE PER 10", "LINES.", 0 } },
+    { { "YOUR GARBAGE GOES", "IN YOUR VAULT", "(10 ROWS AT MOST)", "AND EARNS A ROW", "EVERY 10 S.", "",
+        "THE FOE'S ATTACKS", "EAT INTO IT FIRST.", "",
+        "TAP: WITHDRAW. THE", "WHOLE VAULT GOES", "OVER AS GARBAGE.", 0 } },
+    { { "FROM 10 LINES ON:", "", "TAP: MARK (SAVE)", "YOUR FIELD.", "",
+        "HOLD: JUMP BACK TO", "THE MARK. ALL", "GARBAGE ON ITS WAY", "IS WIPED.", "",
+        "A JUMP EVERY 10", "LINES, 3 AT MOST.", "HOLD SHOWS THE MARK", 0 } },
+    { { "A SPIN EVERY 10", "LINES. SPINS STACK.", "", "TAP: PULL THE LEVER", "",
+        "JACKPOT 30%:", " SEND 3 ROWS", "CHERRIES 45%:", " LOSE YOUR BOTTOM", " ROW", "BUST 25%:",
+        " 2 ROWS DROP ON YOU", 0 } }
+};
+
+static void guide_frame(const BYTE *edge, const BYTE *rp, BYTE ps)
+{
+    static WORD key = 0xffff;
+    static const char DIRC[4] = { '<', '>', '\\', '^' };
+    const CardDef *c;
+    BYTE r = (BYTE)(rp[0] | rp[1]), e = (BYTE)(edge[0] | edge[1]);
+    int n = (r & JOY_RIGHT) ? 1 : (r & JOY_LEFT) ? -1 : 0, j;
+    char d[2];
+    if ((e & JOY_B) || (ps & (P1_SELECT | P2_SELECT))) { sfx(0, SND_MENU); key = 0xffff; to_options(); return; }
+    if (n) { guide_card = (BYTE)((guide_card + CARD_COUNT + n) % CARD_COUNT); sfx(0, SND_MOVE); }
+    card_show(0, guide_card, 48, 48);
+    if (key == guide_card) return;
+    key = guide_card;
+    c = &CARDS[guide_card];
+    cls();
+    txt_c(0, 40, 1, PAL_WHITE, "CARD GUIDE");
+    txt_c(0, 20, 3, c->pal, c->name);
+    fx_put(5, 5, tw(PAL_WHITE, T_BEZ + 0));
+    fill(6, 5, 8, 1, tw(PAL_WHITE, T_BEZ + 1));
+    fx_put(14, 5, tw(PAL_WHITE, T_BEZ + 2));
+    for (j = 0; j < 8; j++) { fx_put(5, 6 + j, tw(PAL_WHITE, T_BEZ_PLAIN)); fx_put(14, 6 + j, tw(PAL_WHITE, T_BEZ + 4)); }
+    fx_put(5, 14, tw(PAL_WHITE, T_BEZ + 5));
+    fill(6, 14, 8, 1, tw(PAL_WHITE, T_BEZ + 6));
+    fx_put(14, 14, tw(PAL_WHITE, T_BEZ + 7));
+    txt(2, 9, PAL_WHITE, "<");
+    txt(17, 9, PAL_WHITE, ">");
+    led(7, 15, PAL_GREY, num(guide_card + 1, 2, ' '));
+    txt(9, 15, PAL_GREY, "/10");
+    txt_c(0, 20, 17, c->pal, c->pas);
+    for (j = 0; j < 3; j++) if (c->line[j]) txt_c(0, 20, 18 + j, PAL_WHITE, c->line[j]);
+    if (guide_card < CARD_MONSTERS) {
+        const Guide *g = &ABIL[guide_card];
+        txt_c(0, 20, 22, PAL_STEEL, "HOLD CARD BUTTON,");
+        txt_c(0, 20, 23, PAL_STEEL, "PICK A WAY,");
+        txt_c(0, 20, 24, PAL_STEEL, "LET GO TO FIRE");
+        txt(19, 3, PAL_STEEL, "ABILITY       METER");
+        d[1] = 0;
+        for (j = 0; j < 4; j++) {
+            int y = 5 + j * 5;
+            d[0] = DIRC[j];
+            txt(19, y, PAL_AMBER, d);
+            txt(21, y, PAL_WHITE, c->act[j]);
+            led(36, y, PAL_AMBER, num(c->cost[j], 2, ' '));
+            if (g->l[j * 2]) txt(21, y + 1, PAL_BEIGE, g->l[j * 2]);
+            if (g->l[j * 2 + 1]) txt(21, y + 2, PAL_BEIGE, g->l[j * 2 + 1]);
+        }
+    } else {
+        const Guide *g = &BOSS[guide_card - CARD_MONSTERS];
+        txt_c(0, 20, 22, PAL_STEEL, "BOSS CARD:");
+        txt_c(0, 20, 23, PAL_STEEL, "TAP CARD BUTTON");
+        txt_c(0, 20, 24, PAL_STEEL, "FOR ITS PERK");
+        for (j = 0; j < 14 && g->l[j]; j++) txt(19, 4 + j, PAL_BEIGE, g->l[j]);
+    }
+    txt_c(0, 40, 26, PAL_STEEL, "LEFT/RIGHT: CARD   B: BACK");
+}
+
+/* attract mode, every frame before the game runs: any button ends it.
+   Returns 1 when it handled the frame. */
+static BYTE demo_frame(const BYTE *edge, BYTE ps)
+{
+    static const BYTE NONE[2] = { 0, 0 };
+    if ((edge[0] | edge[1]) || ps || ++demo_t >= DEMO_LENGTH ||
+        (demo_end && ++demo_end > 240)) { to_title(); return 1; }
+    if (!demo_end && (side[0].state == S_DONE || side[1].state == S_DONE)) demo_end = 1;
+    game_frame(NONE, NONE, 0, 0);
+    fill(14, 0, 12, 1, BLANK);                  /* the title line takes turns */
+    if ((frames >> 6) & 1) txt_c(14, 12, 0, PAL_WHITE, "PRESS START");
+    else txt_c(14, 12, 0, PAL_YELLOW, "DEMO PLAY");
+    return 1;
 }
 
 /* ======================================================================
@@ -2616,11 +2818,14 @@ int main(void)
         }
         seed_mix += edge[0] + (edge[1] << 8) + ps;
 
+        if (demo && screen == SCR_GAME && demo_frame(edge, ps)) { fx_flush(); continue; }
         switch (screen) {
         case SCR_TITLE:   title_frame(edge, rp, ps); break;
         case SCR_GAME:    game_frame(cur, edge, ps, psc); break;
         case SCR_RECORDS: records_frame(edge, ps); break;
         case SCR_PICK:    pick_frame(edge, rp, ps); break;
+        case SCR_SOUND:   sound_frame(edge, rp, ps); break;
+        case SCR_GUIDE:   guide_frame(edge, rp, ps); break;
         default:          options_frame(edge, rp, ps); break;
         }
         fx_flush();
