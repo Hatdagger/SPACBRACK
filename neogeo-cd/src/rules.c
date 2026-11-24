@@ -570,6 +570,10 @@ void tt_tick(tt_board *b)
     for (k = 0; k < b->g_n; k++) if (b->g_wait[k]) b->g_wait[k]--;
     if (b->cool) b->cool--;
     for (k = 0; k < TT_FX_N; k++) if (b->fx[k]) b->fx[k]--;
+    /* Gold Ledger: interest */
+    if (b->bank && b->bank < TT_BANK_CAP) {
+        if (++b->interest_t >= TT_INTEREST) { b->interest_t = 0; b->bank++; b->ev |= TT_EV_INTEREST; }
+    } else b->interest_t = 0;
 
     if (b->fold_t) {
         if (--b->fold_t == 0) fold_done(b);
@@ -855,10 +859,23 @@ static void fold_done(tt_board *b)
     clear_rows(b, mask);
 }
 
-int tt_fold_attack(tt_board *from, tt_board *to, int rows, tt_u8 pat)
+int tt_attack_route(tt_board *from, tt_board *to, int rows, tt_u8 pat)
 {
     tt_chunk c;
+    int eat;
     rows = cancel_chunks(to->fh, &to->fh_n, rows);
+    /* Gold Ledger: it eats into the other board's bank */
+    if (rows > 0 && to->bank) {
+        eat = rows < to->bank ? rows : to->bank;
+        to->bank = (tt_u8)(to->bank - eat);
+        rows -= eat;
+        if (!to->bank) to->interest_t = 0;
+    }
+    if (rows > 0 && from->bank_on && !from->fold_on) {
+        if (!from->bank) from->interest_t = 0;
+        from->bank = (tt_u8)(from->bank + rows > TT_BANK_CAP ? TT_BANK_CAP : from->bank + rows);
+        return 0;
+    }
     if (!from->fold_on || rows <= 0) return rows;
     c.rows = (tt_u8)(rows > 255 ? 255 : rows);
     c.h = from->out_h;
@@ -930,4 +947,17 @@ void tt_fold_restart(tt_board *b)
 {
     b->fold_from = b->lines;
     b->early_used = 0;
+}
+
+/* ======================================================================
+ * Gold Ledger: interest
+ * ==================================================================== */
+
+int tt_withdraw(tt_board *b)
+{
+    int n = b->bank;
+    if (!b->bank_on || !b->alive) return 0;
+    b->bank = 0;
+    b->interest_t = 0;
+    return n;
 }

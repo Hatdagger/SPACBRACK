@@ -154,6 +154,7 @@ typedef struct {
     WORD    aim_t, cpu_card_t;
     WORD    fired;                   /* abilities fired (the harness checks them) */
     BYTE    launch_used, launch_ready; /* Launch Key: the count was used / ready was announced */
+    BYTE    bank_t, bank_col;        /* Gold Ledger: the bar flashes (interest white, hit red) */
     /* what is on screen now, so a frame only draws what changed */
     BYTE    fd_full, fd_state, fd_paused, fd_go, fd_aim, fd_dark;
     WORD    fx_key;
@@ -793,6 +794,8 @@ static void side_events(Side *s)
     if (ev & TT_EV_FREEZE) { if (s->cpu_on) say(s, "FREEZE!", "PHANTOM REEL"); sfx(s, SND_FREEZE); }
     if (ev & TT_EV_HOLOSET) sfx(s, SND_HOLOSET);
     /* Origami Crane: folded garbage landed here */
+    /* Gold Ledger */
+    if (ev & TT_EV_INTEREST) { s->bank_t = 30; s->bank_col = PAL_WHITE; sfx(s, SND_INTEREST); }
     if (ev & TT_EV_FOLDIN) { say(s, "FOLDED IN!", count_txt(b->fold_n, b->fold_n == 1 ? " ROW" : " ROWS")); sfx(s, SND_FOLDIN); }
 }
 
@@ -1028,7 +1031,8 @@ static void draw_field(Side *s)
 /*
  * Incoming garbage bar in the left bezel: amber while it waits, flashing red
  * when it can land.  Origami Crane, above it: folded in (lands next
- * placement) flashing red and lime, and what the opponent holds in lime.
+ * placement) flashing red and lime, and what the opponent holds to fold
+ * over in lime; Gold Ledger: the opponent's bank in yellow.
  */
 static void draw_gauge(Side *s)
 {
@@ -1037,13 +1041,13 @@ static void draw_gauge(Side *s)
     BYTE hot = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_WHITE), fold = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_LIME);
     DWORD key;
     Side *o = other(s);
-    if (o->state == S_PLAY || o->state == S_COUNT) held = tt_fold_held(&o->b);
+    if (o->state == S_PLAY || o->state == S_COUNT) held = tt_fold_held(&o->b) + o->b.bank;
     if (n > 20) n = 20;
     if (ready > 20) ready = 20;
     fin = n + fin > 20 ? 20 : n + fin;
     held = fin + held > 20 ? 20 : fin + held;
     key = 0x80000000UL | n | (ready << 5) | ((DWORD)((ready && hot == PAL_RED) || (fin > n && fold == PAL_RED)) << 10) |
-          ((DWORD)fin << 11) | ((DWORD)held << 16);
+          ((DWORD)fin << 11) | ((DWORD)held << 16) | ((DWORD)(o->b.bank != 0) << 21);
     if (key == s->gauge_key) return;
     s->gauge_key = key;
     for (y = 0; y < 20; y++) {
@@ -1052,7 +1056,7 @@ static void draw_gauge(Side *s)
         if (from_bottom < ready) wd = tw(hot, T_BEZ_GAUGE);
         else if (from_bottom < n) wd = tw(PAL_AMBER, T_BEZ_GAUGE);
         else if (from_bottom < fin) wd = tw(fold, T_BEZ_GAUGE);
-        else if (from_bottom < held) wd = tw(PAL_LIME, T_BEZ_GAUGE);
+        else if (from_bottom < held) wd = tw((BYTE)(o->b.bank ? PAL_YELLOW : PAL_LIME), T_BEZ_GAUGE);
         else wd = tw(PAL_WHITE, T_BEZ + 3);
         fx_put(fc - 1, FIELD_ROW + y, wd);
     }
@@ -1102,25 +1106,28 @@ static void draw_fx(Side *s, BYTE show)
 {
     static const char *FX_TAG[TT_FX_N] = { "GLAR", "SONR", "HOWL", "SHVR", "DARK", "ECHO" };
     static const BYTE FX_PAL[TT_FX_N] = { PAL_YELLOW, PAL_CYAN, PAL_RED, PAL_WHITE, PAL_VIOLET, PAL_VIOLET };
-    int k, n = 0, pick = -1, which;
-    BYTE holo = (BYTE)(show && (s->b.holo || tt_holo_ready(&s->b) > 0));   /* Phantom Reel: HOLO */
-    /* Origami Crane: FOLD, red while a fold is coming in, lime while holding some */
-    BYTE fold = (BYTE)(show && (s->b.fi_n || s->b.fh_n));
-    WORD key;
-    for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k]) n++;
-    if (show && n + holo + fold) {
-        which = (int)((frames / 40) % (n + holo + fold));
-        pick = which == n + holo ? TT_FX_N + 1 : TT_FX_N;
-        for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k] && which-- == 0) { pick = k; break; }
-        if (pick == TT_FX_N && !holo) pick = TT_FX_N + 1;
+    const char *tag[TT_FX_N + 4];
+    BYTE pal[TT_FX_N + 4], id[TT_FX_N + 4], n = 0;
+    tt_board *b = &s->b;
+    int k;
+    WORD key = 0;
+    if (show) {
+        for (k = 0; k < TT_FX_N; k++) if (b->fx[k]) { tag[n] = FX_TAG[k]; id[n] = (BYTE)k; pal[n++] = FX_PAL[k]; }
+        /* boss cards: Phantom Reel HOLO; Origami Crane FOLD (red while one is coming in,
+           lime while holding some); Gold Ledger BANK */
+        if (b->holo || tt_holo_ready(b) > 0) { tag[n] = "HOLO"; id[n] = 16; pal[n++] = PAL_CYAN; }
+        if (b->fi_n) { tag[n] = "FOLD"; id[n] = 17; pal[n++] = PAL_RED; }
+        else if (b->fh_n) { tag[n] = "FOLD"; id[n] = 17; pal[n++] = PAL_LIME; }
+        if (b->bank) { tag[n] = "BANK"; id[n] = 18; pal[n++] = PAL_YELLOW; }
     }
-    key = (WORD)(pick < 0 ? 0 : 0x100 | pick | (pick == TT_FX_N + 1 && s->b.fi_n ? 0x200 : 0));
+    if (n) {
+        k = (int)((frames / 40) % n);
+        key = (WORD)(0x8000 | ((WORD)pal[k] << 8) | id[k]);
+    }
     if (key == s->fx_key) return;
     s->fx_key = key;
     fill(PANEL_COL[s->i], FX_ROW, 4, 1, BLANK);
-    if (pick == TT_FX_N + 1) txt(PANEL_COL[s->i], FX_ROW, (BYTE)(s->b.fi_n ? PAL_RED : PAL_LIME), "FOLD");
-    else if (pick == TT_FX_N) txt(PANEL_COL[s->i], FX_ROW, PAL_CYAN, "HOLO");
-    else if (pick >= 0) txt(PANEL_COL[s->i], FX_ROW, FX_PAL[pick], FX_TAG[pick]);
+    if (n) txt(PANEL_COL[s->i], FX_ROW, pal[k], tag[k]);
 }
 
 /*
@@ -1157,6 +1164,11 @@ static void draw_meter(Side *s)
             if (!n) n = 1;
             col = (BYTE)((frames >> 3) & 1 ? PAL_YELLOW : PAL_LIME);
         }
+    }
+    /* Gold Ledger: the bar is the bank (10 rows); white when interest pays, red when it's hit */
+    if (on && s->card == CARD_LEDGER) {
+        n = s->b.bank;
+        col = (BYTE)(s->bank_t && (s->bank_t & 4) ? s->bank_col : PAL_YELLOW);
     }
     key = (WORD)(0x8000 | (on << 14) | (col << 8) | n);
     if (key == s->meter_key) return;
@@ -1805,6 +1817,23 @@ static void crane_early(Side *s)
     s->fired++;
 }
 
+/* ---------- Gold Ledger: withdraw the whole bank as garbage ---------- */
+static void ledger_withdraw(Side *s)
+{
+    Side *o = other(s);
+    int n;
+    if (!s->b.bank || o->state != S_PLAY) {
+        say(s, "GOLD LEDGER", s->b.bank ? "NOBODY THERE" : "VAULT EMPTY");
+        sfx(s, SND_DENY);
+        return;
+    }
+    n = tt_withdraw(&s->b);
+    say(s, "WITHDRAW!", count_txt((WORD)n, n == 1 ? " ROW" : " ROWS"));
+    sfx(s, SND_WITHDRAW);
+    deliver(s, o, (tt_u8)n, pat_of(s), 0);
+    s->fired++;
+}
+
 /*
  * A player's card button during play.  Returns 1 when it took this frame's
  * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
@@ -1826,6 +1855,7 @@ static BYTE card_ctl(Side *s, BYTE cur)
             if (s->card_hit && s->card == CARD_LAUNCH) try_launch(s);
             if (s->card_hit && s->card == CARD_REEL) reel_freeze(s);
             if (s->card_hit && s->card == CARD_ORIGAMI) crane_early(s);
+            if (s->card_hit && s->card == CARD_LEDGER) ledger_withdraw(s);
             return 0;
         }
         if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
@@ -1886,6 +1916,15 @@ static void cpu_card(Side *s)
             if ((BYTE)(fresh_seed() % 100) < 5 * s->cpu.level + 10) crane_early(s);
         return;
     }
+    if (s->card == CARD_LEDGER) {
+        /* cash out around 5 rows (stronger CPUs wait a little longer for interest),
+           at the cap, or early when the opponent is tall - js/ai.js bank */
+        BYTE bank = s->b.bank, target = (BYTE)(5 + (s->cpu.level > 3 ? (s->cpu.level - 3) / 2 : 0));
+        if (!bank || other(s)->state != S_PLAY) return;
+        if (bank >= TT_BANK_CAP || bank >= target || (tt_stack_height(&other(s)->b) >= 12 && bank >= 2))
+            if ((BYTE)(fresh_seed() % 100) < 30 + 8 * s->cpu.level) ledger_withdraw(s);
+        return;
+    }
     if (s->card >= CARD_MONSTERS) return;
     for (k = 0; k < 4; k++) if (card_ready(s, k)) ready[n++] = k;
     if (n && (BYTE)(fresh_seed() % 100) < CPU_CARD_RATE[s->cpu.level]) card_fire(s, ready[fresh_seed() % n]);
@@ -1918,6 +1957,8 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         if (start && mode == M_SURV && !s->join) surv_claim(s);
         b->holo_on = has_card(s, CARD_REEL);
         b->fold_on = has_card(s, CARD_ORIGAMI);
+        b->bank_on = has_card(s, CARD_LEDGER);
+        if (s->bank_t) s->bank_t--;
         if (s->cpu_on || HARNESS_BOT(s)) { cpu_frame(&s->cpu, b); if (s->cpu_on) cpu_card(s); }
         else if (!card_ctl(s, cur)) side_input(s, cur, 1);
         tt_tick(b);
@@ -2048,8 +2089,10 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
                     Side *f = &side[k], *t = &side[k ^ 1];
                     if (f->b.out) {
                         /* Origami Crane: it eats what the receiver holds, then is held (card) or sent */
-                        int n = tt_fold_attack(&f->b, &t->b, f->b.out > 40 ? 40 : f->b.out, pat_of(f));
+                        BYTE had = t->b.bank;
+                        int n = tt_attack_route(&f->b, &t->b, f->b.out > 40 ? 40 : f->b.out, pat_of(f));
                         if (n) deliver(f, t, (tt_u8)n, pat_of(f), 0);
+                        if (t->b.bank < had) { t->bank_t = 30; t->bank_col = PAL_RED; sfx(t, SND_BANKHIT); }
                         f->b.out = 0;
                     }
                     if (f->b.fold_due) { f->b.fold_due = 0; fold_over(f, 0); }

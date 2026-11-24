@@ -539,4 +539,46 @@ fold 2 3 0
 wait 300
 check 2 fired 1
 dump 39_cpu_fold
+# ---- Gold Ledger: your garbage is banked and earns a row every 10 s; a tap withdraws it all ----
+p1 SELECT
+wait 3
+p1 SELECT
+wait 60
+p1 A
+wait 20
+p1 A
+until 1 PLAY 300
+setcard 1 7
+setcard 2 0
+bot 1 0
+wait 30
+# an empty vault: refused
+p1 D2
+wait 2
+check 1 fired 0
+# 4 rows banked, 10 s later 5: the bar is the bank, the CPU's gauge shows it in yellow
+bank 1 4
+wait 610
+check 1 bank 5
+dump 40_bank
+# the CPU's attack eats into it
+attack 2 2
+wait 6
+check 1 bank 3
+dump 41_bank_hit
+# withdraw: all 3 rows go over as garbage
+p1 D2
+wait 2
+check 1 bank 0
+check 1 fired 1
+check 2 pending 3
+dump 42_withdraw
+sounds interest bankhit withdraw
+# the CPU with the ledger cashes out around 5 rows
+setcard 2 7
+bank 2 6
+wait 400
+check 2 fired 1
+check 2 bank 0
+dump 43_cpu_bank
 end

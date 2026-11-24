@@ -56,7 +56,9 @@ Lines your own abilities clear don't count, score or fill the meter. With cards 
 
 - **Origami Crane** (Fold Garbage): the garbage your clears make isn't sent; it's held, one chunk per clear, remembering the height you cleared at. Every 8 lines (in Survival, counted per opponent) everything held folds over and lands at the other board's next placement: inside their stack it overwrites those rows (all but one hole per row, so it can complete lines, which clear and count for them); above their stack it drops onto it. Nothing falls for 0.7 s while it lands. Any attack eats its own board's waiting garbage first, then a fold coming in, then what the other board holds. Tap for an Early Fold: one charge per 10 lines, not while a fold is already on its way to them (the 8-line count carries on). The right bezel bar fills over the 8 lines (flashing yellow when an Early Fold can go); the other board's left gauge shows what you hold in lime and a fold on its way flashing red; FOLD shows under NEXT. A CPU with the crane folds early when it has a pile.
 
-The other three boss cards (Gold Ledger, Time Capsule, Ace of Stars) are still being added.
+- **Gold Ledger** (Interest): the garbage your clears make goes into your vault instead of out (10 rows at most), and the vault earns a row every 10 s. The other board's attacks eat into your vault before anything of theirs gets through. Tap to Withdraw: the whole vault goes over as garbage. The right bezel bar is the vault (white when interest pays, red when it's hit); the other board's left gauge shows your vault in yellow; BANK shows under NEXT. A CPU with the ledger cashes out around 5 rows (a little later at higher levels), at the cap, or early when you're stacked high.
+
+The other two boss cards (Time Capsule, Ace of Stars) are still being added.
 
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 

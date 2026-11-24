@@ -33,7 +33,7 @@ ASSETS = os.path.join(SRC, 'assets')
 SFX = ['move', 'rotate', 'kick', 'lock', 'hard', 'hold', 'clear1', 'clear2', 'clear3', 'clear4',
        'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go',
        'cast', 'boulder', 'beam', 'echo', 'deny', 'holo', 'freeze', 'holoset',
-       'fold', 'earlyfold', 'foldin']
+       'fold', 'earlyfold', 'foldin', 'interest', 'bankhit', 'withdraw']
 # (file, song, semitones)
 TRACKS = [('track02_title', 'title', 0), ('track03_marathon', 'battle', 0), ('track04_sprint', 'boss', 0),
           ('track05_versus', 'battle', 3), ('track06_survival', 'boss', -2)]
@@ -250,6 +250,13 @@ def render_sfx(name):
         b.noise(d=.5, v=.12, typ='bandpass', f=400, to=5000, q=5)
     elif name == 'foldin':                   # folded garbage lands on you
         b.noise(d=.6, v=.2, typ='bandpass', f=300, to=3000, q=3); b.tone(80, to=300, d=.6, v=.1, typ='sawtooth')
+    # Gold Ledger (js/audio.js interest, bankHit, perk_withdraw)
+    elif name == 'interest': b.arp(['B5', 'E6'], .07, d=.25, v=.09)
+    elif name == 'bankhit': b.arp(['E5', 'C5', 'A4'], .05, d=.08, v=.09)
+    elif name == 'withdraw':                 # ka-ching
+        b.noise(d=.08, v=.2, typ='bandpass', f=2500, q=3)
+        b.tone(2093, d=.5, v=.1, typ='square', at=.08); b.tone(2637, d=.6, v=.08, typ='square', at=.12)
+        b.tone(120, to=60, d=.4, v=.2, typ='triangle', at=.15)
     x = b.buf * 4.5
     x = filt(x, 'lowpass', 6000, SFX_RATE)
     pk = np.abs(x).max()
@@ -352,6 +359,8 @@ def build_chip():
 
     z80 = bytearray(open(os.path.join(ASSETS, 'sounds', 'ngfx_driver.z80'), 'rb').read())
     for a in range(TABLE, TABLE + 0x800): z80[a] = 0                  # drop the sample's old table
+    if len(entries) * len(PANS) > 0x800 // 16:
+        sys.exit('ERROR: %d driver commands, the table holds 128 (0x20-0x9f)' % (len(entries) * len(PANS)))
     k = 0
     for (start, end) in entries:
         for bits, _ in PANS:

@@ -362,6 +362,7 @@ void waitVBlank(void)
             else if (!strcmp(a2, "held")) v = tt_fold_held(&cs->b);
             else if (!strcmp(a2, "foldq")) v = tt_fold_queued(&cs->b);
             else if (!strcmp(a2, "recv")) { v = cs->b.recv; ge = 1; }
+            else if (!strcmp(a2, "bank")) v = cs->b.bank;
             else { fprintf(stderr, "unknown check %s\n", a2); exit(2); }
             if (ge ? v < want : v != want) {
                 fprintf(stderr, "frame %ld: player %s %s is %ld, expected %s%ld\n", frame, a1, a2, v, ge ? ">= " : "", want);
@@ -369,6 +370,8 @@ void waitVBlank(void)
             }
         } else if (!strcmp(cmd, "setcard")) { side[atoi(a1) - 1].card = (BYTE)atoi(a2); side[atoi(a1) - 1].launch_used = 0; }
         else if (!strcmp(cmd, "garbage")) tt_receive(&side[atoi(a1) - 1].b, (tt_u8)atoi(a2));
+        else if (!strcmp(cmd, "bank")) side[atoi(a1) - 1].b.bank = (tt_u8)atoi(a2);     /* Gold Ledger */
+        else if (!strcmp(cmd, "attack")) side[atoi(a1) - 1].b.out = (tt_u16)atoi(a2);   /* rows P sends now */
         else if (!strcmp(cmd, "fold")) {
             /* fold P ROWS H: P holds a chunk of ROWS cleared at height H (Origami Crane) */
             tt_board *fb = &side[atoi(a1) - 1].b;

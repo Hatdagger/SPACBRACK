@@ -70,6 +70,7 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_EV_HOLOSET  0x8000  /* a hologram fell to the floor and set there */
 #define TT_EV_FOLDIN   0x10000UL  /* folded garbage landed on this board */
 #define TT_EV_FOLDCLR  0x20000UL  /* ...and completed lines (they clear and count) */
+#define TT_EV_INTEREST 0x40000UL  /* Gold Ledger: the bank earned a row */
 
 #define TT_HOLO_LINES  10      /* Phantom Reel: one hologram per 10 lines... */
 #define TT_HOLO_MAX    3       /* ...at most 3 */
@@ -78,6 +79,9 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_FOLD_FRAMES 42      /* a fold landing plays 0.7 s (no brick meanwhile) */
 #define TT_FOLD_EARLY  10      /* one Early Fold charge per 10 lines */
 #define TT_FMAX        8       /* chunks held / folded in */
+
+#define TT_BANK_CAP    10      /* Gold Ledger: at most 10 rows banked... */
+#define TT_INTEREST    600     /* ...earning 1 row every 10 s */
 
 /* tt_fold_early refusals */
 enum { TT_FOLD_OK, TT_FOLD_OFF, TT_FOLD_AT10, TT_FOLD_NOCHARGE, TT_FOLD_NOTHING, TT_FOLD_QUEUED };
@@ -157,6 +161,11 @@ typedef struct {
     tt_u8  early_used;         /* Early Fold charges spent since fold_from */
     tt_u16 fold_from;          /* lines when the count started (Survival: per opponent) */
 
+    /* Gold Ledger (interest) */
+    tt_u8  bank_on;            /* this board's garbage is banked (set by the front end) */
+    tt_u8  bank;               /* rows banked, 0..TT_BANK_CAP */
+    tt_u16 interest_t;         /* frames toward the next row of interest */
+
     /* last frame's events */
     tt_u32 ev;
     tt_u8  last_lines, last_spin, last_b2b, last_pc, last_attack;
@@ -228,7 +237,7 @@ void tt_holo_restart(tt_board *b);          /* a fresh count of 3 from the lines
  * lines, sends the held chunks now.  Any board's attack cancels its own
  * waiting garbage, then what is folding in to it, then what the opponent holds.
  */
-int  tt_fold_attack(tt_board *from, tt_board *to, int rows, tt_u8 pat);   /* the rows left to send normally */
+int  tt_attack_route(tt_board *from, tt_board *to, int rows, tt_u8 pat);  /* the rows left to send normally */
 int  tt_fold_send(tt_board *from, tt_board *to);        /* fold the held chunks over: rows moved */
 int  tt_fold_early_block(const tt_board *b, const tt_board *to);   /* TT_FOLD_OK when Early Fold can go */
 int  tt_fold_early(tt_board *b, tt_board *to);          /* TT_FOLD_OK and folded, or why not */
@@ -238,5 +247,20 @@ int  tt_fold_in_lines(const tt_board *b);               /* lines to the next fol
 int  tt_fold_charges(const tt_board *b);                /* Early Fold charges */
 int  tt_stack_height(const tt_board *b);                /* rows from the floor to the top brick */
 void tt_fold_restart(tt_board *b);                      /* a fresh count from the lines now */
+
+/*
+ * Gold Ledger: with bank_on, the garbage this board's clears make goes into
+ * its bank (10 rows at most) instead of out, and the bank earns a row every
+ * 10 s.  The opponent's attacks eat into the bank before anything else of
+ * theirs is sent.  Perk: Withdraw sends the whole bank as garbage.
+ */
+int  tt_withdraw(tt_board *b);              /* empties the bank: the rows to send (0 = empty) */
+
+/*
+ * tt_attack_route: the front end hands it a board's attack for the other
+ * board.  It eats what the other board holds to fold over, then its bank;
+ * then a folding board holds it and a banking board banks it (0 returned);
+ * otherwise the rest is returned, to send normally.
+ */
 
 #endif

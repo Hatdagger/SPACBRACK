@@ -457,20 +457,20 @@ static void test_fold(void)
     field(&a, two, 3);
     drop_o(&a, 8);
     CHECK(a.lines == 2 && a.out == 1, "a double makes 1 row");
-    CHECK(tt_fold_attack(&a, &b, a.out, TT_PAT_STD) == 0, "with the card it isn't sent");
+    CHECK(tt_attack_route(&a, &b, a.out, TT_PAT_STD) == 0, "with the card it isn't sent");
     a.out = 0;
     CHECK(tt_fold_held(&a) == 1 && a.fh[0].h == 1, "it is held, at the height it was cleared at");
     CHECK(!a.fold_due, "no fold before 8 lines");
 
     /* the opponent's attack eats what you hold */
-    CHECK(tt_fold_attack(&b, &a, 1, TT_PAT_STD) == 0 && tt_fold_held(&a) == 0, "the opponent's attack cancels held rows");
-    CHECK(tt_fold_attack(&b, &a, 2, TT_PAT_STD) == 2, "...and the rest is sent normally");
+    CHECK(tt_attack_route(&b, &a, 1, TT_PAT_STD) == 0 && tt_fold_held(&a) == 0, "the opponent's attack cancels held rows");
+    CHECK(tt_attack_route(&b, &a, 2, TT_PAT_STD) == 2, "...and the rest is sent normally");
 
     /* the 8-line mark folds it over */
     a.lines = 6;
     field(&a, two, 3);
     drop_o(&a, 8);
-    tt_fold_attack(&a, &b, a.out, TT_PAT_STD); a.out = 0;
+    tt_attack_route(&a, &b, a.out, TT_PAT_STD); a.out = 0;
     CHECK(a.fold_due, "8 lines: the held rows fold over");
     CHECK(tt_fold_send(&a, &b) == 1 && b.fi_n == 1 && a.fh_n == 0, "they move to the opponent");
     CHECK(tt_fold_queued(&b) == 1, "queued on the opponent");
@@ -512,12 +512,12 @@ static void test_fold(void)
     a.lines = 10;
     CHECK(tt_fold_early(&a, &b) == TT_FOLD_NOTHING, "nothing held");
     a.out_h = 0;
-    tt_fold_attack(&a, &b, 2, TT_PAT_STD);
+    tt_attack_route(&a, &b, 2, TT_PAT_STD);
     b.fi_n = 1; b.fi[0].rows = 1;
     CHECK(tt_fold_early(&a, &b) == TT_FOLD_QUEUED, "not while a fold is queued on them");
     b.fi_n = 0;
     CHECK(tt_fold_early(&a, &b) == TT_FOLD_OK && tt_fold_queued(&b) == 2, "Early Fold sends the held rows");
-    tt_fold_attack(&a, &b, 1, TT_PAT_STD);
+    tt_attack_route(&a, &b, 1, TT_PAT_STD);
     b.fi_n = 0;
     CHECK(tt_fold_early(&a, &b) == TT_FOLD_NOCHARGE, "one charge per 10 lines");
     a.lines = 20;
@@ -526,6 +526,34 @@ static void test_fold(void)
     CHECK(tt_fold_charges(&a) == 0 && tt_fold_in_lines(&a) == TT_FOLD_EVERY, "a fresh count");
     a.fold_on = 0;
     CHECK(tt_fold_early(&a, &b) == TT_FOLD_OFF, "nothing without the card");
+}
+
+/* Gold Ledger: garbage is banked, earns interest, the opponent eats it, Withdraw sends it */
+static void test_bank(void)
+{
+    static const char *two[3] = { "########..", "########..", "####.#####" };
+    tt_board a, b;
+    int f;
+    tt_init(&a, 31, 1, 0, 0, 1);
+    tt_init(&b, 32, 1, 0, 0, 1);
+    a.clear_delay = 0;
+    a.bank_on = 1;
+    CHECK(tt_withdraw(&a) == 0, "an empty bank sends nothing");
+    field(&a, two, 3);
+    drop_o(&a, 8);
+    CHECK(tt_attack_route(&a, &b, a.out, TT_PAT_STD) == 0 && a.bank == 1, "the double's row is banked, not sent");
+    a.out = 0;
+    for (f = 0; f < TT_INTEREST; f++) { a.ev = 0; tt_tick(&a); }
+    CHECK(a.bank == 2 && (a.ev & TT_EV_INTEREST), "10 s of interest: +1 row");
+    CHECK(tt_attack_route(&a, &b, 20, TT_PAT_STD) == 0 && a.bank == TT_BANK_CAP, "10 rows at most");
+    for (f = 0; f < TT_INTEREST * 2; f++) tt_tick(&a);
+    CHECK(a.bank == TT_BANK_CAP, "no interest at the cap");
+    CHECK(tt_attack_route(&b, &a, 3, TT_PAT_STD) == 0 && a.bank == 7, "the opponent's attack eats the bank");
+    CHECK(tt_attack_route(&b, &a, 9, TT_PAT_STD) == 2 && a.bank == 0, "...and the rest gets through");
+    a.bank = 6;
+    CHECK(tt_withdraw(&a) == 6 && a.bank == 0 && a.interest_t == 0, "Withdraw empties it all");
+    a.bank = 3; a.bank_on = 0;
+    CHECK(tt_withdraw(&a) == 0, "nothing without the card");
 }
 
 /* a CPU with Origami Crane against one without: folds land, and the match ends */
@@ -544,8 +572,8 @@ static void test_fold_versus(void)
         a.ev = b.ev = 0;
         cpu_frame(&ca, &a); cpu_frame(&cb, &b);
         tt_tick(&a); tt_tick(&b);
-        if (a.out) { n = tt_fold_attack(&a, &b, a.out, TT_PAT_STD); if (n) tt_receive(&b, (tt_u8)n); a.out = 0; }
-        if (b.out) { n = tt_fold_attack(&b, &a, b.out, TT_PAT_STD); if (n) tt_receive(&a, (tt_u8)n); b.out = 0; }
+        if (a.out) { n = tt_attack_route(&a, &b, a.out, TT_PAT_STD); if (n) tt_receive(&b, (tt_u8)n); a.out = 0; }
+        if (b.out) { n = tt_attack_route(&b, &a, b.out, TT_PAT_STD); if (n) tt_receive(&a, (tt_u8)n); b.out = 0; }
         if (a.fold_due) { a.fold_due = 0; if (tt_fold_send(&a, &b)) folds++; }
         if (b.fold_due) { b.fold_due = 0; if (tt_fold_send(&b, &a)) folds++; }
         if (f % 3600 == 3599 && a.level < 10) {        /* the drop speed rises every minute, as in the game */
@@ -638,6 +666,7 @@ int main(void)
     test_lock_delay();
     test_holo();
     test_fold();
+    test_bank();
     test_fuzz();
     test_cpu();
     test_cpu_holo();
