@@ -57,7 +57,13 @@ jobs:
       - name: Art and its colour tables
         working-directory: neogeo-cd
         run: python tools/make_art.py
-      - name: Audio (placeholder songs for missing tracks, sound-chip files from sfx/*.wav)
+      - name: ffmpeg (only when music/ has songs that aren't WAV)
+        working-directory: neogeo-cd
+        shell: powershell
+        run: |
+          $own = Get-ChildItem music -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.mp3','.flac','.ogg','.opus','.m4a','.aac' }
+          if ($own -and -not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg -y --no-progress }
+      - name: Audio (your songs from music/, placeholders for the rest, sound-chip files from sfx/*.wav)
         working-directory: neogeo-cd
         run: python tools/make_audio.py
       - name: Build sprites, program, ISO and CHD

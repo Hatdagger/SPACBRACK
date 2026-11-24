@@ -25,7 +25,7 @@ The boards, panels, text and the big countdown letters are all on the **fix laye
 `python3 tools/make_art.py` remakes all three PNGs and `src/art_keys.h` from the web prototype's palette and font.
 
 ## Audio
-- **Songs** are CD audio tracks: 2 title, 3 Marathon, 4 Sprint, 5 Versus, 6 Survival (`src/assets/cdda/track0N_*.wav`, 44.1 kHz 16-bit stereo). The placeholders are rendered during the build from the web prototype's chiptune data (`tools/songs.json`). A WAV you put there with the same name is used instead.
+- **Songs** are CD audio tracks: 2 title, 3 Marathon, 4 Sprint, 5 Versus, 6 Survival (`src/assets/cdda/track0N_*.wav`, 44.1 kHz 16-bit stereo). The placeholders are rendered during the build from the web prototype's chiptune data (`tools/songs.json`). Your own songs go in `music/` (see `music/README.md`): one file per slot, any common format, converted and levelled during the build.
 - **Effects** are `src/assets/sfx/*.wav` (mono, under 2 s), encoded for the YM2610 by `tools/make_audio.py` with the NGFX SoundBuilder Z80 driver.
 
 ## Building on your own Windows PC
@@ -45,4 +45,4 @@ For `mak dist:iso`, also copy `assets\cdda\*.wav` into `..\build\SPACBRACK\asset
 ## Next
 1. Test the disc on the MiSTer / real hardware (saving, sprite and fix timing).
 2. Cards: all 10 are in (4 monster cards with abilities, 6 boss cards with house rules and perks). Next: balance from play on real hardware.
-3. Your own songs.
+3. Your own songs: drop them in `music/` (title, marathon, sprint, versus, survival) and push.

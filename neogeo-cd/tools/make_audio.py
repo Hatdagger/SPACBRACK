@@ -11,7 +11,12 @@ What it makes, under src/assets/:
       prototype's own chiptune data (tools/songs.json, taken from js/audio.js):
       title = title theme, marathon = battle theme, sprint = boss theme,
       versus = battle theme in another key, survival = boss theme lower.
-      Put your own WAV with the same name in cdda/ and it is used instead.
+      Your own songs: put a file named after the slot in neogeo-cd/music/
+      (title, marathon, sprint, versus, survival; .mp3 .flac .ogg .opus .m4a
+      .aac .wav) and it is converted to 44.1 kHz 16-bit stereo, levelled to
+      about the same loudness, and used instead of the placeholder.  Needs
+      ffmpeg on the PATH (WAV works without it).  A WAV put straight into
+      cdda/ is also kept as it is.
   sfx/*.wav
       The sound effects at 18,500 Hz mono, copying the prototype's synth.
   sounds/spac.pcm  sounds/spac.z80  ../sound_ids.h
@@ -20,9 +25,9 @@ What it makes, under src/assets/:
       NeoCore's soundFX_poly sample, MIT) with its sample table rewritten:
       each sound gets three commands, for hard left, centre and hard right.
 
-Needs numpy and scipy.
+Needs numpy and scipy (and ffmpeg for your own songs).
 """
-import json, os, sys, wave
+import json, os, shutil, subprocess, sys, wave
 import numpy as np
 from scipy.signal import lfilter
 
@@ -44,6 +49,9 @@ CMD_BASE = 0x20
 TABLE = 0x1000
 PANS = [(0x80, 'L'), (0xc0, 'C'), (0x40, 'R')]
 PCM_NAME, Z80_NAME = 'spac.pcm', 'spac.z80'
+MUSIC = os.path.normpath(os.path.join(HERE, '..', 'music'))
+MUSIC_EXTS = ['.flac', '.wav', '.mp3', '.ogg', '.opus', '.m4a', '.aac']
+CD_AUDIO_MAX_MINUTES = 70       # what's left on a 74-minute disc after the data track, roughly
 SONG_MIN_SECONDS = 150          # loop the song data to at least this long
 
 DATA = json.load(open(os.path.join(HERE, 'songs.json')))
@@ -406,6 +414,51 @@ def build_chip():
           % (len(pcm) // 1024, k, CMD_BASE, CMD_BASE + k - 1))
 
 
+def own_song(slot):
+    """music/<slot>.<ext> if the user has put one there"""
+    for ext in MUSIC_EXTS:
+        p = os.path.join(MUSIC, slot + ext)
+        if os.path.exists(p): return p
+    return None
+
+
+def import_song(src, dst):
+    """the user's song -> 44.1 kHz 16-bit stereo WAV, about -14 LUFS like the placeholders"""
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    ff = shutil.which('ffmpeg')
+    if ff:
+        r = subprocess.run([ff, '-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-vn', '-map_metadata', '-1',
+                            '-af', 'loudnorm=I=-14:TP=-1.0:LRA=11', '-ar', str(CD_RATE), '-ac', '2',
+                            '-c:a', 'pcm_s16le', '-f', 'wav', dst])
+        if r.returncode: sys.exit('ffmpeg could not convert %s' % src)
+        return
+    if not src.lower().endswith('.wav'):
+        sys.exit('%s: install ffmpeg to use .%s files (or use a WAV)' % (src, src.rsplit('.', 1)[-1]))
+    # no ffmpeg: a plain resample of a WAV, peak-levelled
+    from scipy.signal import resample_poly
+    w = wave.open(src)
+    ch, sw, fr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+    raw = w.readframes(n)
+    w.close()
+    if sw != 2: sys.exit('%s: 16-bit WAV please (or install ffmpeg)' % src)
+    x = np.frombuffer(raw, '<i2').astype(float).reshape(-1, ch) / 32768
+    x = x[:, :2] if ch >= 2 else np.repeat(x, 2, axis=1)
+    if fr != CD_RATE:
+        from math import gcd
+        g = gcd(CD_RATE, fr)
+        x = resample_poly(x, CD_RATE // g, fr // g, axis=0)
+    peak = np.abs(x).max()
+    if peak > 0: x = x * (0.89 / peak)
+    write_wav(dst, x, CD_RATE)
+
+
+def wav_seconds(p):
+    w = wave.open(p)
+    t = w.getnframes() / float(w.getframerate())
+    w.close()
+    return t
+
+
 def main():
     force = '--force' in sys.argv
     if '--build' not in sys.argv:
@@ -414,12 +467,29 @@ def main():
             if force or not os.path.exists(p):
                 write_wav(p, render_sfx(name), SFX_RATE)
                 print('  made sfx/%s.wav' % name)
+        slots = [f.split('_', 1)[1] for f, _, _ in TRACKS]
+        if os.path.isdir(MUSIC):
+            for f in sorted(os.listdir(MUSIC)):
+                stem, ext = os.path.splitext(f)
+                if ext.lower() in MUSIC_EXTS and stem not in slots:
+                    print('  WARNING: music/%s is not used (name it one of: %s)' % (f, ', '.join(slots)))
+        total = 0.0
         for fname, song, tr in TRACKS:
             p = os.path.join(ASSETS, 'cdda', fname + '.wav')
-            if force or not os.path.exists(p):
+            mine = own_song(fname.split('_', 1)[1])
+            if mine:
+                if force or not os.path.exists(p) or os.path.getmtime(mine) > os.path.getmtime(p):
+                    print('  your song music/%s -> cdda/%s.wav' % (os.path.basename(mine), fname))
+                    sys.stdout.flush()
+                    import_song(mine, p)
+            elif force or not os.path.exists(p):
                 print('  rendering cdda/%s.wav ...' % fname)
                 sys.stdout.flush()
                 write_wav(p, render_song(song, tr), CD_RATE)
+            total += wav_seconds(p)
+        print('  CD audio: %d:%02d of about %d:00' % (total // 60, total % 60, CD_AUDIO_MAX_MINUTES))
+        if total > CD_AUDIO_MAX_MINUTES * 60:
+            sys.exit('the songs are too long for the disc: shorten some of them')
     print('Building sound-chip files')
     build_chip()
 
