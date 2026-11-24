@@ -1637,8 +1637,7 @@ static void surv_next(Side *s)
     s->card = s->cpu_on ? random_card() : pick_card[s->i];
     begin_side(s, fresh_seed(), SURV_READY);
     o->launch_used = 0;                        /* a new opponent: a new Launch Countdown */
-    tt_holo_restart(&o->b);                    /* ...and a fresh 3 holograms */
-    tt_fold_restart(&o->b);                    /* ...and a fresh fold count */
+    tt_holo_restart(&o->b);                    /* ...and a fresh 3 holograms (folds and the bank carry over) */
     tt_cap_restart(&o->b);                     /* ...and fresh jumps */
     tt_lever_restart(&o->b);                   /* ...and fresh spins */
     s->ready = 1;
@@ -2267,7 +2266,7 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
                         if (t->b.bank < had) { t->bank_t = 30; t->bank_col = PAL_RED; sfx(t, SND_BANKHIT); }
                         f->b.out = 0;
                     }
-                    if (f->b.fold_due) { f->b.fold_due = 0; fold_over(f, 0); }
+                    if (f->b.fold_due && (t->state == S_PLAY || t->state == S_COUNT)) { f->b.fold_due = 0; fold_over(f, 0); }   /* Survival changeover: waits for the next opponent */
                     if (f->b.lever_out) { deliver(f, t, f->b.lever_out, pat_of(f), 0); f->b.lever_out = 0; }   /* Ace of Stars: jackpot */
                 }
                 if (side[0].state == S_PLAY || side[1].state == S_PLAY) {
