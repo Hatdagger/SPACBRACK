@@ -159,7 +159,8 @@ typedef struct {
     WORD    fx_key;
     DWORD   fd_sig, fd_ov;           /* field signature, rows holding the brick/ghost/trail */
     BYTE    ov_key, mini_key[2 + TT_NEXT];
-    WORD    gauge_key, meter_key, call_key, call_gen;
+    WORD    meter_key, call_key, call_gen;
+    DWORD   gauge_key;
     DWORD   st_key[3];
 } Side;
 
@@ -588,6 +589,20 @@ static void say(Side *s, const char *a, const char *b)
     s->call_gen++;
 }
 
+/* "12 ROWS": a number and a word, for callouts (12 columns at most) */
+static char ct[16];
+static const char *count_txt(WORD n, const char *word)
+{
+    const char *p = num(n, 3, ' ');
+    while (*p == ' ') p++;
+    str_cpy(ct, p);
+    p = word;
+    n = (WORD)slen(ct);
+    while (*p && n < 12) ct[n++] = *p++;
+    ct[n] = 0;
+    return ct;
+}
+
 static BYTE active(Side *s) { return (BYTE)(s->state == S_COUNT || s->state == S_PLAY); }
 
 /* a Survival CPU gets tougher every 2 KOs of the player it faces */
@@ -734,7 +749,7 @@ static const char *LINE_NAME[5] = { "", "SINGLE", "DOUBLE", "TRIPLE", "QUAD!" };
 static void side_events(Side *s)
 {
     tt_board *b = &s->b;
-    WORD ev = b->ev;
+    DWORD ev = b->ev;
     char a[13], c[13];
     int k = 0, j;
     const char *p;
@@ -777,6 +792,8 @@ static void side_events(Side *s)
     if (ev & TT_EV_HOLO) { say(s, "HOLOGRAM!", s->cpu_on ? "PHANTOM REEL" : "CARD: FREEZE"); sfx(s, SND_HOLO); }
     if (ev & TT_EV_FREEZE) { if (s->cpu_on) say(s, "FREEZE!", "PHANTOM REEL"); sfx(s, SND_FREEZE); }
     if (ev & TT_EV_HOLOSET) sfx(s, SND_HOLOSET);
+    /* Origami Crane: folded garbage landed here */
+    if (ev & TT_EV_FOLDIN) { say(s, "FOLDED IN!", count_txt(b->fold_n, b->fold_n == 1 ? " ROW" : " ROWS")); sfx(s, SND_FOLDIN); }
 }
 
 /* ---------- results ---------- */
@@ -904,7 +921,8 @@ static void draw_field(Side *s)
           ((DWORD)ghost << 16) | ((DWORD)(s->flash_t != 0) << 17) |
           ((DWORD)TRAIL_LEN[s->trail_t] << 18) |
           ((DWORD)(b->clear_t ? 1 + (b->clear_t >> 1 & 1) : 0) << 20) |  /* what shows, not the timers */
-          ((DWORD)b->holo << 22) | ((DWORD)(b->holo && (frames >> 3 & 1)) << 23);
+          ((DWORD)b->holo << 22) | ((DWORD)(b->holo && (frames >> 3 & 1)) << 23) |
+          ((DWORD)(b->fold_t ? 1 + (b->fold_t >> 2 & 1) : 0) << 24);   /* Origami Crane: a fold landing */
     full = s->fd_full || paused != s->fd_paused || s->state != s->fd_state || go != s->fd_go ||
            aimk != s->fd_aim || dark != s->fd_dark;
     if (!full && sig == s->fd_sig && !b->grid_rows) return;
@@ -929,6 +947,7 @@ static void draw_field(Side *s)
     }
     if (s->flash_t) for (k = 0; k < 4; k++) ov |= 1UL << b->lock_cells[k][1];
     if (clearing) ov |= b->clear_rows;
+    if (b->fold_t) ov |= b->fold_rows;
     rows = full ? ROWS_SEEN : ((ov | s->fd_ov | b->grid_rows) & ROWS_SEEN);
     s->fd_ov = ov;
     b->grid_rows = 0;
@@ -943,6 +962,11 @@ static void draw_field(Side *s)
                 fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN,
                        (b->clear_t & 2) ? tw(PAL_WHITE, T_BRICK) : cell_w(c ? c : TT_GARBAGE));
             }
+        } else if (b->fold_t && (b->fold_rows & bit)) {
+            /* stamped by a fold: lime and white while it plays */
+            for (x = 0; x < TT_COLS; x++)
+                fx_put(fc + x, FIELD_ROW + y - TT_HIDDEN, row[x] == TT_GARBAGE ?
+                       tw((BYTE)(b->fold_t & 4 ? PAL_WHITE : PAL_LIME), T_BRICK) : row[x] ? cell_w(row[x]) : tw(PAL_WHITE, T_EMPTY));
         } else
             for (x = 0; x < TT_COLS; x++) {
                 c = row[x];
@@ -1001,15 +1025,25 @@ static void draw_field(Side *s)
         }
 }
 
-/* incoming garbage bar in the left bezel: amber while it waits, flashing red when it can land */
+/*
+ * Incoming garbage bar in the left bezel: amber while it waits, flashing red
+ * when it can land.  Origami Crane, above it: folded in (lands next
+ * placement) flashing red and lime, and what the opponent holds in lime.
+ */
 static void draw_gauge(Side *s)
 {
     int fc = FIELD_COL[s->i], n = tt_pending(&s->b), ready = tt_pending_ready(&s->b), y;
-    BYTE hot = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_WHITE);
-    WORD key;
+    int fin = tt_fold_queued(&s->b), held = 0;
+    BYTE hot = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_WHITE), fold = (BYTE)((frames >> 3) & 1 ? PAL_RED : PAL_LIME);
+    DWORD key;
+    Side *o = other(s);
+    if (o->state == S_PLAY || o->state == S_COUNT) held = tt_fold_held(&o->b);
     if (n > 20) n = 20;
     if (ready > 20) ready = 20;
-    key = (WORD)(0x8000 | n | (ready << 5) | ((ready && hot == PAL_RED) << 10));
+    fin = n + fin > 20 ? 20 : n + fin;
+    held = fin + held > 20 ? 20 : fin + held;
+    key = 0x80000000UL | n | (ready << 5) | ((DWORD)((ready && hot == PAL_RED) || (fin > n && fold == PAL_RED)) << 10) |
+          ((DWORD)fin << 11) | ((DWORD)held << 16);
     if (key == s->gauge_key) return;
     s->gauge_key = key;
     for (y = 0; y < 20; y++) {
@@ -1017,6 +1051,8 @@ static void draw_gauge(Side *s)
         WORD wd;
         if (from_bottom < ready) wd = tw(hot, T_BEZ_GAUGE);
         else if (from_bottom < n) wd = tw(PAL_AMBER, T_BEZ_GAUGE);
+        else if (from_bottom < fin) wd = tw(fold, T_BEZ_GAUGE);
+        else if (from_bottom < held) wd = tw(PAL_LIME, T_BEZ_GAUGE);
         else wd = tw(PAL_WHITE, T_BEZ + 3);
         fx_put(fc - 1, FIELD_ROW + y, wd);
     }
@@ -1068,18 +1104,22 @@ static void draw_fx(Side *s, BYTE show)
     static const BYTE FX_PAL[TT_FX_N] = { PAL_YELLOW, PAL_CYAN, PAL_RED, PAL_WHITE, PAL_VIOLET, PAL_VIOLET };
     int k, n = 0, pick = -1, which;
     BYTE holo = (BYTE)(show && (s->b.holo || tt_holo_ready(&s->b) > 0));   /* Phantom Reel: HOLO */
+    /* Origami Crane: FOLD, red while a fold is coming in, lime while holding some */
+    BYTE fold = (BYTE)(show && (s->b.fi_n || s->b.fh_n));
     WORD key;
     for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k]) n++;
-    if (show && n + holo) {
-        which = (int)((frames / 40) % (n + holo));
-        pick = TT_FX_N;
+    if (show && n + holo + fold) {
+        which = (int)((frames / 40) % (n + holo + fold));
+        pick = which == n + holo ? TT_FX_N + 1 : TT_FX_N;
         for (k = 0; k < TT_FX_N; k++) if (s->b.fx[k] && which-- == 0) { pick = k; break; }
+        if (pick == TT_FX_N && !holo) pick = TT_FX_N + 1;
     }
-    key = (WORD)(pick < 0 ? 0 : 0x100 | pick);
+    key = (WORD)(pick < 0 ? 0 : 0x100 | pick | (pick == TT_FX_N + 1 && s->b.fi_n ? 0x200 : 0));
     if (key == s->fx_key) return;
     s->fx_key = key;
     fill(PANEL_COL[s->i], FX_ROW, 4, 1, BLANK);
-    if (pick == TT_FX_N) txt(PANEL_COL[s->i], FX_ROW, PAL_CYAN, "HOLO");
+    if (pick == TT_FX_N + 1) txt(PANEL_COL[s->i], FX_ROW, (BYTE)(s->b.fi_n ? PAL_RED : PAL_LIME), "FOLD");
+    else if (pick == TT_FX_N) txt(PANEL_COL[s->i], FX_ROW, PAL_CYAN, "HOLO");
     else if (pick >= 0) txt(PANEL_COL[s->i], FX_ROW, FX_PAL[pick], FX_TAG[pick]);
 }
 
@@ -1106,6 +1146,17 @@ static void draw_meter(Side *s)
         if (b->holo || tt_holo_ready(b) > 0) { n = TT_METER_MAX; col = (BYTE)((frames >> 3) & 1 ? PAL_CYAN : PAL_WHITE); }
         else if (b->holo_used >= TT_HOLO_MAX) n = 0;
         else { n = b->lines < b->holo_from ? 0 : (b->lines - b->holo_from) % TT_HOLO_LINES; col = PAL_CYAN; }
+    }
+    /* Origami Crane: the bar fills over 8 lines to the next fold; flashing
+       yellow while an Early Fold can go */
+    if (on && s->card == CARD_ORIGAMI) {
+        tt_board *b = &s->b;
+        n = ((TT_FOLD_EVERY - tt_fold_in_lines(b)) * 10 + 4) / TT_FOLD_EVERY;
+        col = PAL_LIME;
+        if (tt_fold_early_block(b, &other(s)->b) == TT_FOLD_OK && other(s)->state == S_PLAY) {
+            if (!n) n = 1;
+            col = (BYTE)((frames >> 3) & 1 ? PAL_YELLOW : PAL_LIME);
+        }
     }
     key = (WORD)(0x8000 | (on << 14) | (col << 8) | n);
     if (key == s->meter_key) return;
@@ -1503,6 +1554,7 @@ static void surv_next(Side *s)
     begin_side(s, fresh_seed(), SURV_READY);
     o->launch_used = 0;                        /* a new opponent: a new Launch Countdown */
     tt_holo_restart(&o->b);                    /* ...and a fresh 3 holograms */
+    tt_fold_restart(&o->b);                    /* ...and a fresh fold count */
     s->ready = 1;
     s->b.level = o->b.level < 1 ? 1 : o->b.level;
     s->b.gravity = tt_gravity_for(s->b.level);
@@ -1719,6 +1771,40 @@ static void reel_freeze(Side *s)
     say(s, "FREEZE!", n == 1 ? "FILLS 1" : n == 2 ? "FILLS 2" : n == 3 ? "FILLS 3" : n == 4 ? "FILLS 4" : "FILLS 0");
 }
 
+/* ---------- Origami Crane: fold the held garbage over ---------- */
+static BYTE fold_over(Side *s, BYTE early)
+{
+    Side *o = other(s);
+    int n;
+    if (o->state != S_PLAY && o->state != S_COUNT) return 0;   /* nobody there: keep holding */
+    n = tt_fold_send(&s->b, &o->b);
+    if (!n) return 0;
+    say(s, early ? "EARLY FOLD!" : "FOLD!", count_txt((WORD)n, n == 1 ? " ROW OVER" : " ROWS OVER"));
+    say(o, "FOLD", "INCOMING");
+    sfx(s, early ? SND_EARLYFOLD : SND_FOLD);
+    return 1;
+}
+
+static void crane_early(Side *s)
+{
+    Side *o = other(s);
+    int why = tt_fold_early_block(&s->b, &o->b);
+    if (why == TT_FOLD_OK && o->state != S_PLAY && o->state != S_COUNT) why = TT_FOLD_QUEUED;
+    if (why != TT_FOLD_OK) {
+        if (why == TT_FOLD_AT10) {
+            char c[13];
+            str_cpy(c, "AT ");
+            str_cpy(c + 3, count_txt((WORD)(s->b.fold_from + TT_FOLD_EARLY), " LINES"));
+            say(s, "EARLY FOLD", c);
+        } else say(s, "EARLY FOLD", why == TT_FOLD_NOCHARGE ? "NO CHARGE" : why == TT_FOLD_NOTHING ? "NOTHING HELD" : "FOLD QUEUED");
+        sfx(s, SND_DENY);
+        return;
+    }
+    s->b.early_used++;               /* the 8-line count is NOT reset */
+    fold_over(s, 1);
+    s->fired++;
+}
+
 /*
  * A player's card button during play.  Returns 1 when it took this frame's
  * input (the brick doesn't move): aiming the Eye Beam, or picking an ability
@@ -1739,6 +1825,7 @@ static BYTE card_ctl(Side *s, BYTE cur)
         if (s->card >= CARD_MONSTERS) {          /* boss cards: a tap runs the perk */
             if (s->card_hit && s->card == CARD_LAUNCH) try_launch(s);
             if (s->card_hit && s->card == CARD_REEL) reel_freeze(s);
+            if (s->card_hit && s->card == CARD_ORIGAMI) crane_early(s);
             return 0;
         }
         if (s->card_hit) { s->card_mode = 1; s->card_dir = 0; }
@@ -1788,6 +1875,17 @@ static void cpu_card(Side *s)
             try_launch(s);
         return;
     }
+    if (s->card == CARD_ORIGAMI) {
+        /* Early Fold with a decent pile and the next fold far off, or when the
+           opponent is already tall (weaker CPUs wait for more) - js/ai.js fold */
+        tt_board *b = &s->b;
+        int held = tt_fold_held(b);
+        if (tt_fold_early_block(b, &other(s)->b) != TT_FOLD_OK || other(s)->state != S_PLAY) return;
+        if ((held >= (s->cpu.level <= 3 ? 3 : 2) && tt_fold_in_lines(b) >= 3) ||
+            (tt_stack_height(&other(s)->b) >= 12 && held >= 2))
+            if ((BYTE)(fresh_seed() % 100) < 5 * s->cpu.level + 10) crane_early(s);
+        return;
+    }
     if (s->card >= CARD_MONSTERS) return;
     for (k = 0; k < 4; k++) if (card_ready(s, k)) ready[n++] = k;
     if (n && (BYTE)(fresh_seed() % 100) < CPU_CARD_RATE[s->cpu.level]) card_fire(s, ready[fresh_seed() % n]);
@@ -1819,6 +1917,7 @@ static void side_play(Side *s, BYTE cur, BYTE edge, BYTE start)
         if (start && !s->cpu_on) { paused = 1; sfx(0, SND_MENU); return; }
         if (start && mode == M_SURV && !s->join) surv_claim(s);
         b->holo_on = has_card(s, CARD_REEL);
+        b->fold_on = has_card(s, CARD_ORIGAMI);
         if (s->cpu_on || HARNESS_BOT(s)) { cpu_frame(&s->cpu, b); if (s->cpu_on) cpu_card(s); }
         else if (!card_ctl(s, cur)) side_input(s, cur, 1);
         tt_tick(b);
@@ -1945,11 +2044,16 @@ static void game_frame(const BYTE *cur, const BYTE *edge, BYTE ps, BYTE psc)
         if (!paused) {
             /* garbage changes hands after both boards moved */
             if (mode >= M_VS) {
-                for (k = 0; k < 2; k++)
-                    if (side[k].b.out) {
-                        deliver(&side[k], &side[k ^ 1], (tt_u8)(side[k].b.out > 40 ? 40 : side[k].b.out), pat_of(&side[k]), 0);
-                        side[k].b.out = 0;
+                for (k = 0; k < 2; k++) {
+                    Side *f = &side[k], *t = &side[k ^ 1];
+                    if (f->b.out) {
+                        /* Origami Crane: it eats what the receiver holds, then is held (card) or sent */
+                        int n = tt_fold_attack(&f->b, &t->b, f->b.out > 40 ? 40 : f->b.out, pat_of(f));
+                        if (n) deliver(f, t, (tt_u8)n, pat_of(f), 0);
+                        f->b.out = 0;
                     }
+                    if (f->b.fold_due) { f->b.fold_due = 0; fold_over(f, 0); }
+                }
                 if (side[0].state == S_PLAY || side[1].state == S_PLAY) {
                     vs_time++;
                     /* the drop speed rises every minute */

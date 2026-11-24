@@ -32,7 +32,8 @@ ASSETS = os.path.join(SRC, 'assets')
 
 SFX = ['move', 'rotate', 'kick', 'lock', 'hard', 'hold', 'clear1', 'clear2', 'clear3', 'clear4',
        'tspin', 'combo', 'garbage', 'level', 'topout', 'menu', 'beep', 'go',
-       'cast', 'boulder', 'beam', 'echo', 'deny', 'holo', 'freeze', 'holoset']
+       'cast', 'boulder', 'beam', 'echo', 'deny', 'holo', 'freeze', 'holoset',
+       'fold', 'earlyfold', 'foldin']
 # (file, song, semitones)
 TRACKS = [('track02_title', 'title', 0), ('track03_marathon', 'battle', 0), ('track04_sprint', 'boss', 0),
           ('track05_versus', 'battle', 3), ('track06_survival', 'boss', -2)]
@@ -241,6 +242,14 @@ def render_sfx(name):
         b.noise(d=.25, v=.1, typ='highpass', f=6000)
     elif name == 'holoset':                  # set on the floor without being frozen
         b.tone(1200, to=300, d=.2, v=.08, typ='sine')
+    # Origami Crane (js/audio.js perk_fold, perk_earlyFold, fold)
+    elif name == 'fold':                     # the held garbage folds over
+        b.tone(200, to=900, d=.3, v=.08, typ='sawtooth'); b.noise(d=.3, v=.08, typ='bandpass', f=600, to=3000, q=4)
+    elif name == 'earlyfold':                # ...early, by the perk
+        b.tone(100, to=1600, d=.45, v=.12, typ='sawtooth'); b.tone(104, to=1700, d=.45, v=.1, typ='square')
+        b.noise(d=.5, v=.12, typ='bandpass', f=400, to=5000, q=5)
+    elif name == 'foldin':                   # folded garbage lands on you
+        b.noise(d=.6, v=.2, typ='bandpass', f=300, to=3000, q=3); b.tone(80, to=300, d=.6, v=.1, typ='sawtooth')
     x = b.buf * 4.5
     x = filt(x, 'lowpass', 6000, SFX_RATE)
     pk = np.abs(x).max()

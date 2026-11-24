@@ -54,7 +54,9 @@ Lines your own abilities clear don't count, score or fill the meter. With cards 
 
 - **Phantom Reel** (Holograms): every 10 lines (at most 3 a match; in Survival, 3 per opponent) your next brick comes in as a hologram. It passes through bricks (only the walls and the floor stop it), can't be held, and fills only the empty cells it covers, holes included. Tap to freeze it where it is; left alone it falls to the floor and fills the gaps there. The brick that will become a hologram shows white in NEXT, the right bezel bar fills over the 10 lines to the next one (flashing while one is next or falling), and HOLO shows under NEXT. A CPU with the reel steers its hologram into holes and freezes it.
 
-The other four boss cards (Origami Crane, Gold Ledger, Time Capsule, Ace of Stars) are still being added.
+- **Origami Crane** (Fold Garbage): the garbage your clears make isn't sent; it's held, one chunk per clear, remembering the height you cleared at. Every 8 lines (in Survival, counted per opponent) everything held folds over and lands at the other board's next placement: inside their stack it overwrites those rows (all but one hole per row, so it can complete lines, which clear and count for them); above their stack it drops onto it. Nothing falls for 0.7 s while it lands. Any attack eats its own board's waiting garbage first, then a fold coming in, then what the other board holds. Tap for an Early Fold: one charge per 10 lines, not while a fold is already on its way to them (the 8-line count carries on). The right bezel bar fills over the 8 lines (flashing yellow when an Early Fold can go); the other board's left gauge shows what you hold in lime and a fold on its way flashing red; FOLD shows under NEXT. A CPU with the crane folds early when it has a pile.
+
+The other three boss cards (Gold Ledger, Time Capsule, Ace of Stars) are still being added.
 
 **Card meter** (Versus and Survival, with cards on): the bar in each board's right bezel fills one segment per line cleared, up to 10. Abilities spend from it; after any ability the bar turns grey for 8 seconds before the next one can fire. Cyan while filling, yellow when full.
 

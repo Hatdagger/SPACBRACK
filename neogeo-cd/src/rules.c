@@ -161,6 +161,15 @@ static void spawn(tt_board *b, tt_u8 type)
     b->active = 1;
 }
 
+static void fold_land(tt_board *b);
+
+/* a brick was placed (and its lines cleared): folded garbage lands first, then the next brick */
+static void next_brick(tt_board *b)
+{
+    if (b->fi_n) { fold_land(b); return; }
+    spawn(b, 0);
+}
+
 void tt_init(tt_board *b, tt_u32 seed, tt_u8 level, tt_u16 goal, tt_u8 level_up, tt_u8 vs)
 {
     tt_u8 *p = (tt_u8 *)b;
@@ -306,6 +315,30 @@ static int cancel(tt_board *b, int n)
     return n;
 }
 
+/* fold chunks: cancel from the oldest; add one (a full list adds to the newest) */
+static int cancel_chunks(tt_chunk *c, tt_u8 *n, int k)
+{
+    int j;
+    while (k > 0 && *n) {
+        if (c[0].rows > k) { c[0].rows = (tt_u8)(c[0].rows - k); return 0; }
+        k -= c[0].rows;
+        for (j = 1; j < *n; j++) c[j - 1] = c[j];
+        (*n)--;
+    }
+    return k;
+}
+
+static void push_chunk(tt_chunk *c, tt_u8 *n, const tt_chunk *add)
+{
+    int r;
+    if (*n == TT_FMAX) {
+        r = c[TT_FMAX - 1].rows + add->rows;
+        c[TT_FMAX - 1].rows = (tt_u8)(r > 255 ? 255 : r);
+        return;
+    }
+    c[(*n)++] = *add;
+}
+
 /* the hole of row i of a batch (i counts from the batch's first row) */
 static int hole_at(int pat, int gap, int i)
 {
@@ -383,6 +416,51 @@ static void collapse(tt_board *b)
     b->grid_rows = 0xffffffffUL;
 }
 
+/* attack: cancel this board's waiting garbage, then what is folding in to it; the rest goes out */
+static void attack_out(tt_board *b, int attack)
+{
+    if (!b->vs || !attack) return;
+    b->last_attack = (tt_u8)attack;
+    attack = cancel(b, attack);
+    attack = cancel_chunks(b->fi, &b->fi_n, attack);
+    b->out = (tt_u16)(b->out + attack);
+    b->sent = (tt_u16)(b->sent + attack);
+}
+
+/* lines cleared (mask: their rows): lines, meter, level, goal, the fold count, the attack */
+static void count_lines(tt_board *b, int n, tt_u32 mask, int attack)
+{
+    int y, ymax = 0;
+    tt_u16 prev = b->lines;
+    for (y = 0; y < TT_ROWS; y++) if (mask & (1UL << y)) ymax = y;
+    b->out_h = (tt_u8)(TT_ROWS - 1 - ymax);
+    attack_out(b, attack);
+    b->lines = (tt_u16)(b->lines + n);
+    b->meter = (tt_u8)(b->meter + n > TT_METER_MAX ? TT_METER_MAX : b->meter + n);
+    if (b->level_up && b->level < TT_MAX_LEVEL && 1 + b->lines / 10 > b->level) {
+        b->level = (tt_u8)(1 + b->lines / 10);
+        if (b->level > TT_MAX_LEVEL) b->level = TT_MAX_LEVEL;
+        b->gravity = tt_gravity_for(b->level);
+        b->ev |= TT_EV_LEVEL;
+    }
+    if (b->goal && b->lines >= b->goal) { b->done = 1; b->ev |= TT_EV_DONE; }
+    /* Origami Crane: an 8-line mark passed (counted from fold_from) */
+    if (b->fold_on && prev >= b->fold_from &&
+        (prev - b->fold_from) / TT_FOLD_EVERY < (b->lines - b->fold_from) / TT_FOLD_EVERY)
+        b->fold_due = 1;
+}
+
+/* full rows flash, then go (or go now with no flash) */
+static void clear_rows(tt_board *b, tt_u32 mask)
+{
+    b->clear_rows = mask;
+    b->clear_t = b->clear_delay;
+    if (!b->clear_t) {
+        collapse(b);
+        if (!b->done) next_brick(b);
+    }
+}
+
 static void lock(tt_board *b)
 {
     int k, x, y, n = 0, spin, hidden = 1, pc = 1, attack = 0, difficult;
@@ -440,35 +518,16 @@ static void lock(tt_board *b)
     b->last_combo = b->combo;
     b->score += pts * b->level;
 
-    if (b->vs && attack) {
-        b->last_attack = (tt_u8)attack;
-        attack = cancel(b, attack);
-        b->out = (tt_u16)(b->out + attack);
-        b->sent = (tt_u16)(b->sent + attack);
-    }
-
     if (hidden && !n) { top_out(b); return; }   /* locked entirely above the field */
 
     if (n) {
-        b->lines = (tt_u16)(b->lines + n);
-        b->meter = (tt_u8)(b->meter + n > TT_METER_MAX ? TT_METER_MAX : b->meter + n);
-        if (b->level_up && b->level < TT_MAX_LEVEL && 1 + b->lines / 10 > b->level) {
-            b->level = (tt_u8)(1 + b->lines / 10);
-            if (b->level > TT_MAX_LEVEL) b->level = TT_MAX_LEVEL;
-            b->gravity = tt_gravity_for(b->level);
-            b->ev |= TT_EV_LEVEL;
-        }
-        if (b->goal && b->lines >= b->goal) { b->done = 1; b->ev |= TT_EV_DONE; }
-        b->clear_rows = mask;
-        b->clear_t = b->clear_delay;
-        if (!b->clear_t) {
-            collapse(b);
-            if (!b->done) spawn(b, 0);
-        }
+        count_lines(b, n, mask, attack);
+        clear_rows(b, mask);
         return;
     }
+    attack_out(b, attack);
     apply_garbage(b);
-    if (b->alive) spawn(b, 0);
+    if (b->alive) next_brick(b);
 }
 
 void tt_hard_drop(tt_board *b)
@@ -498,6 +557,8 @@ int tt_spend(tt_board *b, int cost)
     return 1;
 }
 
+static void fold_done(tt_board *b);
+
 void tt_tick(tt_board *b)
 {
     tt_u32 g;
@@ -510,8 +571,12 @@ void tt_tick(tt_board *b)
     if (b->cool) b->cool--;
     for (k = 0; k < TT_FX_N; k++) if (b->fx[k]) b->fx[k]--;
 
+    if (b->fold_t) {
+        if (--b->fold_t == 0) fold_done(b);
+        return;
+    }
     if (b->clear_t) {
-        if (--b->clear_t == 0) { collapse(b); spawn(b, 0); }
+        if (--b->clear_t == 0) { collapse(b); if (!b->done) next_brick(b); }
         return;
     }
     if (!b->active) return;
@@ -557,7 +622,7 @@ static void settle(tt_board *b)
     if (!b->clear_t) return;
     b->clear_t = 0;
     collapse(b);
-    if (b->alive && !b->done) spawn(b, 0);
+    if (b->alive && !b->done) next_brick(b);
 }
 
 /* bricks moved under the falling one: lift it clear (or it is bricked up) */
@@ -720,4 +785,149 @@ void tt_holo_restart(tt_board *b)
 {
     b->holo_from = b->lines;
     b->holo_used = 0;
+}
+
+/* ======================================================================
+ * Origami Crane: fold garbage
+ * ==================================================================== */
+
+int tt_stack_height(const tt_board *b)
+{
+    int x, y;
+    for (y = 0; y < TT_ROWS; y++)
+        for (x = 0; x < TT_COLS; x++)
+            if (b->grid[y][x]) return TT_ROWS - y;
+    return 0;
+}
+
+/* the folded chunks land: inside the stack they overwrite those rows (solid cells only), above it they sit on it */
+static void fold_land(tt_board *b)
+{
+    int k, i, x, y, base, top, hole;
+    tt_u32 mask = 0;
+    tt_chunk *c;
+    b->fold_n = 0;
+    for (k = 0; k < b->fi_n && b->alive; k++) {
+        c = &b->fi[k];
+        top = tt_stack_height(b);
+        base = c->h < top ? c->h : top;
+        for (i = 0; i < c->rows; i++) {
+            y = TT_ROWS - 1 - (base + i);
+            if (y < 0) { b->alive = 0; break; }
+            hole = hole_at(c->pat, c->hole, i);
+            for (x = 0; x < TT_COLS; x++) if (x != hole) b->grid[y][x] = TT_GARBAGE;
+            mask |= 1UL << y;
+            b->fold_n++;
+        }
+    }
+    b->fi_n = 0;
+    b->recv = (tt_u16)(b->recv + b->fold_n);
+    b->fold_rows = mask;
+    b->grid_rows |= mask;
+    b->ev |= TT_EV_FOLDIN;
+    b->active = 0;
+    if (!b->alive) { top_out(b); return; }
+    b->fold_t = TT_FOLD_FRAMES;
+}
+
+/* the fold has played: lines it completed clear normally (they count and attack), then the next brick */
+static void fold_done(tt_board *b)
+{
+    int x, y, n = 0;
+    tt_u32 mask = 0;
+    b->grid_rows |= b->fold_rows;
+    b->fold_rows = 0;
+    for (y = 0; y < TT_ROWS; y++) {
+        for (x = 0; x < TT_COLS && b->grid[y][x]; x++) ;
+        if (x == TT_COLS) { mask |= 1UL << y; n++; }
+    }
+    if (!n) { next_brick(b); return; }
+    if (n > 4) n = 4;
+    b->last_lines = (tt_u8)n;
+    b->last_spin = 0;
+    b->last_b2b = 0;
+    b->last_pc = 0;
+    b->last_combo = -1;
+    b->last_attack = 0;
+    b->score += (tt_u32)POINTS[0][n] * b->level;
+    b->ev |= TT_EV_CLEAR | TT_EV_FOLDCLR;
+    count_lines(b, n, mask, ATTACK[n]);
+    clear_rows(b, mask);
+}
+
+int tt_fold_attack(tt_board *from, tt_board *to, int rows, tt_u8 pat)
+{
+    tt_chunk c;
+    rows = cancel_chunks(to->fh, &to->fh_n, rows);
+    if (!from->fold_on || rows <= 0) return rows;
+    c.rows = (tt_u8)(rows > 255 ? 255 : rows);
+    c.h = from->out_h;
+    c.hole = (tt_u8)(tt_rand(from) % TT_COLS);
+    c.pat = pat;
+    push_chunk(from->fh, &from->fh_n, &c);
+    return 0;
+}
+
+int tt_fold_send(tt_board *from, tt_board *to)
+{
+    int k, n = 0;
+    for (k = 0; k < from->fh_n; k++) {
+        n += from->fh[k].rows;
+        if (to->alive) push_chunk(to->fi, &to->fi_n, &from->fh[k]);
+    }
+    from->fh_n = 0;
+    return n;
+}
+
+int tt_fold_held(const tt_board *b)
+{
+    int k, n = 0;
+    for (k = 0; k < b->fh_n; k++) n += b->fh[k].rows;
+    return n;
+}
+
+int tt_fold_queued(const tt_board *b)
+{
+    int k, n = 0;
+    for (k = 0; k < b->fi_n; k++) n += b->fi[k].rows;
+    return n;
+}
+
+int tt_fold_in_lines(const tt_board *b)
+{
+    if (b->lines < b->fold_from) return TT_FOLD_EVERY;
+    return TT_FOLD_EVERY - (b->lines - b->fold_from) % TT_FOLD_EVERY;
+}
+
+int tt_fold_charges(const tt_board *b)
+{
+    int n;
+    if (b->lines < b->fold_from) return 0;
+    n = (b->lines - b->fold_from) / TT_FOLD_EARLY - b->early_used;
+    return n > 0 ? n : 0;
+}
+
+int tt_fold_early_block(const tt_board *b, const tt_board *to)
+{
+    if (!b->fold_on || !b->alive) return TT_FOLD_OFF;
+    if (tt_fold_charges(b) <= 0)
+        return b->lines < b->fold_from + TT_FOLD_EARLY ? TT_FOLD_AT10 : TT_FOLD_NOCHARGE;
+    if (!b->fh_n) return TT_FOLD_NOTHING;
+    if (to->fi_n) return TT_FOLD_QUEUED;
+    return TT_FOLD_OK;
+}
+
+int tt_fold_early(tt_board *b, tt_board *to)
+{
+    int why = tt_fold_early_block(b, to);
+    if (why != TT_FOLD_OK) return why;
+    b->early_used++;               /* the 8-line count is NOT reset */
+    tt_fold_send(b, to);
+    return TT_FOLD_OK;
+}
+
+void tt_fold_restart(tt_board *b)
+{
+    b->fold_from = b->lines;
+    b->early_used = 0;
 }

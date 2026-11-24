@@ -434,6 +434,133 @@ static void test_cpu_holo(void)
     }
 }
 
+/* Origami Crane: garbage is held, folds over every 8 lines, lands overwriting rows */
+static void drop_o(tt_board *b, int x)
+{
+    set_piece(b, TT_O, 0, x, 0);
+    tt_hard_drop(b);
+}
+
+static void test_fold(void)
+{
+    static const char *two[3] = { "########..", "########..", "####.#####" };
+    static const char *low[1] = { "#........." };
+    tt_board a, b;
+    int f;
+
+    tt_init(&a, 7, 1, 0, 0, 1);
+    tt_init(&b, 8, 1, 0, 0, 1);
+    a.clear_delay = b.clear_delay = 0;
+    a.fold_on = 1;
+
+    /* a double at the floor: 1 row, held at height 0 instead of sent */
+    field(&a, two, 3);
+    drop_o(&a, 8);
+    CHECK(a.lines == 2 && a.out == 1, "a double makes 1 row");
+    CHECK(tt_fold_attack(&a, &b, a.out, TT_PAT_STD) == 0, "with the card it isn't sent");
+    a.out = 0;
+    CHECK(tt_fold_held(&a) == 1 && a.fh[0].h == 1, "it is held, at the height it was cleared at");
+    CHECK(!a.fold_due, "no fold before 8 lines");
+
+    /* the opponent's attack eats what you hold */
+    CHECK(tt_fold_attack(&b, &a, 1, TT_PAT_STD) == 0 && tt_fold_held(&a) == 0, "the opponent's attack cancels held rows");
+    CHECK(tt_fold_attack(&b, &a, 2, TT_PAT_STD) == 2, "...and the rest is sent normally");
+
+    /* the 8-line mark folds it over */
+    a.lines = 6;
+    field(&a, two, 3);
+    drop_o(&a, 8);
+    tt_fold_attack(&a, &b, a.out, TT_PAT_STD); a.out = 0;
+    CHECK(a.fold_due, "8 lines: the held rows fold over");
+    CHECK(tt_fold_send(&a, &b) == 1 && b.fi_n == 1 && a.fh_n == 0, "they move to the opponent");
+    CHECK(tt_fold_queued(&b) == 1, "queued on the opponent");
+
+    /* they land at the next placement, overwriting solid cells, and complete a line */
+    field(&b, low, 1);
+    b.fi[0].hole = 0;
+    b.fi[0].h = 0;
+    b.g_n = 0;
+    b.ev = 0;
+    drop_o(&b, 4);
+    CHECK((b.ev & TT_EV_FOLDIN) && b.fold_t == TT_FOLD_FRAMES && !b.active && b.fi_n == 0, "the fold lands and plays");
+    CHECK(b.fold_rows == (1UL << (TT_ROWS - 1)), "it stamped the bottom row");
+    for (f = 0; f < TT_FOLD_FRAMES; f++) { b.ev = 0; tt_tick(&b); }
+    CHECK(b.lines == 1 && b.active, "the line it completed cleared and counted; the next brick came");
+
+    /* above the stack it drops onto it */
+    memset(b.grid, 0, sizeof b.grid);
+    b.fi[0].rows = 2; b.fi[0].h = 12; b.fi[0].hole = 3; b.fi[0].pat = TT_PAT_STD; b.fi_n = 1;
+    drop_o(&b, 0);
+    CHECK(b.grid[TT_ROWS - 3][5] == TT_GARBAGE && b.grid[TT_ROWS - 3][3] == 0, "it sits on the stack (O on the floor, 2 rows)");
+    CHECK(b.grid[TT_ROWS - 4][5] == TT_GARBAGE && b.grid[TT_ROWS - 5][5] == 0, "...2 rows high");
+    for (f = 0; f < TT_FOLD_FRAMES; f++) tt_tick(&b);
+
+    /* your attack cancels what is folding in to you */
+    b.fi[0].rows = 3; b.fi_n = 1;
+    field(&b, two, 3);
+    drop_o(&b, 8);
+    CHECK(b.out == 0 && tt_fold_queued(&b) == 0, "...the fold landed (the double's row cancelled 1 of 3)");
+    CHECK(b.fold_n == 2, "2 rows folded in");
+    for (f = 0; f < TT_FOLD_FRAMES; f++) tt_tick(&b);
+
+    /* Early Fold */
+    tt_init(&a, 9, 1, 0, 0, 1);
+    tt_init(&b, 10, 1, 0, 0, 1);
+    a.fold_on = 1;
+    a.lines = 9;
+    CHECK(tt_fold_early(&a, &b) == TT_FOLD_AT10, "no charge before 10 lines");
+    a.lines = 10;
+    CHECK(tt_fold_early(&a, &b) == TT_FOLD_NOTHING, "nothing held");
+    a.out_h = 0;
+    tt_fold_attack(&a, &b, 2, TT_PAT_STD);
+    b.fi_n = 1; b.fi[0].rows = 1;
+    CHECK(tt_fold_early(&a, &b) == TT_FOLD_QUEUED, "not while a fold is queued on them");
+    b.fi_n = 0;
+    CHECK(tt_fold_early(&a, &b) == TT_FOLD_OK && tt_fold_queued(&b) == 2, "Early Fold sends the held rows");
+    tt_fold_attack(&a, &b, 1, TT_PAT_STD);
+    b.fi_n = 0;
+    CHECK(tt_fold_early(&a, &b) == TT_FOLD_NOCHARGE, "one charge per 10 lines");
+    a.lines = 20;
+    CHECK(tt_fold_charges(&a) == 1, "a second at 20");
+    tt_fold_restart(&a);
+    CHECK(tt_fold_charges(&a) == 0 && tt_fold_in_lines(&a) == TT_FOLD_EVERY, "a fresh count");
+    a.fold_on = 0;
+    CHECK(tt_fold_early(&a, &b) == TT_FOLD_OFF, "nothing without the card");
+}
+
+/* a CPU with Origami Crane against one without: folds land, and the match ends */
+static void test_fold_versus(void)
+{
+    tt_board a, b;
+    tt_cpu ca, cb;
+    long f;
+    int folds = 0, n;
+    tt_init(&a, 21, 1, 0, 0, 1);
+    tt_init(&b, 22, 1, 0, 0, 1);
+    a.fold_on = 1;
+    cpu_init(&ca, 7, 1);
+    cpu_init(&cb, 5, 2);
+    for (f = 0; f < 60L * 60 * 15 && a.alive && b.alive; f++) {
+        a.ev = b.ev = 0;
+        cpu_frame(&ca, &a); cpu_frame(&cb, &b);
+        tt_tick(&a); tt_tick(&b);
+        if (a.out) { n = tt_fold_attack(&a, &b, a.out, TT_PAT_STD); if (n) tt_receive(&b, (tt_u8)n); a.out = 0; }
+        if (b.out) { n = tt_fold_attack(&b, &a, b.out, TT_PAT_STD); if (n) tt_receive(&a, (tt_u8)n); b.out = 0; }
+        if (a.fold_due) { a.fold_due = 0; if (tt_fold_send(&a, &b)) folds++; }
+        if (b.fold_due) { b.fold_due = 0; if (tt_fold_send(&b, &a)) folds++; }
+        if (f % 3600 == 3599 && a.level < 10) {        /* the drop speed rises every minute, as in the game */
+            a.level++; b.level++;
+            a.gravity = b.gravity = tt_gravity_for(a.level);
+        }
+        if (a.active) CHECK(!tt_collides(&a, a.type, a.rot, a.x, a.y), "fold versus: no overlap");
+        if (fails) return;
+    }
+    printf("  fold versus CPU 7 (Origami) vs CPU 5: %s after %ld s, %d folds, folded in %u / %u\n",
+           !b.alive ? "level 7 wins" : !a.alive ? "level 5 wins" : "no result", f / 60, folds, a.recv, b.recv);
+    CHECK(!a.alive || !b.alive, "fold versus ends");
+    CHECK(folds > 0, "folds happened");
+}
+
 static void test_versus(void)
 {
     tt_board a, b;
@@ -484,7 +611,12 @@ static void test_fuzz(void)
         else if (k == 12 && (r & 0xf00000) == 0x500000) tt_fx_on(&b, (int)((r >> 8) % TT_FX_N), 300);
         else if (k == 12 && (r & 0xf00000) == 0x600000) b.lines = (tt_u16)(b.lines + 10);
         else if (k == 13 && (r & 0x300000) == 0x100000) tt_holo_freeze(&b);
+        else if (k == 13 && (r & 0x300000) == 0x200000 && b.fi_n < TT_FMAX) {
+            b.fi[b.fi_n].rows = (tt_u8)(1 + (r >> 8) % 4); b.fi[b.fi_n].h = (tt_u8)((r >> 12) % 20);
+            b.fi[b.fi_n].hole = (tt_u8)((r >> 4) % 10); b.fi[b.fi_n].pat = (tt_u8)((r >> 16) & 3); b.fi_n++;
+        }
         tt_tick(&b);
+        if (b.fold_t) CHECK(!b.active, "nothing falls while a fold plays");
         if (b.active && !b.holo) CHECK(!tt_collides(&b, b.type, b.rot, b.x, b.y), "falling brick never overlaps");
         if (b.holo) CHECK(!tt_hold(&b), "a hologram is never held");
         if (!b.alive) { games++; tt_init(&b, (tt_u32)f + 1, 1 + games % 15, 0, 1, 1); b.holo_on = (tt_u8)(games & 1); }
@@ -505,10 +637,12 @@ int main(void)
     test_effects();
     test_lock_delay();
     test_holo();
+    test_fold();
     test_fuzz();
     test_cpu();
     test_cpu_holo();
     test_versus();
+    test_fold_versus();
     if (fails) { printf("%d check(s) failed\n", fails); return 1; }
     printf("all rules checks passed\n");
     return 0;

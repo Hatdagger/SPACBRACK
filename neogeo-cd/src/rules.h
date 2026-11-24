@@ -68,9 +68,22 @@ enum { TT_FX_GLARE,      /* no preview */
 #define TT_EV_HOLO     0x2000  /* a hologram brick came in */
 #define TT_EV_FREEZE   0x4000  /* a hologram was frozen in place */
 #define TT_EV_HOLOSET  0x8000  /* a hologram fell to the floor and set there */
+#define TT_EV_FOLDIN   0x10000UL  /* folded garbage landed on this board */
+#define TT_EV_FOLDCLR  0x20000UL  /* ...and completed lines (they clear and count) */
 
 #define TT_HOLO_LINES  10      /* Phantom Reel: one hologram per 10 lines... */
 #define TT_HOLO_MAX    3       /* ...at most 3 */
+
+#define TT_FOLD_EVERY  8       /* Origami Crane: held garbage folds over every 8 lines */
+#define TT_FOLD_FRAMES 42      /* a fold landing plays 0.7 s (no brick meanwhile) */
+#define TT_FOLD_EARLY  10      /* one Early Fold charge per 10 lines */
+#define TT_FMAX        8       /* chunks held / folded in */
+
+/* tt_fold_early refusals */
+enum { TT_FOLD_OK, TT_FOLD_OFF, TT_FOLD_AT10, TT_FOLD_NOCHARGE, TT_FOLD_NOTHING, TT_FOLD_QUEUED };
+
+/* a chunk of fold garbage: rows, the height (from the floor) it was cleared at, hole, pattern */
+typedef struct { tt_u8 rows, h, hole, pat; } tt_chunk;
 
 enum { TT_SPIN_NONE, TT_SPIN_MINI, TT_SPIN_FULL };
 
@@ -131,8 +144,21 @@ typedef struct {
     tt_u8  holo_used;          /* holograms dealt since holo_from */
     tt_u16 holo_from;          /* lines when the count started (Survival: per opponent) */
 
+    /* Origami Crane (fold garbage) */
+    tt_u8  fold_on;            /* this board's garbage is held and folds over (set by the front end) */
+    tt_chunk fh[TT_FMAX];      /* held, waiting to fold over to the opponent */
+    tt_chunk fi[TT_FMAX];      /* folded to this board: lands at the next placement */
+    tt_u8  fh_n, fi_n;
+    tt_u8  out_h;              /* height of the lowest line of the last clear */
+    tt_u8  fold_due;           /* an 8-line mark was passed: the front end folds the held chunks over */
+    tt_u8  fold_t;             /* frames the landing fold still plays */
+    tt_u8  fold_n;             /* rows that landed in the last fold */
+    tt_u32 fold_rows;          /* bit y: row y was stamped by that fold */
+    tt_u8  early_used;         /* Early Fold charges spent since fold_from */
+    tt_u16 fold_from;          /* lines when the count started (Survival: per opponent) */
+
     /* last frame's events */
-    tt_u16 ev;
+    tt_u32 ev;
     tt_u8  last_lines, last_spin, last_b2b, last_pc, last_attack;
     tt_s16 last_combo;
     tt_u8  hd_type, hd_rot;    /* hard drop trail: from hd_y0 down to hd_y1 */
@@ -191,5 +217,26 @@ int  tt_holo_ready(const tt_board *b);      /* holograms earned and not dealt ye
 int  tt_holo_fills(const tt_board *b);      /* empty cells the hologram would fill now */
 int  tt_holo_freeze(tt_board *b);           /* 1 if there was a hologram to freeze */
 void tt_holo_restart(tt_board *b);          /* a fresh count of 3 from the lines now */
+
+/*
+ * Origami Crane: with fold_on, the garbage this board's clears make is held
+ * as chunks (one per clear, remembering the height it was cleared at)
+ * instead of sent.  Every 8 lines the held chunks fold over to the opponent
+ * and land at their next placement: inside their stack a chunk overwrites
+ * those rows (solid cells only, so it can complete lines, which clear and
+ * count); above it, it drops onto it.  Perk: Early Fold, one charge per 10
+ * lines, sends the held chunks now.  Any board's attack cancels its own
+ * waiting garbage, then what is folding in to it, then what the opponent holds.
+ */
+int  tt_fold_attack(tt_board *from, tt_board *to, int rows, tt_u8 pat);   /* the rows left to send normally */
+int  tt_fold_send(tt_board *from, tt_board *to);        /* fold the held chunks over: rows moved */
+int  tt_fold_early_block(const tt_board *b, const tt_board *to);   /* TT_FOLD_OK when Early Fold can go */
+int  tt_fold_early(tt_board *b, tt_board *to);          /* TT_FOLD_OK and folded, or why not */
+int  tt_fold_held(const tt_board *b);                   /* rows held */
+int  tt_fold_queued(const tt_board *b);                 /* rows folded in, landing next placement */
+int  tt_fold_in_lines(const tt_board *b);               /* lines to the next fold */
+int  tt_fold_charges(const tt_board *b);                /* Early Fold charges */
+int  tt_stack_height(const tt_board *b);                /* rows from the floor to the top brick */
+void tt_fold_restart(tt_board *b);                      /* a fresh count from the lines now */
 
 #endif

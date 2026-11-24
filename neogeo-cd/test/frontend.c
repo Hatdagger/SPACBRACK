@@ -291,7 +291,11 @@ void waitVBlank(void)
         if (tap_phase == 2) { tap_phase = 0; return; }
         if (wait_n > 0) { wait_n--; return; }
         if (until_p >= 0) {
-            if (side[until_p].state == state_id(until_s)) { until_p = -1; continue; }
+            /* until P FOLD N: a fold is landing on P (Origami Crane) */
+            if (!strcmp(until_s, "FOLD") ? side[until_p].b.fold_t != 0 : side[until_p].state == state_id(until_s)) {
+                until_p = -1;
+                continue;
+            }
             if (--until_left <= 0) {
                 fprintf(stderr, "frame %ld: player %d is %s, waited for %s\n", frame, until_p + 1,
                         STATE_NAME[side[until_p].state], until_s);
@@ -355,6 +359,9 @@ void waitVBlank(void)
             else if (!strcmp(a2, "wins")) v = cs->wins;
             else if (!strcmp(a2, "holo")) v = cs->b.holo;
             else if (!strcmp(a2, "holos")) { v = cs->b.holo_used; ge = 1; }
+            else if (!strcmp(a2, "held")) v = tt_fold_held(&cs->b);
+            else if (!strcmp(a2, "foldq")) v = tt_fold_queued(&cs->b);
+            else if (!strcmp(a2, "recv")) { v = cs->b.recv; ge = 1; }
             else { fprintf(stderr, "unknown check %s\n", a2); exit(2); }
             if (ge ? v < want : v != want) {
                 fprintf(stderr, "frame %ld: player %s %s is %ld, expected %s%ld\n", frame, a1, a2, v, ge ? ">= " : "", want);
@@ -362,6 +369,14 @@ void waitVBlank(void)
             }
         } else if (!strcmp(cmd, "setcard")) { side[atoi(a1) - 1].card = (BYTE)atoi(a2); side[atoi(a1) - 1].launch_used = 0; }
         else if (!strcmp(cmd, "garbage")) tt_receive(&side[atoi(a1) - 1].b, (tt_u8)atoi(a2));
+        else if (!strcmp(cmd, "fold")) {
+            /* fold P ROWS H: P holds a chunk of ROWS cleared at height H (Origami Crane) */
+            tt_board *fb = &side[atoi(a1) - 1].b;
+            if (fb->fh_n < TT_FMAX) {
+                fb->fh[fb->fh_n].rows = (tt_u8)atoi(a2); fb->fh[fb->fh_n].h = (tt_u8)atoi(a3);
+                fb->fh[fb->fh_n].hole = 4; fb->fh[fb->fh_n].pat = TT_PAT_STD; fb->fh_n++;
+            }
+        }
         else if (!strcmp(cmd, "meter")) {
             side[atoi(a1) - 1].b.meter = (tt_u8)atoi(a2);
             side[atoi(a1) - 1].b.cool = (tt_u16)atoi(a3);
